@@ -838,16 +838,23 @@ def _put(path: str, resource: dict, **params) -> dict:
     return _json(body)
 
 
-def series_playlist(title: str, ids: list[str], description: str = "", privacy: str = "public") -> dict:
+OPENNESS = {"private": 0, "unlisted": 1, "public": 2}
+
+
+def series_playlist(title: str, ids: list[str], description: str = "", privacy: str = "private") -> dict:
     """The series playlist, in episode order: found by its title on the channel or made (playlists.insert, 50 units),
     then each video not in it yet added at its position (playlistItems.insert, 50 units each). A playlist sorted by
-    YouTube refuses positions (manualSortRequired): the rest are added without one, in order. A public playlist shows
-    others only the videos that are public themselves."""
+    YouTube refuses positions (manualSortRequired): the rest are added without one, in order. A playlist shows whoever
+    can open it every unlisted video in it, so it is never more open than asked: a found one that is gets closed
+    (playlists.update)."""
     if privacy not in ("private", "unlisted", "public"):
         raise RuntimeError("privacy: private, unlisted or public")
     mine = _my_playlists()
     if title in mine:
         pid, created = mine[title]["id"], False
+        if OPENNESS.get(mine[title].get("privacy") or "public", 2) > OPENNESS[privacy]:
+            _put("playlists", {"id": pid, "snippet": {"title": title[:150], "description": description[:5000]}, "status": {"privacyStatus": privacy}},
+                 part="snippet,status")
     else:
         made = _post("playlists", {"snippet": {"title": title[:150], "description": description[:5000], "defaultLanguage": "en"},
                                    "status": {"privacyStatus": privacy}}, part="snippet,status")
@@ -869,15 +876,18 @@ def series_playlist(title: str, ids: list[str], description: str = "", privacy: 
                 positioned = False
         _post("playlistItems", item, part="snippet")
         added.append(vid)
-    return {"id": pid, "url": f"https://www.youtube.com/playlist?list={pid}", "created": created, "added": added, "positioned": positioned}
+    return {"id": pid, "url": f"https://www.youtube.com/playlist?list={pid}", "created": created, "added": added, "positioned": positioned,
+            "privacy": privacy}
 
 
-def link_series(title: str | None = None, dry_run: bool = False, privacy: str = "public") -> dict:
+def link_series(title: str | None = None, dry_run: bool = False, privacy: str | None = None) -> dict:
     """Once every episode of the series is on YouTube (this build's uploads): the series playlist in order
     (series_playlist), then each episode's description with its real links to the part before, the part after and
     the playlist (videos.update, 50 units each). videos.update replaces the whole snippet, so the video's own title,
     category, tags and languages are read first (videos.list) and sent back with the new description; nothing else
-    changes. Only videos this build uploaded are touched. dry_run: the descriptions, with no call to YouTube."""
+    changes. Only videos this build uploaded are touched. dry_run: the descriptions, with no call to YouTube.
+    privacy: the playlist's; by default the most private of the parts' (13 Nov: it was always public, and a public
+    playlist shows anyone its unlisted videos; the owner had asked for the trip to stay unlisted)."""
     from studio import vlog
 
     parts = _series_parts()
@@ -893,9 +903,15 @@ def link_series(title: str | None = None, dry_run: bool = False, privacy: str = 
     title = (title or f"{name} · the series").strip()[:150]
     ids = [p["uploaded"]["id"] for p in parts]
     url = {p["n"]: p["uploaded"]["url"] for p in parts}
+    if privacy is None:
+        # A part booked for later (publishAt) is private until then: the playlist waits with it.
+        seen = ["private" if p["uploaded"].get("publishAt") else (p["uploaded"].get("privacy") or "private") for p in parts]
+        privacy = min(seen, key=lambda s: OPENNESS.get(s, 0))
+    if privacy not in OPENNESS:
+        raise RuntimeError("privacy: private, unlisted or public")
     if dry_run:
         pl = "https://www.youtube.com/playlist?list=(made on the real run)"
-        return {"dryRun": True, "playlist": {"title": title, "url": pl}, "descriptions": {
+        return {"dryRun": True, "playlist": {"title": title, "url": pl, "privacy": privacy}, "descriptions": {
             p["n"]: vlog.fill_links(p["template"], {"prev": url.get(p["n"] - 1), "next": url.get(p["n"] + 1), "playlist": pl}) for p in parts}}
     lines = "\n".join(f"Part {p['n']} of {p['of']}: {p['episode']}" for p in parts)
     pl = series_playlist(title, ids, description=f"{name}, in order.\n\n{lines}", privacy=privacy)
@@ -995,9 +1011,9 @@ def playlist_keys(title: str, theme: str | None) -> list[str]:
 def _my_playlists() -> dict[str, dict]:
     out, token = {}, ""
     while True:
-        page = _get("playlists", part="snippet,contentDetails", mine="true", maxResults="50", **({"pageToken": token} if token else {}))
+        page = _get("playlists", part="snippet,contentDetails,status", mine="true", maxResults="50", **({"pageToken": token} if token else {}))
         for p in page.get("items", []):
-            out[p["snippet"]["title"]] = {"id": p["id"], "count": p["contentDetails"]["itemCount"]}
+            out[p["snippet"]["title"]] = {"id": p["id"], "count": p["contentDetails"]["itemCount"], "privacy": (p.get("status") or {}).get("privacyStatus")}
         token = page.get("nextPageToken", "")
         if not token:
             return out

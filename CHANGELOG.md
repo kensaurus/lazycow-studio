@@ -23,6 +23,9 @@ The first public release.
 - **Local events** searched Japanese words in Japan's results for every project. They now search where the project's
   home place is: the country from its map point (offline), English words outside Japan.
 - The MCP server reads the studio's port from its `.env` too, not only from `STUDIO_PORT`.
+- **Series playlist privacy:** linking a series made its playlist public even when the parts were unlisted, and a
+  public playlist shows anyone the unlisted videos in it. The playlist now follows the most private part, and a
+  playlist of that name that is more open is closed to match.
 
 ### Changed
 - The public copy holds no personal notes, trip details or names from the maintainer's own projects; the export stops

@@ -325,6 +325,8 @@ Once every part is on YouTube, the box **Do in YouTube Studio** appears on **Ree
 
 1. **Link the series.** Makes the playlist "<trip> · the series" with the parts in order, then puts the links to the
    part before, the part after and the playlist into every description. Only the parts this plan uploaded are changed.
+   The playlist is as private as the most private part: unlisted parts give an unlisted playlist (a public one would show
+   them to anyone).
 2. **Post the pin comments** (once the parts are public or unlisted: YouTube allows no comments on private videos):
    "Part 2 of 4: … Next: Part 3, …".
 3. Then, in YouTube Studio (no app can do these), tick each step when it is done:

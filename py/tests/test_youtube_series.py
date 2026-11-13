@@ -13,7 +13,7 @@ OLD = "d1tMeoodsAg"  # an earlier plan's part 1, uploaded from the same folder (
 
 class FakeYouTube:
     def __init__(self, manual_sort: bool = True):
-        self.calls, self.manual_sort, self.playlists, self.items = [], manual_sort, {}, {}
+        self.calls, self.manual_sort, self.playlists, self.items, self.privacy = [], manual_sort, {}, {}, {}
 
     def __call__(self, method, url, *, data=None, headers=None, timeout=120):
         u = urlsplit(url)
@@ -22,9 +22,14 @@ class FakeYouTube:
         self.calls.append((method, u.path.rsplit("/", 1)[-1], q, body))
         path = u.path.rsplit("/", 1)[-1]
         if method == "GET" and path == "playlists":
-            return 200, {}, json.dumps({"items": [{"id": i, "snippet": {"title": t}, "contentDetails": {"itemCount": 0}} for t, i in self.playlists.items()]}).encode()
+            return 200, {}, json.dumps({"items": [{"id": i, "snippet": {"title": t}, "contentDetails": {"itemCount": 0}, "status": {"privacyStatus": self.privacy.get(i, "public")}}
+                                                  for t, i in self.playlists.items()]}).encode()
+        if method == "PUT" and path == "playlists":
+            self.privacy[body["id"]] = body["status"]["privacyStatus"]
+            return 200, {}, json.dumps(body).encode()
         if method == "POST" and path == "playlists":
             self.playlists[body["snippet"]["title"]] = "PLSERIES"
+            self.privacy["PLSERIES"] = body["status"]["privacyStatus"]
             return 200, {}, json.dumps({"id": "PLSERIES"}).encode()
         if method == "GET" and path == "playlistItems":
             return 200, {}, json.dumps({"items": [{"contentDetails": {"videoId": v}} for v in self.items.get(q["playlistId"], [])]}).encode()
@@ -55,7 +60,7 @@ def studio(tmp_path, monkeypatch):
     monkeypatch.setattr(youtube, "posts", lambda: [{"slug": "vlog-1", "network": "youtube", "status": "posted", "url": f"https://youtu.be/{OLD}"}])
     monkeypatch.setattr(youtube, "_set_thumbnail", lambda vid, img: None)
     uploads = iter(["NEW1", "NEW2"])
-    monkeypatch.setattr(youtube, "_resumable", lambda video, resource: (fake.calls.append(("UPLOAD", "videos", {}, resource)), {"id": next(uploads), "status": {"privacyStatus": "private"}})[1])
+    monkeypatch.setattr(youtube, "_resumable", lambda video, resource: (fake.calls.append(("UPLOAD", "videos", {}, resource)), {"id": next(uploads), "status": {"privacyStatus": resource["status"]["privacyStatus"]}})[1])
     plan = {"name": "Highlands & Coast", "videos": [
         {"n": 1, "title": "Highlands & Coast · Part 1 of 2: A Leopard in a Tree", "episode": "A Leopard in a Tree", "series": {"n": 1, "of": 2}},
         {"n": 2, "title": "Highlands & Coast · Part 2 of 2: The River Crossing and a Birthday", "episode": "The River Crossing and a Birthday", "series": {"n": 2, "of": 2}}]}
@@ -104,6 +109,7 @@ def test_the_link_pass_makes_the_playlist_in_order_and_sends_the_whole_snippet(s
     adds = [c[3]["snippet"] for c in fake.calls if c[0] == "POST" and c[1] == "playlistItems"]
     assert [(a["resourceId"]["videoId"], a["position"]) for a in adds] == [("NEW1", 0), ("NEW2", 1)], "in episode order"
     made = next(c for c in fake.calls if c[0] == "POST" and c[1] == "playlists")[3]
+    assert made["status"]["privacyStatus"] == "private", "the parts are private: so is the playlist"
     assert made["snippet"]["title"] == "Highlands & Coast · the series" and "Part 2 of 2: The River Crossing and a Birthday" in made["snippet"]["description"]
     puts = [c[3] for c in fake.calls if c[0] == "PUT"]
     assert [p["id"] for p in puts] == ["NEW1", "NEW2"]
@@ -113,6 +119,19 @@ def test_the_link_pass_makes_the_playlist_in_order_and_sends_the_whole_snippet(s
     assert "▶ Next: Part 2  https://youtu.be/NEW2" in s["description"] and "list=PLSERIES" in s["description"]
     assert json.loads((data / "vlog-series.json").read_text(encoding="utf-8"))["playlist"] == "PLSERIES"
     assert all(OLD not in json.dumps(c[2]) + str(c[3]) for c in fake.calls)
+
+
+def test_the_series_playlist_is_never_more_open_than_its_parts(studio):
+    """13 Nov: the playlist was always made public, and a public playlist shows anyone its unlisted videos."""
+    _, fake = studio
+    youtube.upload_vlog(1, privacy="unlisted")
+    youtube.upload_vlog(2, privacy="public")
+    assert youtube.link_series(dry_run=True)["playlist"]["privacy"] == "unlisted"
+    fake.playlists["Highlands & Coast · the series"] = "PLOLD"  # an earlier run made it public
+    out = youtube.link_series()
+    assert out["playlist"]["id"] == "PLOLD" and out["playlist"]["privacy"] == "unlisted"
+    assert fake.privacy["PLOLD"] == "unlisted", "the found public playlist is closed to unlisted"
+    assert not [c for c in fake.calls if c[0] == "POST" and c[1] == "playlists"]
 
 
 def test_a_playlist_youtube_sorts_itself_takes_the_rest_in_order(studio, monkeypatch):
