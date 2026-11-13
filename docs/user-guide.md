@@ -22,6 +22,10 @@ Open the studio at **http://127.0.0.1:4317** on the studio computer. If the page
 
 ## Your first day
 
+![You watch the reel, press Approve, and it is booked on the posting calendar](img/approve.gif)
+
+*The whole idea in one loop: review, Approve, booked. The [40-second demo](media/lazycow-demo.mp4) shows it from a folder of clips.*
+
 New here, with no terminal? Download the release zip, unzip it, read **README.TXT** and double-click **Start Lazycow**
 ([how it works](../scripts/bootstrap/README.md)). Lazy Kenji, on the cow-print bean bag, walks you through the rest. If
 you like your tours loud, press the blinking **DO NOT CLICK** button at the end of the setup guide (or find "90s pop-up
@@ -53,9 +57,13 @@ The top bar has five sections, in the order work moves: **Footage**, **Reels**, 
 
 ### Footage
 
+![Footage: every clip and photo with how often it was used, a word search and tag filters](img/footage.webp)
+
 Every photo and video the studio can use, with its tags. **Fresh footage** says how many more reels your unused clips can make, and what to film next.
 
 ### Reels
+
+![Reels › Make reels: pick themes, then make them; the reels waiting for review below](img/make-reels.webp)
 
 | Tab | What it is for |
 |:--|:--|
@@ -82,6 +90,8 @@ The draw rarely repeats what the last four reels used. Night and fire reels keep
 
 ![The posting calendar: a month of booked posts, one icon per network per day](img/posting-calendar.webp)
 
+![Posting: "Before these go out" lists what needs you first; Runs by itself stays folded](img/posting.webp)
+
 *Posting › Calendar. Each icon is one booked post. A solid border means the network holds it; a dashed border means the studio sends it.*
 
 | Tab or link | What it is for |
@@ -102,10 +112,14 @@ The top of the page also shows **Runs by itself**, the swap of older bookings, a
 
 ### Settings
 
+![Settings › Accounts: each network grouped by what is left to do, one button on each card](img/accounts.webp)
+
 | Tab | What it is for |
 |:--|:--|
 | **Accounts** | Each network: on or off for this project, connected or not, and a button for anything that needs one step |
 | **Keys & AI** | Your AI keys and spending limits, **This project** (your name, link and words), the **Chrome link**, **YouTube: Google account and app**, and **Use with Claude or Cursor** |
+
+![Settings › Keys & AI: AI keys, the spending limits per reel, per day and in total, and what has been spent](img/keys-ai.webp)
 
 ## Every week (10 minutes)
 
@@ -157,6 +171,8 @@ Two more jobs run with no switch on that list:
 ### Fix one reel
 
 Open the reel. Then:
+
+![The review editor: the reel on the left, its properties on the right, and a timeline of text, clips, music and effects](img/review.webp)
 
 - Drag a clip from **Library** onto the timeline to swap it.
 - Change words in **Properties**.

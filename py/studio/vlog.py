@@ -1648,6 +1648,56 @@ def _part_span(s: dict) -> tuple[float, float] | None:
 CLEAN_V = "1"  # bump when studio.quality.cleanup changes: cleaned shot files are named by it
 
 
+SPHERE_PER_CHAPTER = 2  # 360 moments a chapter gets, from its own day
+SPHERE_SEC = {"video": 5.5, "photo": 4.2}
+
+
+def sphere_ok(item: dict) -> bool:
+    """A 360 file the studio reframes cleanly: a stitched (equirectangular) video or a JPEG 360 photo. Raw dual-fisheye
+    originals (.insv, .lrv) need the maker's stitcher (Insta360 Studio: export as 360 video); an .insp showed a seam
+    and a tilt where the JPEG of the same shot was clean (13 Nov), so the JPEG is used."""
+    p = str(item.get("path") or "").lower()
+    if not (item.get("is360") or p.endswith(RAW_360)) or p.endswith((".insv", ".lrv", ".insp")):
+        return False
+    return bool(_day(item)) and not _quality_no(item) and not item.get("vetoed")
+
+
+def with_360(video: dict, lib: dict) -> int:
+    """Up to SPHERE_PER_CHAPTER 360 moments in each chapter, from that chapter's own day (videos first), spread through
+    it: a video pans or tilts up to the horizon (a chapter's first opens from a tiny planet), a photo becomes a slowly
+    spinning tiny planet. The picker leaves 360 files out (its picture scores do not read a stitched sphere), so they
+    are added here; the length fit keeps the film to its length. Owner, 13 Nov: "did you make full use of 360 video
+    editing together in the africa videos? i didnt seee any 360 cuts"."""
+    used = {s["path"] for c in video["chapters"] for s in c["shots"]}
+    # One file per shot: a camera keeps the same 360 photo as .jpg, _PureShot.jpg (its enhanced copy) and .dng.
+    best: dict[str, dict] = {}
+    rank = lambda p: 0 if "_pureshot" in p.lower() else 1 if p.lower().endswith((".jpg", ".jpeg", ".mp4", ".mov")) else 2  # noqa: E731
+    for it in lib.values():
+        if not sphere_ok(it) or it["path"] in used:
+            continue
+        key = re.sub(r"(_pureshot)?\.[a-z0-9]+$", "", Path(it["path"]).name.lower())
+        if key not in best or rank(it["path"]) < rank(best[key]["path"]):
+            best[key] = it
+    pool: dict[str, list[dict]] = {}
+    for it in best.values():
+        pool.setdefault(_day(it), []).append(it)
+    added = 0
+    for c in video["chapters"]:
+        day = str(c.get("day") or "")[:10]
+        cands = sorted(pool.get(day, []), key=lambda i: (i.get("kind") != "video", -float(i.get("duration") or 0), -float(i.get("aesthetic") or 0)))
+        picks = cands[:SPHERE_PER_CHAPTER]
+        for n, it in enumerate(picks):
+            kind = "video" if it.get("kind") == "video" else "photo"
+            move = ("planet", 1) if kind == "photo" else (("unroll", 1) if n == 0 else ("reveal", -1))
+            shot = {"path": it["path"], "kind": kind, "sec": SPHERE_SEC[kind], "captured": it.get("captured"), "local": it.get("local"),
+                    "duration": it.get("duration"), "is360": True, "move": list(move), "score": 0.0, "subject": None, "clear": 0.0, "gap": False}
+            at = max(1, round(len(c["shots"]) * (n + 1) / (len(picks) + 1)))
+            c["shots"].insert(min(at, len(c["shots"])), shot)
+            pool[day].remove(it)
+            added += 1
+    return added
+
+
 def _speech_in(src: Path, start: float, sec: float, duration=None) -> bool | None:
     """Does someone speak in this stretch of the clip? From studio.speech's cache only (a build transcribes its clips
     anyway): True / False, or None when the clip was never transcribed (then it is cleaned, never turned down)."""
@@ -1702,7 +1752,8 @@ def _render_one(job: tuple) -> dict:
                 stab = None
     color = ",".join(x for x in (color, grade) if x)
     if not out.exists():
-        render_shot(src, start, s["sec"], out, SIZE, keep_audio=True, color=color, stab=stab, natural=True)
+        render_shot(src, start, s["sec"], out, SIZE, keep_audio=True, color=color, stab=stab, natural=True,
+                    move=tuple(s["move"]) if s.get("is360") and s.get("move") else None)
     vol = _clip_volume(out)
     clean = None
     if not photo and vol:
@@ -2549,7 +2600,7 @@ def build(n: int, music: bool = True, workers: int = 6) -> dict:
     # A plan made before the quality scan: its blurry and too-shaky pictures come out here too (studio.quality).
     from studio.library import _base_items
 
-    lib = {i["path"]: i for i, _ in _base_items()}
+    lib = {i["path"]: i for i, _ in _localize(list(_base_items()))}  # the trip's own day for each (with_360 picks by day)
     shot_lists = [c["shots"] for c in video["chapters"]] + [video.get(k) or [] for k in ("cold", "recap", "teaser")]
     poor = {s["path"] for lst in shot_lists for s in lst if _quality_no(lib.get(s["path"]) or s)}
     if poor:
@@ -2559,6 +2610,9 @@ def build(n: int, music: bool = True, workers: int = 6) -> dict:
         for c in video["chapters"]:
             c["shots"] = [s for s in c["shots"] if s["path"] not in poor]
         video["chapters"] = [c for c in video["chapters"] if c["shots"]]
+    added360 = with_360(video, lib)
+    if added360:
+        print(f"added {added360} 360 moments (reframed: pans, reveals, tiny planets)", flush=True)
     look = look_of(video.get("look") or plan_.get("style")) or "documentary"
     L, fs = LOOKS[look], fade_sec(look)
     ser = video.get("series")

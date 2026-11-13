@@ -8,6 +8,10 @@
 
 撮ったまま編集していない写真や動画を、リールや旅の動画にします。あなたは **Approve** を押すだけです。
 
+![リールを見て Approve を押すと、投稿カレンダーに予約されます](docs/img/approve.gif)
+
+*確認して、Approve、予約。▶ **[40秒のデモ動画](docs/media/lazycow-demo.mp4)**：カフェの素材フォルダからリールができ、人が承認すると投稿カレンダーに入るまで。*
+
 Lazycow Studio は、写真と動画の中から合うカットを探し、無料の音楽のビートに合わせて縦型の短いリールを作ります。地図とチャプター付きの長い YouTube 動画も、数本のパートに分けて作ります。そのあと、投稿の予約までします。すべて、あなたのPCの中で動きます。
 
 作者は **[kensaurus](https://kensaur.us)** です。Apache-2.0 の無料のオープンソースです。
@@ -47,6 +51,8 @@ npx lazycow install
 コードから動かしたい開発者は、`git clone` のあと `npm ci`、`npm run setup`、`npm run review` の順に実行し、**http://127.0.0.1:4317** を開いてください。必要なものと詳しい手順は [README.md の Quick start](README.md#quick-start) にあります。
 
 ### 3. AIエージェントをつなぐ
+
+![Claude Code が「レビュー待ちは？」と聞くと、lazycow のMCPサーバーがリールを一覧にし、承認は人が行うと答えます](docs/img/tour/07-agent.webp)
 
 先にスタジオを起動しておきます。Claude Code なら、次の1行です。
 

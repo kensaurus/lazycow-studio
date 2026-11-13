@@ -198,3 +198,23 @@ def test_a_chapter_title_is_judged_on_its_whole_chapter_not_one_frame(monkeypatc
     r = vlog.check_captions(props, chapters, [(0.0, tmp_path / "a.mp4")], "vlog-2", tmp_path, [], [sheet])
     assert seen["images"] == [sheet] and "contact sheet of the whole chapter" in seen["prompt"]
     assert r == {"checked": 1, "dropped": 0, "fixed": 0} and chapters[0]["title"] == "Lions and a Buffalo Calf"
+
+
+def test_360_moments_join_their_own_day_once_each_and_raw_files_wait_for_a_stitch(monkeypatch):
+    """No 360 shot reached the trip series (13 Nov): the picker leaves 360 files out, so with_360 adds them by day."""
+    monkeypatch.setattr(vlog, "_quality_no", lambda it: None)
+    lib = {p: {"path": p, "kind": k, "is360": True, "captured": d, "duration": dur} for p, k, d, dur in [
+        ("C:/f/hot-air.mp4", "video", "2025-05-15T05:00:00", 120.0),
+        ("C:/f/VID_1.insv", "video", "2025-05-15T05:00:00", 600.0),          # raw: needs Insta360 Studio's stitch
+        ("C:/f/IMG_9.jpg", "photo", "2025-05-15T06:00:00", 0),
+        ("C:/f/IMG_9_PureShot.jpg", "photo", "2025-05-15T06:00:00", 0),    # the same photo, the camera's enhanced copy
+        ("C:/f/IMG_9.dng", "photo", "2025-05-15T06:00:00", 0),
+        ("C:/f/IMG_7.jpg", "photo", "2025-05-16T06:00:00", 0),              # another day
+    ]}
+    video = {"chapters": [{"day": "2025-05-15", "shots": [{"path": f"C:/f/a{k}.jpg", "kind": "photo", "sec": 3.0} for k in range(6)]}]}
+    assert vlog.with_360(video, lib) == 2
+    added = [s for s in video["chapters"][0]["shots"] if s.get("is360")]
+    assert [s["path"] for s in added] == ["C:/f/hot-air.mp4", "C:/f/IMG_9_PureShot.jpg"]
+    assert added[0]["move"] == ["unroll", 1] and added[1]["move"] == ["planet", 1]
+    assert video["chapters"][0]["shots"][0]["path"] == "C:/f/a0.jpg", "never the very first shot of a chapter"
+    assert not vlog.sphere_ok(lib["C:/f/VID_1.insv"])

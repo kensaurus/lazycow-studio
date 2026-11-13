@@ -12,7 +12,9 @@
 
 Approving a reel stays a person's job in the studio. Agents and scripts can make, plan and post approved reels. They cannot approve.
 
-![The studio's Reels page: reels waiting for review, each with its first frame, its words and its booked time](https://raw.githubusercontent.com/kensaurus/lazycow-studio/main/docs/img/reels.webp)
+![You watch the reel, press Approve, and it is booked on the posting calendar](https://raw.githubusercontent.com/kensaurus/lazycow-studio/main/docs/img/approve.gif)
+
+[Watch the 40-second demo](https://github.com/kensaurus/lazycow-studio/blob/main/docs/media/lazycow-demo.mp4) · [See the studio's pages](https://github.com/kensaurus/lazycow-studio#how-it-works)
 
 ## Install the studio
 

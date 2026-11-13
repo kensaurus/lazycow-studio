@@ -13,6 +13,10 @@ npm run review        # the studio, at http://127.0.0.1:4317
 If the studio is not running, every tool answers: "Lazycow Studio is not running … Start it with
 `npm run review`".
 
+![Claude Code asks "what is waiting for my review?"; the lazycow server lists the reels and says approving stays with a person](img/tour/07-agent.webp)
+
+*A real session against a demo studio: one question, the `list_reels` tool, and an answer that ends with "Approving has to be done by you in the studio".*
+
 ## What the agent can do
 
 | Tool | What it does | Changes anything? |
