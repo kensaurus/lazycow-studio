@@ -34,6 +34,10 @@ function say(msg) { process.stderr.write(msg + "\n"); }
 
 async function download(url, file) {
   const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(15 * 60_000) });
+  if (res.status === 404) {
+    throw new Error(`Lazycow Studio ${RELEASE.version} is not on GitHub Releases yet (${url} answers 404). ` +
+      "Try again once it is out: https://github.com/kensaurus/lazycow-studio/releases. The MCP server (npx -y lazycow mcp) and the API client work with a studio you already have.");
+  }
   if (!res.ok || !res.body) throw new Error(`Download failed: HTTP ${res.status} from ${url}`);
   const total = Number(res.headers.get("content-length")) || 0;
   let got = 0, shown = -1;

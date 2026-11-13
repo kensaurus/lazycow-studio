@@ -1,6 +1,6 @@
 # Roadmap: pain points and continuous improvement
 
-The studio's known pain points, what has been done about each, and what comes next, most important first. The evidence for each item is in the dated research files: [integrations, docs and pain points](research/2026-11-10-integrations-docs-pain-points.md), [multi-layer editing](research/2026-11-10-multilayer-editing.md), and [studio gaps](research/2026-11-09-studio-gaps.md).
+The studio's known pain points, what has been done about each, and what comes next, most important first. The evidence for each item, with sources and dates, is in the maintainer's dated research notes (`docs/research/`, kept out of the public copy): integrations, docs and pain points (10 Nov), multi-layer editing (10 Nov) and studio gaps (9 Nov).
 
 **State on 12 Nov 2026 (0.12.0, unreleased).** The ranked list below was written on 10 Nov (0.9.0). Items done since then are marked in the table "Done since 0.9.0".
 

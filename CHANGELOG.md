@@ -18,6 +18,9 @@ The first public release.
   - Listed in the official MCP Registry as `io.github.kensaurus/lazycow` (`server.json`). A release workflow publishes
     the package with npm provenance (trusted publishing, no stored token) and lists the registry entry.
 - The README's first screen says what it is, why and for whom, with the agent setup in three lines.
+- **MCP tools return `structuredContent`** next to their text (a list as `{ items }`), so programs can read the data
+  without parsing it. Every one of the 27 tools is now tested end to end, through the studio's server and the npm package.
+- An unknown `/api/...` route answers JSON (`no such route: GET /api/x`, with where the list is) instead of a bare "no".
 
 ### Fixed
 - **Local events** searched Japanese words in Japan's results for every project. They now search where the project's

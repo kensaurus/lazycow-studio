@@ -147,4 +147,14 @@ revision (2026-07-28: the version is sent on every request, `server/discover`) a
 to the studio's HTTP API on `127.0.0.1` (see `server/00_readme.md`), so the studio enforces every rule
 the page does: disk space, render rules, consent before approval, network connections.
 
-Test: `npm test` (`test/mcp.test.mjs` drives the server against a fake studio).
+Every tool answers with text for the model: one plain sentence, then the data as JSON. The same data also comes as
+`structuredContent` (an object; a list arrives as `{ "items": [...] }`), so a program can read it without parsing the
+text. Account secrets are removed from both. A failed call answers `isError: true` with a sentence that says what to do.
+Arguments are checked against each tool's schema first; a bad one never reaches the studio.
+
+Tests (`npm test`):
+
+- `test/mcp.test.mjs`: the protocol, the refusals (no approve tool, unapproved reels, AI over the limits), no secrets.
+- `test/mcp-every-tool.test.mjs`: all 27 tools, each called once against a fake studio, through `server/mcp.mjs` and
+  through the npm package (`npx lazycow mcp`); and every route the tools call is in `docs/openapi.yaml`.
+- `test/lazycow-package.test.mjs`: the npm package (files, attribution, client, installer).

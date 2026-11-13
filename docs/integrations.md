@@ -1,6 +1,6 @@
 # Connected services, now and later
 
-Every outside service the studio talks to, why it uses it, and what is worth adding. The evidence, with sources and dates, is in [research/2026-11-10-integrations-docs-pain-points.md](research/2026-11-10-integrations-docs-pain-points.md).
+Every outside service the studio talks to, why it uses it, and what is worth adding. The evidence, with sources and dates, is in the maintainer's dated research notes (`docs/research/`, kept out of the public copy), integrations, docs and pain points (10 Nov).
 
 ## Connected now
 

@@ -3095,6 +3095,8 @@ const server = createServer(async (req, res) => {
       const result = await py(args, 600_000);  // approve copies the packages to Drive: room for a slow copy, never forever
       return send(res, result.code === 0 ? 200 : 400, result.code === 0 ? result.out : result.err, "text/plain; charset=utf-8");
     }
+    // An API caller (lazycow client, MCP, a script) gets a JSON answer that says what is wrong and where the list is.
+    if (url.pathname.startsWith("/api/")) return send(res, 404, { error: `no such route: ${req.method} ${url.pathname} (every route: docs/openapi.yaml)` });
     send(res, 404, "no", "text/plain");
   } catch (err) {
     if (!res.headersSent) send(res, err.status || 500, { error: String(err.message || err) });

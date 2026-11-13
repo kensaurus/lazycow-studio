@@ -127,7 +127,10 @@ const pretty = (x) => JSON.stringify(x, null, 2);
 function reply(lead, data) {
   let text = data === undefined ? lead : `${lead}\n\n${pretty(data)}`;
   if (text.length > MAX_TEXT) text = text.slice(0, MAX_TEXT) + `\n\n[cut at ${MAX_TEXT} characters: ask for fewer rows]`;
-  return text;
+  // The same data as structuredContent (MCP 2025-06-18), so a program can read it without parsing the text. It must be
+  // an object: a list goes in { items }. Only data the text already shows: nothing new leaves the studio.
+  const structured = Array.isArray(data) ? { items: data } : data && typeof data === "object" ? data : undefined;
+  return { text, structured };
 }
 /* Keys that would hold a credential. Booleans (e.g. a field descriptor's "secret": true) are kept. */
 const SECRET_KEY = /(token|secret|password|passwd|cookie|credential|bearer|api[_-]?key|private[_-]?key|refresh|session)/i;
@@ -264,7 +267,9 @@ const TOOLS = [
     annotations: { title: "List themes", ...RO },
     async run() {
       const themes = await studio("GET", "/api/themes");
-      return reply(`${Object.keys(themes).length} themes: ${Object.keys(themes).join(", ")}.`, themes);
+      const keys = Object.keys(themes || {});
+      if (!keys.length) return reply("This project has no themes yet. A person adds one in the studio: Reels › Make reels › New theme.", {});
+      return reply(`${keys.length} theme${keys.length === 1 ? "" : "s"}: ${keys.join(", ")}.`, themes);
     },
   },
   {
@@ -846,8 +851,10 @@ async function handle(msg) {
       const problem = checkArgs(tool.inputSchema, params.arguments);
       if (problem) return done({ content: [{ type: "text", text: `Invalid arguments for ${tool.name}: ${problem}.` }], isError: true });
       try {
-        const text = await tool.run(params.arguments || {});
-        return done({ content: [{ type: "text", text }], isError: false });
+        const out = await tool.run(params.arguments || {});
+        const text = typeof out === "string" ? out : out.text;
+        const structured = typeof out === "string" ? undefined : out.structured;
+        return done({ content: [{ type: "text", text }], ...(structured ? { structuredContent: structured } : {}), isError: false });
       } catch (err) {
         const text = err instanceof ToolError ? err.message : `Unexpected error in ${tool.name}: ${err?.message || err}`;
         if (!(err instanceof ToolError)) console.error(err);

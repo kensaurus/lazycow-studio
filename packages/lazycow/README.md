@@ -42,6 +42,9 @@ Claude Desktop or Cursor (`claude_desktop_config.json` / `.cursor/mcp.json`):
 
 The server finds the studio by itself: `STUDIO_PORT` and `STUDIO_API_TOKEN` when set, else the `.env` in `LAZYCOW_DIR`, else the folder the setup recorded. So your agent config never holds a copy of the token. Tools: studio status, list and make reels, remix, plan and publish approved reels, jobs, projects, research, priced AI assist, performance. Full list: [docs/mcp.md](https://github.com/kensaurus/lazycow-studio/blob/main/docs/mcp.md).
 
+Each tool answers with a plain sentence and the data, and the same data as `structuredContent` for programs (a list
+arrives as `{ "items": [...] }`). Account secrets never leave the studio.
+
 Listed in the official MCP Registry as `io.github.kensaurus/lazycow`.
 
 ## Use the API from code

@@ -2,7 +2,7 @@
 
 How each reel did on each network, what worked, and what to try next. Served by `server/review.mjs`; every call
 runs `python -m studio.perf <action>` (`py/studio/perf.py`, learning in `py/studio/learn.py`). Research behind
-the choices: [`research/2026-11-09-reel-learning.md`](research/2026-11-09-reel-learning.md).
+the choices: the maintainer's dated research notes (`docs/research/`, kept out of the public copy), reel learning (9 Nov).
 
 Rules:
 
