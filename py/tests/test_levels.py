@@ -6,9 +6,9 @@ from studio.config import SPEC, ffmpeg_bin
 from studio.verify import parse_ebur128
 
 
-def _clip(path, amp):
+def _clip(path, amp, seed=7):
     path.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run([str(ffmpeg_bin()), "-y", "-f", "lavfi", "-i", "testsrc2=size=180x320:rate=30:duration=5", "-f", "lavfi", "-i", f"anoisesrc=d=5:c=pink:a={amp}",
+    subprocess.run([str(ffmpeg_bin()), "-y", "-f", "lavfi", "-i", "testsrc2=size=180x320:rate=30:duration=5", "-f", "lavfi", "-i", f"anoisesrc=d=5:c=pink:a={amp}:seed={seed}",
                     "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(path)], check=True, capture_output=True, timeout=60)
 
 
@@ -75,8 +75,9 @@ def test_a_quiet_booked_reel_is_levelled_in_every_copy(tmp_path, monkeypatch):
     assert r["noticeable"] and levels.fixed_at(slug), "a big fix makes older bookings swap"
     assert json.loads((tmp_path / "sound-fixes.json").read_text(encoding="utf-8"))[slug]["files"] >= 5
     assert levels.fix(slug)["changed"] == 0, "on target now: left alone"
-    # Made worse by hand (an encode of an encode): the next fix starts again from the sound as rendered.
-    _clip(tmp_path / "loud.mp4", 0.9)
+    # Made worse by hand (an encode of an encode): the next fix starts again from the sound as rendered. Far off on
+    # purpose (about -32 LUFS): a pink noise only 2 LU off measured inside the tolerance on Ubuntu's ffmpeg 8 (13 Nov).
+    _clip(tmp_path / "loud.mp4", 0.15)
     m = out / f"{slug}_9x16.mp4"
     subprocess.run([str(ffmpeg_bin()), "-y", "-i", str(m), "-i", str(tmp_path / "loud.mp4"), "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac",
                     "-shortest", str(tmp_path / "x.mp4")], check=True, capture_output=True, timeout=60)
