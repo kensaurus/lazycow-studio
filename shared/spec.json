@@ -1,0 +1,45 @@
+{
+  "fps": 30,
+  "videoCodec": "h264",
+  "audioCodec": "aac",
+  "audioRate": 48000,
+  "loudnessLufs": -14,
+  "ranch": {
+    "lat": 36.5893, "lon": 138.5096, "radiusKm": 2,
+    "awayEvents": ["20250807_嬬恋牧場-summer-burn", "20250621_森のオフィス、TAKIVILLAGE"],
+    "awayEventsNote": "Event folders the owner has said were not shot at the ranch. They outrank any single file's GPS (owner, 2026-11-07: summer-burn is not Tsumagoi)."
+  },
+  "brand": { "moss": "#4d6b52", "paper": "#faf8f1", "ink": "#1c1a14", "display": "Shippori Mincho" },
+  "variants": {
+    "_note": "Cut families per network (docs/research/2026-11-08-networks-variants.md §3). channels.json names each network's family. a-loop is today's edit; b-explainer is made by Make reels > Cut > Long explainer (py/studio/assemble.py long_theme) and packaged only for b-explainer channels; c-silent uses the 16:9 master (captions are already burnt in); long-tour is a separate, hand-made project.",
+    "a-loop": { "aspects": ["9x16"], "targetSec": [13, 25], "captions": "lines", "audio": "music" },
+    "b-explainer": { "aspects": ["4x5", "9x16"], "targetSec": [40, 60], "captions": "every claim", "audio": "music, no effects" },
+    "c-silent": { "aspects": ["16x9"], "targetSec": [10, 30], "captions": "burnt in", "audio": "optional" },
+    "long-tour": { "aspects": ["16x9"], "targetSec": [180, 300], "manual": true }
+  },
+  "formats": {
+    "9x16": { "w": 1080, "h": 1920, "safe": { "x": 65, "y": 269, "right": 1015, "bottom": 1248 } },
+    "4x5": { "w": 1080, "h": 1350, "safe": { "x": 65, "y": 189, "right": 1015, "bottom": 878 } },
+    "16x9": { "w": 1920, "h": 1080, "safe": { "x": 116, "y": 151, "right": 1804, "bottom": 702 } }
+  },
+  "openrouter": {
+    "tagModel": "google/gemini-flash-latest",
+    "edlModel": "google/gemini-3.8-flash",
+    "usdPerMInput": 0.75,
+    "usdPerMOutput": 3.75
+  },
+  "bannedSubstrings": [
+    "milky way",
+    "天の川",
+    "cattle",
+    "牛",
+    "cow",
+    "cows",
+    "直火",
+    "ground fire",
+    "campground",
+    "キャンプ場",
+    "numbered plot", "満天", "光害"
+  ],
+  "pricePattern": "[¥$]|\\\\d+円"
+}

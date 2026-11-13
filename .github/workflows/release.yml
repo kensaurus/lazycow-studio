@@ -1,0 +1,54 @@
+# FILE: .github/workflows/release.yml
+# PURPOSE: When a GitHub release is published, publish the `lazycow` npm package with provenance and list it in the
+#          official MCP Registry (io.github.kensaurus/lazycow).
+# NOTES: npm trusted publishing (OIDC): no npm token is stored. The package's npm settings must name this repository and
+#        this workflow file as its trusted publisher (npmjs.com > lazycow > Settings). The first version is published by
+#        hand (docs/release-checklist.md). The release must carry Lazycow-Studio-<version>.zip, whose SHA-256 is baked
+#        into the package (scripts/build-packages.mjs --check fails otherwise).
+name: Release
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+concurrency:
+  group: release
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write   # npm provenance + trusted publishing, and the MCP Registry's GitHub OIDC login
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: The package is in step with this release
+        run: |
+          node scripts/build-packages.mjs --check
+          node --test test/lazycow-package.test.mjs
+      - name: The release zip is the one the package expects
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(node -p "require('./package.json').version")
+          gh release download "v$v" -p "Lazycow-Studio-$v.zip" -D /tmp/rel
+          want=$(node -p "require('./packages/lazycow/lib/release.json').sha256")
+          got=$(sha256sum "/tmp/rel/Lazycow-Studio-$v.zip" | cut -d' ' -f1)
+          test "$want" = "$got" || { echo "release zip SHA-256 $got, package expects $want"; exit 1; }
+      - name: Publish to npm
+        working-directory: packages/lazycow
+        run: |
+          v=$(node -p "require('./package.json').version")
+          if npm view "lazycow@$v" version >/dev/null 2>&1; then echo "lazycow@$v is already on npm"; else npm publish --provenance --access public; fi
+      - name: List in the MCP Registry
+        working-directory: packages/lazycow
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish

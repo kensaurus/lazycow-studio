@@ -1,0 +1,48 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.kensaurus/lazycow",
+  "title": "Lazycow Studio",
+  "description": "Drive Lazycow Studio by kensaurus: make reels and trip films from your footage, plan and post them.",
+  "version": "0.14.0",
+  "websiteUrl": "https://github.com/kensaurus/lazycow-studio",
+  "repository": {
+    "url": "https://github.com/kensaurus/lazycow-studio",
+    "source": "github",
+    "subfolder": "packages/lazycow"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "lazycow",
+      "version": "0.14.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "STUDIO_PORT",
+          "description": "The studio's port (default: the studio's .env, else 4317)",
+          "isRequired": false
+        },
+        {
+          "name": "STUDIO_API_TOKEN",
+          "description": "The studio's API token, only if you set one (default: read from the studio's .env)",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "LAZYCOW_DIR",
+          "description": "The studio folder, if it is not where the double-click setup put it",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

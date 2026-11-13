@@ -1,0 +1,43 @@
+[
+  {
+    "slug": "lunch-sample",
+    "beats": [
+      { "kind": "hook", "ja": "雲の上で、\nランチを。", "en": "Lunch above the clouds." },
+      { "kind": "line", "ja": "席は12だけ。", "en": "Only twelve seats." },
+      { "kind": "line", "ja": "パンは毎朝焼きます。", "en": "Bread baked every morning." },
+      { "kind": "end", "ja": "Cafe Kumo", "en": "" }
+    ]
+  },
+  {
+    "slug": "morning-sample",
+    "beats": [
+      { "kind": "hook", "ja": "朝は、\nコーヒーから。", "en": "Mornings start with coffee." },
+      { "kind": "line", "ja": "豆は近所で焙煎。", "en": "Beans roasted down the street." },
+      { "kind": "end", "ja": "Cafe Kumo", "en": "" }
+    ]
+  },
+  {
+    "slug": "rain-sample",
+    "beats": [
+      { "kind": "hook", "ja": "雨の日だけの、\n窓ぎわの特等席。", "en": "On rainy days only: the best seat by the window." },
+      { "kind": "line", "ja": "窓ぎわの席から、\n雲が見えます。", "en": "Clouds from the window seats." },
+      { "kind": "end", "ja": "Cafe Kumo", "en": "" }
+    ]
+  },
+  {
+    "slug": "workshop-sample",
+    "beats": [
+      { "kind": "hook", "ja": "手を動かすと、\n時間を忘れる。", "en": "Work with your hands and lose track of time." },
+      { "kind": "line", "ja": "道具はすべて貸し出し。", "en": "Every tool is lent to you." },
+      { "kind": "line", "ja": "初めての人だけの回もあります。", "en": "Some sessions are for first-timers only." },
+      { "kind": "end", "ja": "Sample Workshop", "en": "A placeholder brand" }
+    ]
+  },
+  {
+    "slug": "short-sample",
+    "beats": [
+      { "kind": "hook", "ja": "今日も、\n開けています。", "en": "Open today, as always." },
+      { "kind": "end", "ja": "Sample Shop", "en": "" }
+    ]
+  }
+]

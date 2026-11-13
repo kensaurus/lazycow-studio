@@ -1,0 +1,21 @@
+node_modules/
+.env
+.env.local
+public/mezz/
+public/stills/
+dist/
+.DS_Store
+__pycache__/
+.pytest_cache/
+# Google sign-in client files (the studio reads them from <data>\secrets\ or here)
+youtube_client.json
+client_secret*.json
+*.pyc
+py/studio/__pycache__/
+data/
+
+# Never committed (security review 13 Nov): any env file but the example, logs, secrets.
+.env.*
+!.env.example
+*.log
+secrets/

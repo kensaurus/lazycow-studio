@@ -1,0 +1,4136 @@
+openapi: 3.1.0
+info:
+  title: Lazycow Studio local HTTP API
+  version: "1.0.0"
+  summary: The HTTP API the studio page, the MCP server and the Chrome helper use on this computer.
+  description: |
+    Served by `server/review.mjs` at http://127.0.0.1:4317 (port from `STUDIO_PORT`). Route prose:
+    `server/00_readme.md`; request and response shapes in more detail: `docs/research-api.md`,
+    `docs/ai-api.md`, `docs/perf-api.md`, `docs/helper.md`; the MCP tools that call these routes: `docs/mcp.md`.
+
+    **Loopback only.** The server listens on 127.0.0.1. Every request must carry a loopback `Host`
+    (`127.0.0.1:<port>`, `localhost:<port>` or `[::1]:<port>`), so a page on another site cannot reach the
+    studio through DNS rebinding. Anything else gets **403** `{"error": "the studio only answers its own page on this machine"}`.
+
+    **The Origin rule (`refusal`, `server/trust.mjs`).** GET and HEAD need the loopback Host, and another site's page may
+    not load or fetch them: `Sec-Fetch-Site: cross-site` or `same-site` is refused unless `Sec-Fetch-Mode` is `navigate`
+    (a link, or Google returning to `/oauth/*`). Request bodies are capped at 8 MB (**413**). Slugs and network ids must
+    start with a letter or digit (they go on Python's command line). Every other method (every POST)
+    must come from the studio's own page: when an `Origin` header is sent it must be `http://<loopback host>:<port>`;
+    with no `Origin`, a `Sec-Fetch-Site` header (if present) must be `same-origin`. A request with neither header
+    (a local script such as `server/mcp.mjs`) is let through. A cross-site POST gets the same 403.
+    **Optional API token.** With `STUDIO_API_TOKEN` set in `.env`, every request except `GET /api/health` must carry it,
+    as `Authorization: Bearer <token>` or as the `lazycow_token` cookie the browser gets once from `/?token=<token>`
+    (the address the studio prints when it starts). Without it: **401**. Origin and Sec-Fetch headers are no proof on
+    their own (any local program can send them); the token is. Unset (the default) means no authentication beyond
+    the rules above. `server/mcp.mjs` sends the token by itself (its env, else the studio's `.env`).
+    The one exception is `/share/{token}/{name}`, which any origin may read (CORS) while the Host is loopback and the
+    share token is valid (15 minutes).
+
+    **Jobs.** Renders, remixes, footage scans, imports, uploads, posts, AI runs and Chrome helper jobs answer at once
+    with a job view (`Job`) and then report through the Server-Sent Events stream `GET /api/events` (event `job`,
+    data = `Job`). `GET /api/job?slug=` is the same snapshot for one job key. Renders run one at a time; other jobs
+    run beside the render queue.
+
+    **Approval before publishing.** Only reels a person has approved in the studio should be published. Approving
+    is done by a person (`POST /api/approve`), never by an agent. `POST /api/publish`, `POST /api/youtube/upload` and
+    `POST /api/helper/post` answer **409** for a reel whose review status is not `approved` (or that has no review
+    record), and the jobs check again (`publish.assert_approved`). The Chrome helper's scheduling routes
+    (`/api/helper/schedule`, `/api/helper/schedule-week`) refuse them too, and so do the MCP tools `publish_reel`
+    and `schedule_reel`.
+
+    **Errors.** JSON routes answer errors as `{"error": "<one plain sentence>"}`, and the research, AI and
+    performance routes add `"code"`. A request the Python helper rejects as a person's mistake (ValueError) is 400;
+    anything else that throws is 500 (or the error's own status, e.g. 507 when the disk is too full to render).
+    A few routes answer errors in plain text (noted per route). An unknown path answers 404 `no` (text/plain).
+
+    Examples use placeholders (`office-1107`, `x`); no real tokens, keys, accounts or machine paths.
+  license:
+    name: Apache-2.0
+servers:
+  - url: http://127.0.0.1:{port}
+    description: This computer only.
+    variables:
+      port:
+        default: "4317"
+        description: STUDIO_PORT
+tags:
+  - name: Reels and render queue
+    description: Making reels, the render queue, job progress, and the review actions.
+  - name: Editing
+    description: The editor's data, footage library lookups, sound, covers and saving a reel project.
+  - name: Footage
+    description: Footage folders, scans, the watcher and footage health.
+  - name: Posting log
+    description: The posting log (planned, queued, scheduled, posted, failed, skipped posts).
+  - name: Posting from the studio
+    description: Connected networks the studio posts to itself (API connectors), network switches and playbooks.
+  - name: Chrome helper
+    description: The browser helper that drives the owner's Chrome (`server/helper.mjs`, `docs/helper.md`).
+  - name: YouTube
+    description: YouTube sign-in, upload, channel listing and playlists.
+  - name: Google Photos
+    description: Google Photos Picker API import.
+  - name: Research
+    description: Firecrawl research, read-only suggestions (`docs/research-api.md`).
+  - name: AI
+    description: Paid AI assist inside the studio's limits (`docs/ai-api.md`).
+  - name: Results
+    description: Performance numbers, suggestions and the activity log (`docs/perf-api.md`).
+  - name: Projects
+    description: Projects (workspaces), one per brand.
+  - name: System
+    description: Health, restart, settings, the page itself and its about texts.
+  - name: Files
+    description: Media files, previews, fonts, icons and the 15-minute share links.
+
+paths:
+  # ---------------------------------------------------------------- System
+  /:
+    get:
+      tags: [System]
+      operationId: getPage
+      summary: The studio page (server/editor.html), served fresh from disk.
+      responses:
+        "200":
+          description: The page. Header `x-studio-build` carries the build id.
+          headers:
+            x-studio-build: { schema: { type: string } }
+          content:
+            text/html: { schema: { type: string } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /manifest.webmanifest:
+    get:
+      tags: [System]
+      operationId: getManifest
+      summary: The web app manifest (installable as an app).
+      responses:
+        "200":
+          description: Manifest.
+          content:
+            application/manifest+json:
+              schema:
+                type: object
+                properties:
+                  name: { type: string }
+                  short_name: { type: string }
+                  description: { type: string }
+                  start_url: { type: string }
+                  display: { type: string }
+                  background_color: { type: string }
+                  theme_color: { type: string }
+                  icons: { type: array, items: { type: object, additionalProperties: true } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /docs/{name}:
+    get:
+      tags: [System]
+      operationId: getDocText
+      summary: One credit or licence text for the About window (only NOTICE, TRADEMARKS.md, THIRD_PARTY_NOTICES.md, CHANGELOG.md).
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string, enum: [NOTICE, TRADEMARKS.md, THIRD_PARTY_NOTICES.md, CHANGELOG.md] }
+      responses:
+        "200": { description: The text., content: { text/plain: { schema: { type: string } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/PlainNotFound" }
+  /api/about:
+    get:
+      tags: [System]
+      operationId: getAbout
+      summary: Name, version, author, licence and credit line, plus build, start time and runtime.
+      responses:
+        "200":
+          description: About.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name: { type: string }
+                  version: { type: string }
+                  author: { type: string }
+                  homepage: { type: string }
+                  sponsor: { type: [string, "null"] }
+                  licence: { type: string }
+                  credit: { type: string }
+                  docs: { type: array, items: { type: string } }
+                  build: { type: string }
+                  started: { type: string, format: date-time }
+                  node: { type: string }
+                  platform: { type: string }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/health:
+    get:
+      tags: [System]
+      operationId: getHealth
+      summary: This server's build, whether the code on disk is newer, the queue, and the machine verdict.
+      responses:
+        "200":
+          description: Health (built in `healthView()` and `judgeSystem()` in server/health.mjs).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  build: { type: string }
+                  current: { type: string, description: Build id of the files on disk now. }
+                  stale: { type: boolean, description: "true when the files on disk differ from the running build (restart to pick them up)." }
+                  version: { type: string }
+                  started: { type: string, format: date-time }
+                  queue:
+                    type: object
+                    properties:
+                      running: { type: [string, "null"] }
+                      queued: { type: integer }
+                  machine:
+                    type: object
+                    properties:
+                      threads: { type: integer }
+                      cpu: { type: string }
+                      ramGb: { type: number }
+                      platform: { type: string }
+                  verdict: { type: string, description: "ok, slow or blocked." }
+                  service: { description: "From judgeSystem." }
+                  checks: { type: array, items: { type: object, additionalProperties: true }, description: One line per check with its fix. }
+                  buildSeconds: { type: [number, "null"] }
+                  buildSecondsSource: { type: [string, "null"] }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/restart:
+    post:
+      tags: [System]
+      operationId: restart
+      summary: Hand the port to a fresh copy of the server (new code on disk).
+      description: Refused while an upload, import or other non-render job runs; refused while renders run unless `force` (they are stopped first).
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                force: { type: boolean, description: Stop running or queued renders and restart anyway. }
+                whenIdle: { type: boolean, description: "Instead of a refusal while another job runs, answer 202 { waiting: true } and restart by itself when it ends (a long-video chain: between two parts, then it carries on). /api/health shows restartPending." }
+      responses:
+        "200":
+          description: Restarting.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  restarting: { type: boolean, const: true }
+                  from: { type: string, description: The build id being replaced. }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/config:
+    get:
+      tags: [System]
+      operationId: getConfig
+      summary: The folders and audience time zone this project uses, so the page carries no machine path of its own.
+      responses:
+        "200":
+          description: Config.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  media: { type: string, description: The footage folder. }
+                  mezz: { type: string, description: The preview-clip folder. }
+                  data: { type: string, description: The project's data folder. }
+                  audienceTz: { type: string, description: "STUDIO_TZ, or empty." }
+                  workspace: { type: string, description: The project's display name, or empty. }
+                  connect: { type: object, description: "What Settings › Use with Claude or Cursor shows: node and server/mcp.mjs paths on this computer, the port, whether an API token is set (never the token).", properties: { node: { type: string }, mcp: { type: string }, port: { type: integer }, token: { type: boolean }, api: { type: string }, docs: { type: string } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/settings:
+    post:
+      tags: [System]
+      operationId: saveSettings
+      summary: Save the time zone, the Firecrawl key, AI keys and AI spending limits.
+      description: |
+        Any combination. Keys are checked with the provider's free call, upserted into the studio's `.env`, and never
+        echoed back; `""` removes a key. With `tz` the server restarts (unless the machine sets STUDIO_TZ itself);
+        with keys or caps alone there is no restart. Shapes: `docs/research-api.md`, `docs/ai-api.md`.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tz: { type: string, description: "An IANA zone, e.g. Asia/Tokyo." }
+                firecrawl_key: { type: string, maxLength: 300, writeOnly: true }
+                fal_key: { type: string, maxLength: 400, writeOnly: true }
+                openrouter_key: { type: string, maxLength: 400, writeOnly: true }
+                together_key: { type: string, maxLength: 400, writeOnly: true }
+                ai_reel_cap_usd: { type: number }
+                ai_total_cap_usd: { type: number }
+                daily_usd_budget: { type: number }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  restarting: { type: boolean }
+                  note: { type: string, description: Sent when the machine's own STUDIO_TZ still wins. }
+                  research:
+                    type: object
+                    properties:
+                      ready: { type: boolean }
+                      credits: { type: [object, "null"], additionalProperties: true }
+                  ai:
+                    type: object
+                    properties:
+                      saved: { type: object, additionalProperties: true, description: "Per field {saved, removed}; caps as saved." }
+                      keys: { type: [object, "null"], additionalProperties: { type: boolean } }
+                      caps: { type: [object, "null"], additionalProperties: true }
+        "400":
+          description: "A key the provider rejected (code `bad_key`), a malformed cap (`bad_input`), or a missing or unknown time zone. On a failed AI key, `saved` lists keys saved before it."
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Error"
+                  - type: object
+                    properties:
+                      field: { type: string }
+                      saved: { type: object, additionalProperties: true }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------- Reels and render queue
+  /api/overview:
+    get:
+      tags: [Reels and render queue]
+      operationId: getOverview
+      summary: Every reel with its review status and render job, plus library totals and what to film next.
+      responses:
+        "200":
+          description: Overview (py/studio/service.py `_overview`). Reels being built that have no project yet are added as draft cards.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  reels:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                      properties:
+                        slug: { type: string }
+                        title: { type: string }
+                        theme: { type: string }
+                        house: { type: boolean }
+                        seconds: { type: number }
+                        clips: { type: integer }
+                        rendered: { type: boolean }
+                        updated: { type: [number, "null"] }
+                        hook: { type: [string, "null"] }
+                        end: { type: [string, "null"] }
+                        status: { type: string, description: "Review status, else rendered or draft." }
+                        notes: { type: string }
+                        faces: { type: integer }
+                        consent: { type: boolean }
+                        lufs: { type: [number, "null"] }
+                        music: { type: [string, "null"] }
+                        sfx: { type: integer }
+                        channels: { type: integer }
+                        madeBy: { type: string }
+                        style: { type: string }
+                        look: { type: [string, "null"] }
+                        checks: { type: array, items: { type: object, additionalProperties: true } }
+                        bpm: { type: [number, "null"] }
+                        blurFaces: { type: boolean }
+                        job: { $ref: "#/components/schemas/Job" }
+                  library: { type: object, additionalProperties: true }
+                  filmNext: { type: array, items: {} }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/reels:
+    get:
+      tags: [Reels and render queue]
+      operationId: listRenderedReels
+      summary: Rendered reels (those with a manifest), house reels first.
+      responses:
+        "200":
+          description: Reels.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    slug: { type: string }
+                    title: { type: string }
+                    durationSec: { type: number }
+                    house: { type: boolean }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/themes:
+    get:
+      tags: [Reels and render queue]
+      operationId: listThemes
+      summary: The themes a reel can be made for.
+      responses:
+        "200":
+          description: Map of theme key to theme.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+                  properties:
+                    title: { type: string }
+                    slots: { type: integer }
+                    look: { type: [string, "null"] }
+                    recipe: { type: [string, "null"] }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Reels and render queue]
+      operationId: saveTheme
+      summary: Add or replace one of this project's own themes (the theme editor). Built-in themes cannot be changed.
+      description: |
+        A person types the words, so they are this project's approved words; every line passes the project's own
+        copy rules (`GET /api/brand` › rules) or the call fails with 400 naming the field. `shots` empty = general shots.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key, theme]
+              properties:
+                key: { type: string, pattern: "^[a-z][a-z0-9-]{0,23}$" }
+                theme:
+                  type: object
+                  required: [hook]
+                  properties:
+                    title: { type: string, maxLength: 60 }
+                    hook: { type: object, properties: { ja: { type: string, maxLength: 80 }, en: { type: string, maxLength: 120 } }, required: [ja] }
+                    lines: { type: array, maxItems: 6, items: { type: object, properties: { ja: { type: string }, en: { type: string } } } }
+                    shots: { type: array, maxItems: 12, items: { type: string, maxLength: 120 }, description: "What to film, one per item (4 or more; empty = general shots)." }
+                    tags: { type: array, maxItems: 6, items: { type: string } }
+                    style: { type: string, enum: [column, centre, lower, split] }
+      responses:
+        "200": { description: The saved theme, cleaned., content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/themes/delete:
+    post:
+      tags: [Reels and render queue]
+      operationId: deleteTheme
+      summary: Delete one of this project's own themes. Reels made from it keep their words and shots.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [key], properties: { key: { type: string } } } } }
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { deleted: { type: string } } } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/brand:
+    get:
+      tags: [System]
+      operationId: getBrand
+      summary: Whose reels these are (py/studio/brand.py) - name, link, hashtags, home place and copy rules.
+      description: The Tsumagoi workspace's values are fixed (`editable` false); a project made in the studio sets its own.
+      responses:
+        "200":
+          description: Brand.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name: { type: string }
+                  nameEn: { type: string }
+                  link: { type: string }
+                  tags: { type: array, items: { type: string } }
+                  ranch: { type: boolean }
+                  editable: { type: boolean }
+                  place: { type: [object, "null"], description: "{lat, lon, radiusKm, awayEvents, names}; null = all footage counts." }
+                  rules: { type: object, properties: { banned: { type: array, items: { type: string } }, noPrices: { type: boolean }, registered: { type: [string, "null"] } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [System]
+      operationId: saveBrand
+      summary: Save this project's brand (not available in the Tsumagoi workspace). Only the fields sent change.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 60 }
+                nameEn: { type: string, maxLength: 60 }
+                link: { type: string, description: "https://..., or empty" }
+                tags: { description: "Hashtags: a list or one space-separated string." }
+                banned: { description: "Words never to use: a list or one string with one per line." }
+                noPrices: { type: boolean }
+                place: { type: [object, "null"], properties: { lat: { type: number }, lon: { type: number }, radiusKm: { type: number } } }
+      responses:
+        "200": { description: The brand as GET returns it., content: { application/json: { schema: { type: object } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/openapi.yaml:
+    get:
+      tags: [System]
+      operationId: getOpenApi
+      summary: This description of the API (docs/openapi.yaml).
+      responses:
+        "200": { description: OpenAPI 3.1 YAML., content: { application/yaml: { schema: { type: string } } } }
+  /api/drafts:
+    get:
+      tags: [Reels and render queue]
+      operationId: listDrafts
+      summary: The review records (python -m studio review-list).
+      responses:
+        "200":
+          description: Review rows. Slugs carry a `story-` prefix for studio reels.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/DraftRow" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/autopilot:
+    post:
+      tags: [Reels and render queue]
+      operationId: autopilot
+      summary: Make one reel per theme from the newest footage and queue each to render.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                themes: { type: array, items: { type: string } }
+                since: { type: [string, "null"], description: Only footage from this date on. }
+                faces: { type: boolean }
+                cut: { type: string, enum: [short, long], default: short }
+                vary: { type: boolean, default: true }
+                learned: { type: boolean, default: false, description: Steer the look from measured results (docs/perf-api.md). }
+      responses:
+        "200":
+          description: The reels made; each has been queued to render.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  made: { type: array, items: { type: object, additionalProperties: true, properties: { slug: { type: string } } } }
+                  failed: { type: array, items: { type: string }, description: "One line per theme that made nothing: theme: why (for example no usable footage)." }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "507": { $ref: "#/components/responses/DiskFull" }
+  /api/assemble:
+    post:
+      tags: [Reels and render queue]
+      operationId: assemble
+      summary: Make one reel for one theme under a chosen slug and queue it to render.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug]
+              properties:
+                slug: { $ref: "#/components/schemas/Slug" }
+                theme: { type: string }
+                faces: { type: boolean }
+                since: { type: [string, "null"] }
+      responses:
+        "200":
+          description: The project made and its render job.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project: { type: object, additionalProperties: true }
+                  job:
+                    type: object
+                    properties:
+                      slug: { type: string }
+                      status: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "507": { $ref: "#/components/responses/DiskFull" }
+  /api/alternate:
+    post:
+      tags: [Reels and render queue]
+      operationId: alternateOpening
+      summary: Make a copy of a reel with a different opening shot and queue it to render.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SlugBody" }
+      responses:
+        "200":
+          description: The new reel.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  slug: { type: string }
+                  opening: { type: string, description: The file name of the new opening shot. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "507": { $ref: "#/components/responses/DiskFull" }
+  /api/remix:
+    post:
+      tags: [Reels and render queue]
+      operationId: remix
+      summary: Re-render only a reel's sound (a `remix` job in the render queue).
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SlugBody" }
+      responses:
+        "200": { $ref: "#/components/responses/JobView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "507": { $ref: "#/components/responses/DiskFull" }
+  /api/job:
+    get:
+      tags: [Reels and render queue]
+      operationId: getJob
+      summary: One job's snapshot by its key (a reel slug, or keys such as footage, ai-<slug>, post-<slug>-<network>, helper-<slug>-<network>, helper-perf).
+      parameters:
+        - name: slug
+          in: query
+          required: true
+          schema: { type: string }
+          example: office-1107
+      responses:
+        "200": { $ref: "#/components/responses/JobView" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/job/cancel:
+    post:
+      tags: [Reels and render queue]
+      operationId: cancelJob
+      summary: Drop a queued render or stop a running one (its whole process tree).
+      description: 'Only `build` and `remix` jobs can be stopped. No job under that key answers `{status: "none"}`.'
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SlugBody" }
+      responses:
+        "200": { $ref: "#/components/responses/JobView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/events:
+    get:
+      tags: [Reels and render queue]
+      operationId: streamEvents
+      summary: Server-Sent Events stream of job changes.
+      description: |
+        Opens with `: connected`, then sends every running or queued job, then `event: job` with `data: <Job JSON>` on
+        each change (the running render at least once a second). A `: ping` comment every 15 s keeps it open.
+      responses:
+        "200":
+          description: Event stream.
+          content:
+            text/event-stream:
+              schema: { type: string }
+              x-event-data: { $ref: "#/components/schemas/Job" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/approve:
+    post:
+      tags: [Reels and render queue]
+      operationId: approveReel
+      summary: Approve a reel (a person's action in the studio; python -m studio approve).
+      description: Matched by the POST /api/<action> catch-all. Approve is blocked while faces are on camera without consent, unless the render blurred faces.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody: { $ref: "#/components/requestBodies/ReviewSlug" }
+      responses:
+        "200": { $ref: "#/components/responses/ReviewOk" }
+        "400": { $ref: "#/components/responses/ReviewFailed" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/consent:
+    post:
+      tags: [Reels and render queue]
+      operationId: consentReel
+      summary: Record that the people on camera consented (python -m studio consent).
+      description: Matched by the POST /api/<action> catch-all.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody: { $ref: "#/components/requestBodies/ReviewSlug" }
+      responses:
+        "200": { $ref: "#/components/responses/ReviewOk" }
+        "400": { $ref: "#/components/responses/ReviewFailed" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/reject:
+    post:
+      tags: [Reels and render queue]
+      operationId: rejectReel
+      summary: Reject a reel with a note (python -m studio reject).
+      description: Matched by the POST /api/<action> catch-all.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody: { $ref: "#/components/requestBodies/ReviewSlugNote" }
+      responses:
+        "200": { $ref: "#/components/responses/ReviewOk" }
+        "400": { $ref: "#/components/responses/ReviewFailed" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/reroll:
+    post:
+      tags: [Reels and render queue]
+      operationId: rerollReel
+      summary: Ask for a reel to be made again, with a note (python -m studio reroll).
+      description: Matched by the POST /api/<action> catch-all.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody: { $ref: "#/components/requestBodies/ReviewSlugNote" }
+      responses:
+        "200": { $ref: "#/components/responses/ReviewOk" }
+        "400": { $ref: "#/components/responses/ReviewFailed" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------- Editing
+  /api/reel:
+    get:
+      tags: [Editing]
+      operationId: getReel
+      summary: One rendered reel's manifest, with its review record, AI notes and library ids for each shot.
+      parameters:
+        - { $ref: "#/components/parameters/SlugQuery" }
+      responses:
+        "200":
+          description: The manifest (renders/story-<slug>/manifest.json) plus the fields below.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  slug: { type: string }
+                  title: { type: string }
+                  durationSec: { type: number }
+                  shots:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                      properties:
+                        path: { type: string }
+                        assetId: { type: [integer, "null"] }
+                  channels:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                      properties:
+                        name: { type: string }
+                        dir: { type: string }
+                        post: { type: string }
+                        videos:
+                          type: array
+                          items:
+                            type: object
+                            additionalProperties: true
+                            properties:
+                              file: { type: string }
+                              mb: { type: number }
+                              sec: { type: number }
+                  review: { oneOf: [{ $ref: "#/components/schemas/DraftRow" }, { type: "null" }] }
+                  ai: { type: array, items: { type: object, additionalProperties: true } }
+                  aiLabel: { type: boolean }
+                  aiOf: { type: [string, "null"] }
+                  aiLabelNote: { type: [string, "null"] }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/project:
+    get:
+      tags: [Editing]
+      operationId: getProject
+      summary: A reel's editable project (shots, beats, music) as Python's get_reel returns it.
+      x-needs-verification: true
+      parameters:
+        - { $ref: "#/components/parameters/SlugQuery" }
+      responses:
+        "200":
+          description: The project.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true, properties: { slug: { type: string } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Editing]
+      operationId: saveProject
+      summary: Save a reel project; with `render` true, queue a build unless a rule fails.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project]
+              properties:
+                project:
+                  type: object
+                  additionalProperties: true
+                  required: [slug]
+                  properties:
+                    slug: { $ref: "#/components/schemas/Slug" }
+                    shots: { type: array, items: { type: object, additionalProperties: true } }
+                    beats: { type: array, items: { type: object, additionalProperties: true } }
+                render: { type: boolean }
+      responses:
+        "200":
+          description: Saved. With `problems` non-empty nothing renders.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  saved: { type: string }
+                  problems: { type: array, items: { type: string } }
+                  rendering: { type: boolean }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "507": { $ref: "#/components/responses/DiskFull" }
+  /api/library:
+    post:
+      tags: [Editing]
+      operationId: searchLibrary
+      summary: Search the footage library (text query and filters).
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query: { type: string, default: "" }
+                filters: { type: object, additionalProperties: true }
+                limit: { type: integer, default: 300 }
+      responses:
+        "200":
+          description: Matching items and the events among them.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { type: object, additionalProperties: true } }
+                  events: { type: array, items: { type: string } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/asset:
+    get:
+      tags: [Editing]
+      operationId: getAsset
+      summary: One library asset with its tags, quality scores and where it was used.
+      parameters:
+        - { name: id, in: query, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Asset.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Asset" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /api/veto:
+    post:
+      tags: [Editing]
+      operationId: vetoAsset
+      summary: Mark a clip that automatically made reels never pick again (or lift the mark).
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: integer }
+                "on": { type: boolean, default: true }
+                note: { type: string, maxLength: 200 }
+      responses:
+        "200":
+          description: Done.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  vetoed: { type: boolean }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/cover:
+    post:
+      tags: [Editing]
+      operationId: setCover
+      summary: Cut every network's cover from one moment of the reel.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug, t]
+              properties:
+                slug: { $ref: "#/components/schemas/Slug" }
+                t: { type: number, description: Seconds into the reel. }
+      responses:
+        "200":
+          description: Covers made.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  slug: { type: string }
+                  at: { type: number }
+                  channels: { type: array, items: {} }
+                  preview: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/spec:
+    get:
+      tags: [Editing]
+      operationId: getSpec
+      summary: shared/spec.json (the text-safe areas the Safe zone overlay draws).
+      responses:
+        "200":
+          description: The file as stored.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/typekits:
+    get:
+      tags: [Editing]
+      operationId: getTypeKits
+      summary: shared/type-kits.json, the reel styles a reel's typeKit, palette, motion and grade fields name.
+      description: >-
+        kits (Japanese and English type pairings), palettes (text, accent, rule, bar and English line colours), motions
+        (how the words arrive) and grades (a colour grade laid before the house look). The first of each list is the
+        house style. New reels draw one of each (py/studio/typekits.py); the reel editor lists them to pick from.
+      responses:
+        "200":
+          description: The file as stored.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/audio:
+    get:
+      tags: [Editing]
+      operationId: listAudio
+      summary: Music and sound effects on hand, with their licences.
+      responses:
+        "200":
+          description: Tracks (each file's sidecar metadata is merged in).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+                  properties:
+                    id: { type: string }
+                    file: { type: string }
+                    kind: { type: string }
+                    title: { type: string }
+                    license: { type: string }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/audio/fetch:
+    post:
+      tags: [Editing]
+      operationId: fetchAudio
+      summary: Find and download up to 4 CC0 or public-domain tracks or effects from Openverse.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind]
+              properties:
+                kind: { type: string, enum: [music, sfx] }
+                query: { type: string, maxLength: 120 }
+      responses:
+        "200":
+          description: Tracks downloaded.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+                  properties:
+                    kind: { type: string }
+                    title: { type: string }
+                    creator: { type: string }
+                    license: { type: string }
+                    licenseUrl: { type: [string, "null"] }
+                    landing: { type: [string, "null"] }
+                    source: { type: [string, "null"] }
+                    attribution: { type: [string, "null"] }
+                    duration: { type: [number, "null"] }
+                    query: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/words:
+    get:
+      tags: [Editing]
+      operationId: getWords
+      summary: The approved-words bank with use counts, and how repetitive the reels' words are.
+      description: New in the working tree (uncommitted on 2026-11-10); runs `python -m studio.wording report`.
+      x-needs-verification: true
+      responses:
+        "200":
+          description: Words report (py/studio/wording.py `report`).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  lines:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                      properties:
+                        kind: { type: string, enum: [hook, line] }
+                        ja: { type: string }
+                        en: { type: string }
+                        status: { type: string, enum: [approved, suggested, retired] }
+                        source: { type: string }
+                        reels: { type: integer }
+                        recent: { type: array, items: { type: string } }
+                  reels: { type: integer }
+                  wordSets: { type: integer }
+                  hooksUsed: { type: integer }
+                  repeatedReels: { type: integer }
+                  topHook: { description: "[hook, count] or null." }
+                  approved: { type: object, properties: { hook: { type: integer }, line: { type: integer } } }
+                  suggested: { type: integer }
+                  file: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    post:
+      tags: [Editing]
+      operationId: changeWords
+      summary: Add a line to the words bank, change a line's status, or ask AI for suggested lines a person must approve.
+      description: |
+        New in the working tree (uncommitted on 2026-11-10). `add` and `status` save a line (approved and suggested
+        lines must pass the fact guard); `suggest` saves AI drafts as `suggested` (no reel uses one until approved) and
+        answers `{suggested, dropped}`.
+      x-needs-verification: true
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [add, status, suggest] }
+                kind: { type: string, enum: [hook, line], description: "add only (default line)." }
+                ja: { type: string, maxLength: 80, description: "add and status." }
+                en: { type: string, maxLength: 200, description: "add only." }
+                status: { type: string, enum: [approved, retired, suggested], description: "add (approved or suggested) and status." }
+                n: { type: integer, minimum: 2, maximum: 12, default: 8, description: "suggest only." }
+                topic: { type: string, maxLength: 60, description: "suggest only." }
+      responses:
+        "200":
+          description: The saved line (add, status), or `{suggested, dropped}` (suggest).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  suggested: { type: array, items: { type: object, additionalProperties: true } }
+                  dropped: { type: array, items: { type: object, properties: { ja: { type: string }, why: { type: string } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /api/words/reword:
+    post:
+      tags: [Editing]
+      operationId: rewordReel
+      summary: Draw new approved words for one reel (same shots); saved without rendering unless `preview`.
+      description: New in the working tree (uncommitted on 2026-11-10). Saving and rendering afterwards sends the reel back to review.
+      x-needs-verification: true
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug]
+              properties:
+                slug: { $ref: "#/components/schemas/Slug" }
+                preview: { type: boolean, description: Return the draw without saving it. }
+                seed: { type: integer }
+      responses:
+        "200":
+          description: The new words.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  slug: { type: string }
+                  beats: { type: array, items: { type: object, additionalProperties: true } }
+                  fresh: { type: boolean }
+                  style: {}
+                  yt_title: { type: string }
+                  post: { type: string }
+                  tags: {}
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  # ---------------------------------------------------------------- Footage
+  /api/footage/scan:
+    post:
+      tags: [Footage]
+      operationId: scanFootage
+      summary: Catalog and tag new footage (job key `footage`).
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      responses:
+        "200": { $ref: "#/components/responses/JobView" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/footage/health:
+    get:
+      tags: [Footage]
+      operationId: getFootageHealth
+      summary: Reels of fresh footage left, reuse, cameras and what to film next (cached 10 minutes).
+      parameters:
+        - name: fresh
+          in: query
+          schema: { type: string, enum: ["1"] }
+          description: "1 recounts instead of using the cache."
+      responses:
+        "200":
+          description: Footage health (py/studio/footage.py `health`).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  clips: { type: integer }
+                  fresh: { type: integer }
+                  reelsLeft: { type: integer }
+                  more: { type: object, properties: { low: { type: integer }, high: { type: integer }, cap: { type: integer } } }
+                  reuse: { type: object, additionalProperties: { type: integer } }
+                  mostReused: { type: array, items: { type: object, properties: { file: { type: string }, uses: { type: integer }, camera: { type: string } } } }
+                  cameras: { type: array, items: { type: object, additionalProperties: true } }
+                  unknownCameras: { type: integer }
+                  shoot: {}
+                  themes: { type: integer }
+                  asOf: { type: string }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/footage/cameras:
+    post:
+      tags: [Footage]
+      operationId: readCameras
+      summary: Read each file's own camera make and model (job key `cameras`).
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      responses:
+        "200": { $ref: "#/components/responses/JobView" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/sources:
+    get:
+      tags: [Footage]
+      operationId: listSources
+      summary: Every footage folder, the last diff, and the watcher's schedule.
+      responses:
+        "200":
+          description: Sources.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sources:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path: { type: string }
+                        mode: { type: string }
+                        label: { type: string }
+                        origin: { type: string, description: "root, added or env." }
+                        exists: { type: boolean }
+                  last: { description: The last diff, or null. }
+                  watch:
+                    type: object
+                    properties:
+                      every: { type: number, description: Minutes between watcher runs (0 = off). }
+                      last: { type: [string, "null"], format: date-time }
+                      why: { type: [string, "null"] }
+                      next: { type: [string, "null"], format: date-time }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /api/fs/roots:
+    get:
+      tags: [Footage]
+      operationId: listDrives
+      summary: The drives and top folders on this computer, for the folder picker.
+      responses:
+        "200":
+          description: Roots.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    path: { type: string }
+                    label: { type: string }
+                    kind: { type: string }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /api/fs/list:
+    get:
+      tags: [Footage]
+      operationId: listFolder
+      summary: A folder's subfolders and media count.
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema: { type: string, maxLength: 1024 }
+          description: An absolute folder path (a drive letter or a leading slash), no control characters.
+      responses:
+        "200":
+          description: Listing.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path: { type: string }
+                  parent: { type: [string, "null"] }
+                  dirs: { type: array, items: {} }
+                  media: {}
+                  included: {}
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /api/sources/discover:
+    post:
+      tags: [Footage]
+      operationId: discoverFolder
+      summary: Survey a folder before adding it (job key `discover`; the report lands in the job's `result`).
+      description: "The result has path, total, bytes, folders, kinds, formats, years, is360, outputs, graphics, already, new, newest, included, checked."
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody: { $ref: "#/components/requestBodies/FolderPath" }
+      responses:
+        "200": { $ref: "#/components/responses/JobView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/sources/add:
+    post:
+      tags: [Footage]
+      operationId: addFolder
+      summary: Add a footage folder, then start a watcher run.
+      x-needs-verification: true
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path, mode]
+              properties:
+                path: { type: string, maxLength: 1024, description: An absolute folder path. }
+                mode: { type: string, enum: [gps, trusted], description: "gps: placed at the ranch by GPS; trusted: every file counts." }
+                label: { type: string, maxLength: 80 }
+      responses:
+        "200":
+          description: The registered folder row.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /api/sources/remove:
+    post:
+      tags: [Footage]
+      operationId: removeFolder
+      summary: Stop reading a footage folder (its files stay).
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody: { $ref: "#/components/requestBodies/FolderPath" }
+      responses:
+        "200":
+          description: Removed.
+          content:
+            application/json:
+              schema: { type: object, properties: { removed: { type: integer } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /api/sources/watch:
+    post:
+      tags: [Footage]
+      operationId: watchNow
+      summary: Run the footage watcher now (job key `footage`, kind `watch`).
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      responses:
+        "200": { $ref: "#/components/responses/JobView" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------- Google Photos
+  /api/gphotos:
+    get:
+      tags: [Google Photos]
+      operationId: getGooglePhotosStatus
+      summary: Is Google Photos connected, which account, and how many items were imported.
+      responses:
+        "200":
+          description: Status.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  app: { type: boolean }
+                  connected: { type: boolean }
+                  account: { type: [string, "null"] }
+                  expected: { type: [string, "null"] }
+                  imported: { type: integer }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /api/gphotos/connect:
+    get:
+      tags: [Google Photos]
+      operationId: connectGooglePhotos
+      summary: Redirect to Google's sign-in for Google Photos.
+      responses:
+        "302": { description: "To Google's sign-in page; Google returns to /oauth/gphotos." }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /oauth/gphotos:
+    get:
+      tags: [Google Photos]
+      operationId: googlePhotosCallback
+      summary: Google returns here after sign-in; the studio stores the token and sends the browser to Footage.
+      parameters:
+        - { name: code, in: query, schema: { type: string } }
+        - { name: state, in: query, schema: { type: string } }
+        - { name: error, in: query, schema: { type: string } }
+      responses:
+        "302": { description: "To `/?gphotos=connected#/footage`, or `/?ytError=<reason>#/footage`." }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/gphotos/session:
+    post:
+      tags: [Google Photos]
+      operationId: startPickerSession
+      summary: Start a Google Photos Picker session and return its picker address.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      responses:
+        "200":
+          description: Session.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  pickerUri: { type: string }
+                  mediaItemsSet: { type: boolean }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    get:
+      tags: [Google Photos]
+      operationId: pollPickerSession
+      summary: Has the owner finished picking in this session?
+      parameters:
+        - { $ref: "#/components/parameters/PickerSessionId" }
+      responses:
+        "200":
+          description: Session state.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  mediaItemsSet: { type: boolean }
+                  pollingConfig: { type: object, additionalProperties: true }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /api/gphotos/import:
+    post:
+      tags: [Google Photos]
+      operationId: importPicked
+      summary: Download the picked items (job key `gphotos`); new items may start automatic drafts.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string, pattern: "^[A-Za-z0-9_-]{6,200}$" }
+      responses:
+        "200": { $ref: "#/components/responses/JobView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------- Posting from the studio
+  /api/channels:
+    get:
+      tags: [Posting from the studio]
+      operationId: listChannels
+      summary: The networks (shared/channels.json) with this project's on/off switches and account names.
+      responses:
+        "200":
+          description: Channels.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  channels:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        upload: { type: string }
+                        "off": { type: boolean }
+                        account: { type: string }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/channels/set:
+    post:
+      tags: [Posting from the studio]
+      operationId: setChannel
+      summary: Turn a network on or off for this project, or set its account name.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string, pattern: "^[a-z-]+$", example: x }
+                "on": { type: boolean }
+                account: { type: string, description: "An empty string clears it." }
+      responses:
+        "200":
+          description: The channels after the change (same shape as GET /api/channels).
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/playbooks:
+    get:
+      tags: [Posting from the studio]
+      operationId: getPlaybooks
+      summary: "Per-network playbooks (shared/playbooks.json); `{playbooks: []}` when the file is missing or unreadable."
+      responses:
+        "200":
+          description: Playbooks.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true, properties: { playbooks: { type: array, items: {} } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/profiles:
+    get:
+      tags: [Posting from the studio]
+      operationId: getProfiles
+      summary: The project's profile kit (profiles.json).
+      responses:
+        "200":
+          description: Profile kit.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  displayName: { type: string }
+                  handle: { type: string }
+                  networks: { type: object, additionalProperties: true }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/connections:
+    get:
+      tags: [Posting from the studio]
+      operationId: listConnections
+      summary: Each posting connector, its status and the fields it asks for (secrets never returned).
+      responses:
+        "200": { $ref: "#/components/responses/Connections" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Posting from the studio]
+      operationId: saveConnection
+      summary: Connect a network with typed fields, or disconnect it (`remove`).
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [network]
+              properties:
+                network: { type: string, pattern: "^[a-z-]+$" }
+                fields:
+                  type: object
+                  description: "Keys match ^[a-z_]{1,30}$; values are strings up to 4000 characters. Secrets go in and never come back."
+                  additionalProperties: { type: string, maxLength: 4000, writeOnly: true }
+                remove: { type: boolean }
+      responses:
+        "200": { $ref: "#/components/responses/Connections" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/connect/start:
+    post:
+      tags: [Posting from the studio]
+      operationId: startSignin
+      summary: Start a one-click sign-in (Bluesky, Facebook); returns the network's own sign-in address.
+      x-needs-verification: true
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [network]
+              properties:
+                network: { type: string, enum: [bluesky, facebook] }
+                handle: { type: string, maxLength: 253 }
+      responses:
+        "200":
+          description: "Where to send the browser; the network returns to /oauth/{network}."
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true, properties: { url: { type: string } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/connect/setup:
+    post:
+      tags: [Posting from the studio]
+      operationId: setupSignin
+      summary: "One-time setup a sign-in button needs first (Facebook: the owner's Meta app ID and secret)."
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [network, fields]
+              properties:
+                network: { type: string, enum: [facebook] }
+                fields:
+                  type: object
+                  required: [app_id, app_secret]
+                  properties:
+                    app_id: { type: string, maxLength: 200 }
+                    app_secret: { type: string, maxLength: 200, writeOnly: true }
+      responses:
+        "200": { $ref: "#/components/responses/Connections" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /oauth/{network}:
+    get:
+      tags: [Posting from the studio]
+      operationId: signinCallback
+      summary: Bluesky or Facebook returns the browser here; the studio finishes the sign-in and opens Accounts.
+      description: Facebook returns to `http://localhost:<port>`, Bluesky to 127.0.0.1; both are loopback Hosts.
+      parameters:
+        - { name: network, in: path, required: true, schema: { type: string, enum: [bluesky, facebook] } }
+        - { name: code, in: query, schema: { type: string, maxLength: 2000 } }
+        - { name: state, in: query, schema: { type: string, maxLength: 2000 } }
+        - { name: iss, in: query, schema: { type: string, maxLength: 2000 } }
+        - { name: error, in: query, schema: { type: string, maxLength: 2000 } }
+        - { name: error_description, in: query, schema: { type: string, maxLength: 2000 } }
+        - { name: error_reason, in: query, schema: { type: string, maxLength: 2000 } }
+      responses:
+        "302": { description: "To `http://127.0.0.1:<port>/#/accounts?connected=<network>`, or `#/accounts?connectError=<network>&why=<reason>`." }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/publish:
+    post:
+      tags: [Posting from the studio]
+      operationId: publish
+      summary: Post a reel to a connected network now or at a time (job key `post-<slug>-<network>`).
+      description: |
+        **This route does not check the review status.** Only approved reels should be published: the page offers only
+        approved reels and the MCP tool `publish_reel` refuses others, but a direct call is not stopped here (known gap;
+        an uncommitted change in `py/studio/publish.py` makes the job end in error for an unapproved reel).
+        Facebook schedules on Facebook; Bluesky is queued and the server sends due posts with `publish --due` once a minute.
+      x-known-gap: POST /api/publish does not check that the reel is approved.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug, network]
+              properties:
+                slug: { $ref: "#/components/schemas/Slug" }
+                network: { type: string, pattern: "^[a-z-]+$", example: facebook }
+                at: { $ref: "#/components/schemas/LocalTime" }
+                id: { type: integer, description: A planned post in the posting log that this fulfils. }
+      responses:
+        "200": { $ref: "#/components/responses/JobView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------- Posting log
+  /api/posts:
+    get:
+      tags: [Posting log]
+      operationId: listPosts
+      summary: The posting log, newest first.
+      responses:
+        "200": { $ref: "#/components/responses/Posts" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/posts/plan:
+    post:
+      tags: [Posting log]
+      operationId: planPost
+      summary: Add a "post this then" reminder (posts nothing).
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug, network, at]
+              properties:
+                slug: { $ref: "#/components/schemas/Slug" }
+                network: { type: string, pattern: "^[a-z-]+$", example: x }
+                at: { $ref: "#/components/schemas/LocalTime" }
+      responses:
+        "200":
+          description: The new post's id.
+          content:
+            application/json:
+              schema: { type: object, properties: { id: { type: integer } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/posts/done:
+    post:
+      tags: [Posting log]
+      operationId: markPosted
+      summary: Mark a post as posted, with its link.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody: { $ref: "#/components/requestBodies/PostAction" }
+      responses:
+        "200": { $ref: "#/components/responses/Posts" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/posts/drop:
+    post:
+      tags: [Posting log]
+      operationId: dropPost
+      summary: Drop a planned post.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody: { $ref: "#/components/requestBodies/PostAction" }
+      responses:
+        "200": { $ref: "#/components/responses/Posts" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/posts/booked:
+    post:
+      tags: [Posting log]
+      operationId: markBooked
+      summary: Record a booking made on the site itself (scheduled there), with its link and time.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody: { $ref: "#/components/requestBodies/PostAction" }
+      responses:
+        "200": { $ref: "#/components/responses/Posts" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/posts/link:
+    post:
+      tags: [Posting log]
+      operationId: setPostLink
+      summary: Set a post's link.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody: { $ref: "#/components/requestBodies/PostAction" }
+      responses:
+        "200": { $ref: "#/components/responses/Posts" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/intake:
+    get:
+      summary: Collect footage — the drop box's state (open, until, link, received) and the saved Google Form link
+      responses:
+        "200": { description: "{ drop, types, inbox, form }" }
+  /api/intake/drop:
+    post:
+      summary: Open the drop box for 1-12 hours ({open:true, hours}) or close it ({open:false})
+      responses:
+        "200": { description: "{ drop }" }
+        "409": { description: This computer is not on a local network }
+  /api/intake/form:
+    post:
+      summary: Save (or clear, with an empty url) the Google Form link people upload footage through
+      responses:
+        "200": { description: "{ form }" }
+        "400": { description: Not a Google Forms link }
+  /api/intake/qr:
+    get:
+      summary: A QR code (SVG) for a link the page shows
+      parameters:
+        - { name: u, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: image/svg+xml }
+  /api/holidays:
+    get:
+      tags: [Posting]
+      operationId: getHolidays
+      summary: Japanese national holidays for the calendar (shared/holidays-jp.json, from the Cabinet Office; `npm run holidays` refreshes it).
+      responses:
+        "200": { description: Holidays by date., content: { application/json: { schema: { type: object, properties: { days: { type: object, additionalProperties: { type: string } } } } } } }
+  /api/jobs:
+    get:
+      tags: [Jobs]
+      operationId: listJobs
+      summary: Every job queued, running, or ended in the last 6 hours, with the render queue order.
+      responses:
+        "200":
+          description: The board's list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  now: { type: integer }
+                  queue: { type: array, items: { type: string } }
+                  jobs: { type: array, items: { type: object, additionalProperties: true } }
+  /api/problems:
+    get:
+      tags: [System]
+      operationId: getProblems
+      summary: What went wrong and is not fixed yet (server/problems.mjs), red first.
+      description: >-
+        Checked every 5 minutes and after each job: booked reels that are not approved (red, cannot be dismissed), posts
+        that did not go out in the last two weeks (red), jobs that ended in an error (red, a week), long videos that repeat
+        days or vary a lot in length (amber), a project switch (info). `?fresh=1` checks now.
+      parameters:
+        - { name: fresh, in: query, required: false, schema: { type: string, enum: ["1"] } }
+      responses:
+        "200": { description: "{items: [{id, level: red|amber|info, title, detail, fix: {label, href}, dismissable, first, last}]}" }
+  /api/problems/dismiss:
+    post:
+      tags: [System]
+      operationId: dismissProblem
+      summary: Hide one problem that may be dismissed (amber, info, or a red one about the past).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [id], properties: { id: { type: string, maxLength: 200 } } }
+      responses:
+        "200": { description: "{items}: the open list after dismissing" }
+        "409": { description: "A red problem about the future: it can only be fixed" }
+  /api/vlogs/timeline:
+    get:
+      tags: [Reels and render queue]
+      operationId: getTimeline
+      summary: The project's Google Maps Timeline import (py/studio/timeline.py) - per day, visits (time, how long, country, the person's name, shown) and legs (mode, km).
+      responses:
+        "200": { description: "{imported, source, window, hidden, days: [{day, offsetMin, visits: [...], legs: [...]}]}, or {imported: null}" }
+    post:
+      tags: [Reels and render queue]
+      operationId: importTimeline
+      summary: Bring in a Timeline export (the file as the request body, up to 600 MB). Kept - the trip's days only, no home or work, no raw signals; the file is deleted.
+      description: >-
+        Android on-device Timeline.json, iPhone location-history.json, Takeout Semantic Location History or Records.json,
+        or a GPX. `?from=YYYY-MM-DD&to=YYYY-MM-DD` sets the days to keep (default: the footage's days, one either side).
+        Local only: nothing is sent anywhere.
+      parameters:
+        - { name: name, in: query, required: false, schema: { type: string }, description: "the file's name (.gpx or .json)" }
+        - { name: from, in: query, required: false, schema: { type: string, format: date } }
+        - { name: to, in: query, required: false, schema: { type: string, format: date } }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream: { schema: { type: string, format: binary } }
+      responses:
+        "200": { description: "The summary, as GET" }
+        "400": { description: "Not a Timeline export" }
+        "413": { description: "Over 600 MB" }
+  /api/vlogs/timeline/choose:
+    post:
+      tags: [Reels and render queue]
+      operationId: chooseTimeline
+      summary: The person's names for places (their own words, up to 60 characters) and which places show.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { changes: { type: array, items: { type: object, properties: { day: { type: string }, id: { type: string }, name: { type: string }, show: { type: boolean } } } } } }
+      responses:
+        "200": { description: "The summary, as GET" }
+  /api/vlogs/timeline/forget:
+    post:
+      tags: [Reels and render queue]
+      operationId: forgetTimeline
+      summary: Remove the Timeline from this project (vlog-timeline.json); the person's own trip notes stay.
+      responses:
+        "200": { description: "{forgot: true|false}" }
+  /api/vlogs:
+    get:
+      tags: [Reels]
+      operationId: getVlogs
+      summary: This project's long videos - the plan (parts, days, chapters) and, per part, what was built (length, chapters, quality check, YouTube description) and any job.
+      responses:
+        "200": { description: "{plan, parts: [{n, slug, title, days, span, summary, shots, estSec, chapters, built, job}], planning, planError}" }
+  /api/vlogs/youtube:
+    post:
+      tags: [Long videos]
+      operationId: vlogsYouTube
+      summary: Long videos to YouTube - save the project's choice, or upload parts with it.
+      description: >-
+        `{ settings: { account, privacy, schedule, startAt, everyDays } }` saves which account (main, a2, ...), who can see
+        the videos (private, unlisted, public) and an optional schedule (private until each part's time, then public: the
+        first at startAt, then one every everyDays days) in the project's vlog-youtube.json. `{ upload: [n, ...] }` uploads
+        those parts one after another (jobs ytvlog-<n>) with the saved choice; each writes uploaded.json beside the part,
+        which GET /api/vlogs shows as `uploaded`. Uploads use YouTube's upload allowance (100 a day per Google app).
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                settings: { type: object, additionalProperties: true }
+                upload: { type: array, items: { type: integer, minimum: 1 } }
+      responses:
+        "200":
+          description: The saved settings, or `{ started: [{ n, at }], settings }`.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Long videos are being uploaded already. }
+  /api/vlogs/plan:
+    post:
+      tags: [Reels]
+      operationId: planVlogs
+      summary: Plan the trip into parts (studio.vlog plan; chapter names and one caption per chapter from the pictures, about $0.01 a part). A background job. Either parts + minutes (even by day), or a suggestion's groups + lengths; style sets shot lengths and music mood; build plans then builds every part in turn.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parts: { type: integer, minimum: 1, maximum: 8 }
+                minutes: { type: number, minimum: 3, maximum: 15 }
+                name: { type: string }
+                style: { type: string, enum: [documentary, cinematic, energetic, journal, retro] }
+                looks: { type: array, items: { type: string, enum: [documentary, cinematic, energetic, journal, retro, fieldguide, monochrome, slow, roadmovie] }, description: "a look per group (a showreel)" }
+                extend: { type: boolean, description: "add one more video per extra look (fieldguide, monochrome, slow, roadmovie) to the plan there is; the videos it has stay as they are; with build, only the new ones are built" }
+                more: { type: boolean, description: "with looks: also plan the four films cut by theme (fieldguide, monochrome, slow, roadmovie), so one call plans the whole showreel" }
+                fresh: { type: boolean, description: "with extend: instead of new looks, add videos made only of moments and photos no video of the plan shows yet (as many as the footage holds, see suggest's coverage), each stretch of the trip in a different look" }
+                groups: { type: array, maxItems: 8, items: { type: array, items: { type: string, format: date } } }
+                lengths: { type: array, items: { type: number, minimum: 3, maximum: 15 } }
+                build: { type: boolean }
+                series: { type: boolean, description: "plan a series instead (vlog plan --series): even episodes of `target` minutes, each day once, in story order, one look (documentary); parts, minutes, groups, lengths, looks and style are ignored" }
+                target: { type: number, minimum: 5, maximum: 15, description: "with series: minutes per episode (default: the trip notes' length, else 10)" }
+                titles: { type: array, maxItems: 8, items: { type: string, maxLength: 70 }, description: "with series: the person's own episode titles in order; an empty one is named from the pictures" }
+      responses:
+        "200": { description: The job. }
+        "409": { description: A long video is already being planned or built. }
+  /api/vlogs/series-links:
+    post:
+      tags: [Long videos]
+      operationId: vlogSeriesLinks
+      summary: Link a series on YouTube once every part is uploaded - the series playlist in episode order, then each description's links to the part before, the part after and the playlist; or post the pin comments.
+      description: >-
+        Runs `youtube link-series` with the project's saved YouTube account: finds or makes the playlist (default
+        "<trip> · the series", public; it shows others only the parts that are public themselves), adds the parts at
+        their positions, and rewrites each part's description through videos.update, sending its whole snippet back.
+        Only the videos this build uploaded are touched (an earlier film's upload in the same folder is not).
+        `{ comments: true }` runs `youtube series-comments` instead: "Part n of N. Next: ..." on each part, for the person
+        to pin in YouTube Studio (YouTube refuses comments on private videos). About 50 quota units per call.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string, maxLength: 70, description: "the playlist's name" }
+                comments: { type: boolean }
+                dryRun: { type: boolean, description: "what would be sent, with no call to YouTube" }
+      responses:
+        "200": { description: "{ playlist: { id, url, created, added, positioned }, updated: [n] } or { commented: [n], comments: { n: text } }" }
+        "400": { description: "A part is not uploaded yet, or YouTube refused (the message says why)." }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Long videos are being uploaded. }
+  /api/vlogs/suggest:
+    get:
+      tags: [Reels]
+      operationId: suggestVlogs
+      summary: What the footage can become, without spending anything. The footage per day (moving minutes, photos, what is clearly in it, the place the person gave), and plans (a series sized by the moving footage, one highlight film, the even split) with minutes, share of moving footage, weak parts, cost and build time, each from a dry run of the real picker.
+      parameters:
+        - { name: style, in: query, schema: { type: string, enum: [documentary, cinematic, energetic, journal, retro], default: documentary, description: "the look the plans are sized for (calm, lively, photos: older names)" } }
+        - { name: target, in: query, schema: { type: number, minimum: 5, maximum: 15, description: "minutes per series episode (default: the trip notes' length, else 10)" } }
+      responses:
+        "200": { description: "{ style, target, have[] (with each day's country), videoMin, videos, photos, options[] (the series first: { id: series, series, target, groups, titles, parts }), best, places, overlays }" }
+        "400": { description: Unknown style. }
+  /api/vlogs/trip:
+    get:
+      tags: [Reels]
+      operationId: vlogTrip
+      summary: The person's notes on the trip, where each day was and which words go on screen (places, animals, captions).
+      responses:
+        "200": { description: "{ places: { day: place }, overlays: { places, animals, captions }, moments: { day: the person's words }, personal: boolean, target: minutes per series episode, tz, clocks: { device: zone }, route: { day: { place, country, lat, lon, stops } }, origin }" }
+    post:
+      tags: [Reels]
+      operationId: saveVlogTrip
+      summary: Save places (an empty one removes it) and which words go on screen. Used by the next plan and build.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                places: { type: object, additionalProperties: { type: string, maxLength: 60 } }
+                overlays: { type: object, properties: { places: { type: boolean }, animals: { type: boolean }, captions: { type: boolean } } }
+                moments: { type: object, additionalProperties: { type: string, maxLength: 80 }, description: "What happened that day, in the person's words (an empty one removes it): names and captions use it where the pictures show it." }
+                personal: { type: boolean, description: "Whether names may also mention a personal moment the pictures clearly show without such a note. Default false." }
+                privateOk: { type: boolean, description: "Whether pictures that look private (someone in a hospital bed, a passport) may be used. Default false: they stay out of every video." }
+                target: { type: number, minimum: 5, maximum: 15, description: "Length of each series episode, in minutes (default 10)." }
+                countries: { type: object, additionalProperties: { type: string, maxLength: 40 }, description: "The country each day was in (a name as on a map, or a 2-letter code; empty clears it), for the maps and place tags. The map pin follows the place." }
+                route: { type: object, additionalProperties: { type: object, properties: { lat: { type: number, nullable: true }, lon: { type: number, nullable: true } } }, description: "A day's position when the person knows it better than the studio's approximate pin (null clears it)." }
+      responses:
+        "200": { description: The saved notes. }
+        "400": { description: A key that is not a day. }
+  /api/vlogs/places:
+    post:
+      tags: [Reels]
+      operationId: vlogPlacesFromSigns
+      summary: Read place names from signs in each day's pictures (vision model, inside the AI limits, about $0.003 a day; never a guess from scenery). Saved as hints in the trip notes for the person to accept or edit.
+      responses:
+        "200": { description: "{ hints: { day: { place, read } }, days, trip }" }
+  /api/vlogs/build:
+    post:
+      tags: [Reels]
+      operationId: buildVlog
+      summary: Build one part (master.mp4, youtube.json, description.txt, thumbnail.jpg; music beds about $0.60). A background job, below normal priority.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { n: { type: integer, minimum: 1, maximum: 8 }, all: { type: boolean, description: "build every planned part, one after another" } } }
+      responses:
+        "200": { description: The job. }
+        "409": { description: A long video is already being planned or built. }
+  /api/vlogs/file:
+    get:
+      tags: [Reels]
+      operationId: vlogFile
+      summary: A built part's master (seekable, Range) or thumbnail.
+      parameters:
+        - { name: n, in: query, required: true, schema: { type: integer } }
+        - { name: kind, in: query, required: true, schema: { type: string, enum: [master, thumb, srt], description: "srt: what people say, as subtitles for YouTube's CC" } }
+      responses:
+        "200": { description: The file. }
+        "404": { description: Not built yet. }
+  /api/autopost:
+    get:
+      tags: [Posting]
+      operationId: getAutopost
+      summary: Runs by itself - its settings, when each part last ran and what it found, booked posts not yet seen live, and start at sign-in.
+      responses:
+        "200":
+          description: The state.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  settings: { type: object, additionalProperties: true, description: "plan {on, networks, aheadDays, tiktokAheadDays, hour} · verify {on, missingAfterH} · catchUp {on, graceH} · tidy {on} · health {on, warnDays}" }
+                  runs: { type: object, additionalProperties: true, description: "plan, check and health: when each last ran (when, day) and what it did" }
+                  waiting: { type: array, items: { type: object, additionalProperties: true }, description: Booked posts whose time has passed and that nobody has seen live yet (late_h). }
+                  chrome: { type: boolean, description: The helper is linked to your Chrome (needed for X, TikTok, Google Maps, LINE and LinkedIn). }
+                  startup: { type: object, properties: { supported: { type: boolean }, on: { type: boolean }, file: { type: string }, why: { type: string } } }
+                  planning: { type: boolean }
+                  checking: { type: boolean }
+                  networks: { type: array, items: { type: string } }
+                  today: { type: string, format: date }
+    post:
+      tags: [Posting]
+      operationId: setAutopost
+      summary: Change some settings of Runs by itself. Unknown keys and values out of range are refused (400).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [set]
+              properties:
+                set: { type: object, additionalProperties: true, example: { plan: { on: true, aheadDays: 14 }, verify: { missingAfterH: 6 } } }
+      responses:
+        "200": { description: "{settings}: all settings after the change." }
+        "400": { description: A key or value that is not a setting. }
+  /api/autopost/run:
+    post:
+      tags: [Posting]
+      operationId: runAutopost
+      summary: Run a part now. preview = what Plan posts would book (nothing is booked); plan = book them (202, in the background); check = confirm due posts and check sign-ins.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [what]
+              properties:
+                what: { type: string, enum: [preview, plan, check] }
+      responses:
+        "200": { description: "preview: {plan, skipped, waiting, approved}; check: {tidy, check}" }
+        "202": { description: "plan: {started: true}" }
+        "409": { description: Plan posts is already running. }
+  /api/autopost/post:
+    post:
+      tags: [Posting]
+      operationId: settleNeedsLook
+      summary: A post that was not found after its time - "out" marks it posted at its booked time; "aside" files it as history (status replaced; nothing is deleted).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [id, action], properties: { id: { type: integer }, action: { type: string, enum: [out, aside] } } }
+      responses:
+        "200": { description: "{changed}" }
+  /api/autopost/startup:
+    post:
+      tags: [Posting]
+      operationId: setStartup
+      summary: Start the studio when you sign in to Windows (a small file in your Startup folder) or stop doing so.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [on], properties: { on: { type: boolean } } }
+      responses:
+        "200": { description: "{supported, on, file}" }
+        "400": { description: Not offered on this system (the message says why). }
+  /api/posts/stale:
+    get:
+      tags: [Posting]
+      operationId: getStaleBookings
+      summary: Bookings made before their reel got new words or had its sound fixed (studio.levels), grouped by why they are not swapped yet, and the auto-swap state.
+      responses:
+        "200":
+          description: The list and its groups.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  on: { type: boolean }
+                  total: { type: integer }
+                  groups: { type: object, additionalProperties: { type: integer }, description: "ready | review | rendering | soon | elsewhere | failed (stopped after 3 failed swaps)" }
+                  done: { type: integer, description: Swaps that succeeded (X and TikTok - the old booking off and the new one booked). }
+                  failed: { type: integer, description: Swap attempts that failed. }
+                  youtubeLater: { type: integer }
+                  today: { type: object, properties: { youtube: { type: integer }, perDay: { type: integer } } }
+                  list: { type: array, items: { type: object, additionalProperties: true, description: "id, slug, network, at, why; error when why is failed" } }
+  /api/versions/todo:
+    get:
+      tags: [Posting]
+      operationId: versionsTodo
+      summary: Better versions of booked reels waiting for a person (live and new side by side, with what changed and the review before and after), and booked reels whose AI review still finds captions over the wrong picture.
+      responses:
+        "200": { description: "{ ready: [{ slug, n, live, why, changes, before, after, qa, first }], open: [{ slug, mismatches, hook }], booked, making }" }
+  /api/versions:
+    get:
+      tags: [Posting]
+      operationId: versionsOf
+      summary: Every version of one reel, newest first (live, candidate, earlier, discarded), with why it was made and what changed.
+      parameters:
+        - { name: slug, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: "{ versions: [...] }" }
+  /api/versions/file:
+    get:
+      tags: [Posting]
+      operationId: versionFile
+      summary: A version's 9:16 master or its cover.
+      parameters:
+        - { name: slug, in: query, required: true, schema: { type: string } }
+        - { name: n, in: query, required: true, schema: { type: integer } }
+        - { name: kind, in: query, required: true, schema: { type: string, enum: [master, hook] } }
+      responses:
+        "200": { description: The file (byte ranges supported). }
+  /api/versions/recut:
+    post:
+      tags: [Posting]
+      operationId: versionsRecut
+      summary: Make a better cut of reels beside their live versions (the shots the AI review found under the wrong caption, searched again with the caption's words). Renders, then asks the reviewer inside the AI limits. The live reels are not changed.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                slug: { type: string }
+                slugs: { type: array, items: { type: string } }
+                booked: { type: boolean, description: Every approved reel with a booking ahead whose review found a problem. }
+      responses:
+        "200": { description: The job (kind versions). }
+  /api/versions/use:
+    post:
+      tags: [Posting]
+      operationId: versionsUse
+      summary: A person chose version n of a reel. It becomes the reel (files for each network cut again from it) and is approved; the live one stays as an earlier version; bookings made before swap to it. Sent by the page on the person's press only.
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [slug, n], properties: { slug: { type: string }, n: { type: integer } } }
+      responses:
+        "200": { description: The job. }
+  /api/versions/discard:
+    post:
+      tags: [Posting]
+      operationId: versionsDiscard
+      summary: Keep the live version; the candidate's files are removed and it is listed as discarded.
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [slug, n], properties: { slug: { type: string }, n: { type: integer } } }
+      responses:
+        "200": { description: The job. }
+  /api/levels:
+    get:
+      tags: [Posting]
+      operationId: getLevels
+      summary: Loudness and true peak of every approved reel with a booking still ahead, and which are off the level (more than 1 LU off the target, or over -1 dBTP). Measured, kept 30 minutes.
+      parameters:
+        - { name: fresh, in: query, required: false, schema: { type: string, enum: ["1"] }, description: Measure again now. }
+      responses:
+        "200":
+          description: Every booked reel, and the ones off the level.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reels: { type: array, items: { type: object, additionalProperties: true, description: "slug, lufs, truePeak, off, target" } }
+                  off: { type: array, items: { type: object, additionalProperties: true } }
+                  fixing: { type: boolean }
+  /api/levels/fix:
+    post:
+      tags: [Posting]
+      operationId: fixLevels
+      summary: Fix the sound of every booked reel that is off the level, in place and by gain alone (same picture, words and approval; the masters are kept as *.orig.mp4). Bookings already uploaded then swap by themselves.
+      responses:
+        "200": { description: The job (kind levels), polled on /api/jobs. }
+  /api/posts/autoreplace:
+    post:
+      tags: [Posting]
+      operationId: setAutoReplace
+      summary: Switch the automatic swap of bookings with older words on or off (on starts a check at once).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [on], properties: { on: { type: boolean }, retry: { type: boolean, description: "true clears the stopped swaps so they are tried again" } } }
+      responses:
+        "200": { description: The new state., content: { application/json: { schema: { type: object, properties: { on: { type: boolean } } } } } }
+        "400": { description: "on is not true or false" }
+  /api/footage/upload:
+    post:
+      tags: [Footage]
+      operationId: uploadFootage
+      summary: One photo or video dragged onto the studio page, streamed as the request body.
+      parameters:
+        - { name: name, in: query, required: true, schema: { type: string }, description: The file's own name (made safe; never overwrites). }
+      requestBody:
+        required: true
+        content: { application/octet-stream: { schema: { type: string, format: binary } } }
+      responses:
+        "200": { description: Saved., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, name: { type: string }, bytes: { type: integer } } } } } }
+        "411": { description: No file. }
+        "413": { description: Over 8 GB. }
+        "415": { description: Not a photo or video type. }
+        "507": { description: The disk would be left nearly full. }
+  /api/posts/move:
+    post:
+      summary: Move a post the studio sends itself (queued) or a reminder (planned) to another time
+      description: One post per network per day; at least 15 minutes ahead. A post booked on a network is refused (move it there).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, at]
+              properties:
+                id: { type: integer }
+                at: { type: string, description: "YYYY-MM-DDTHH:MM with an optional offset" }
+      responses:
+        "200": { description: Every post, after the move }
+        "400": { description: Refused, with the reason in plain words }
+  /api/posts/replace:
+    post:
+      summary: Swap a booking for the reel's newest approved render at the same time (Facebook, YouTube by API; X, TikTok in your Chrome)
+      responses:
+        "200": { description: A job; follow it with /api/job }
+  /api/posts/skip:
+    post:
+      tags: [Posting log]
+      operationId: skipReel
+      summary: Mark a reel as not to be posted (or lift it).
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug]
+              properties:
+                slug: { $ref: "#/components/schemas/Slug" }
+                "on": { type: boolean, default: true }
+      responses:
+        "200": { $ref: "#/components/responses/Posts" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/posts/ics:
+    get:
+      tags: [Posting log]
+      operationId: getPostReminder
+      summary: A calendar reminder (.ics) for one planned post.
+      parameters:
+        - { name: id, in: query, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: The calendar file (attachment).
+          content:
+            text/calendar: { schema: { type: string } }
+        "400": { description: "`id` (text/plain).", content: { text/plain: { schema: { type: string } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "No such plan (text/plain).", content: { text/plain: { schema: { type: string } } } }
+
+  # ---------------------------------------------------------------- YouTube
+  /api/youtube:
+    get:
+      tags: [YouTube]
+      operationId: getYouTubeStatus
+      summary: Is YouTube connected, to which channel, and with which permissions.
+      responses:
+        "200":
+          description: Status.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  app: { type: boolean }
+                  appInfo: { $ref: "#/components/schemas/YouTubeApp" }
+                  connected: { type: boolean }
+                  channel: {}
+                  playlists: { type: boolean }
+                  account: { type: [string, "null"] }
+                  analytics: { type: boolean }
+                  since: { type: [string, "null"] }
+                  error: { type: string }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/youtube/connect:
+    get:
+      tags: [YouTube]
+      operationId: connectYouTube
+      summary: Redirect to Google's account chooser for YouTube; Google returns to /oauth/youtube.
+      parameters:
+        - name: hint
+          in: query
+          schema: { type: string }
+          description: An account address to preselect (ignored unless it looks like one).
+        - name: account
+          in: query
+          schema: { type: string, pattern: "^(main|new|a[0-9]{1,3})$", default: main }
+          description: >-
+            Which of the project's YouTube accounts: main (the channel Shorts post to), new (connect another channel beside
+            it: it becomes a2, a3, ...), or an existing a2... to sign it in again.
+      responses:
+        "302": { description: "To Google's sign-in, or `/?ytError=<reason>#/keys`." }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /oauth/youtube:
+    get:
+      tags: [YouTube]
+      operationId: youtubeCallback
+      summary: Google returns here after the YouTube sign-in (loopback redirect, PKCE).
+      parameters:
+        - { name: code, in: query, schema: { type: string } }
+        - { name: state, in: query, schema: { type: string } }
+        - { name: error, in: query, schema: { type: string } }
+      responses:
+        "302": { description: "To `/?connected=<channel title>#/` or `/?ytError=<reason>#/`." }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/youtube/app:
+    get:
+      tags: [YouTube]
+      operationId: getYouTubeApp
+      summary: The Google app the studio signs in with.
+      responses:
+        "200":
+          description: App info.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/YouTubeApp" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    post:
+      tags: [YouTube]
+      operationId: setYouTubeApp
+      summary: Use your own Google app (the client JSON Google gives you), forget it, or share it with every project.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                json: { type: string, maxLength: 20000, writeOnly: true, description: The client JSON file's text (passed to Python on stdin). }
+                forget: { type: boolean }
+                share:
+                  type: boolean
+                  description: >-
+                    true copies this project's Google app to the studio home (STUDIO_HOME/youtube_client.json), so every
+                    project without its own app can connect YouTube accounts with it (python -m studio youtube share-app);
+                    false removes that copy (unshare-app). Projects with their own app keep it.
+      responses:
+        "200":
+          description: App info after the change.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/YouTubeApp" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/youtube/disconnect:
+    post:
+      tags: [YouTube]
+      operationId: disconnectYouTube
+      summary: Forget one YouTube sign-in (body account, default main); answers the status afterwards.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, properties: { account: { type: string, pattern: "^(main|a[0-9]{1,3})$" } } }
+      responses:
+        "200":
+          description: Status (same shape as GET /api/youtube).
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/youtube/accounts:
+    get:
+      tags: [YouTube]
+      operationId: listYouTubeAccounts
+      summary: Every YouTube account connected in this project, main first (Shorts post there), then a2, a3, ...
+      responses:
+        "200":
+          description: "{ accounts: [{ id, email, channel, handle, channelId, since, shorts }], error? }"
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/youtube/videos:
+    get:
+      tags: [YouTube]
+      operationId: listYouTubeVideos
+      summary: The newest Shorts on the channel (up to 15).
+      responses:
+        "200":
+          description: Videos (empty when not connected).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string }
+                    url: { type: string }
+                    title: { type: string }
+                    thumb: { type: [string, "null"] }
+                    privacy: { type: string }
+                    publishAt: { type: [string, "null"] }
+                    published: { type: [string, "null"] }
+                    views: { type: integer }
+                    likes: { type: integer }
+                    slug: { type: [string, "null"] }
+                    processing: { type: [string, "null"] }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /api/youtube/playlists:
+    get:
+      tags: [YouTube]
+      operationId: listYouTubePlaylists
+      summary: The channel's playlists.
+      x-needs-verification: true
+      responses:
+        "200":
+          description: Playlists (item fields not confirmed).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  playlists: { type: array, items: { type: object, additionalProperties: true } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /api/youtube/sort:
+    post:
+      tags: [YouTube]
+      operationId: sortIntoPlaylists
+      summary: Put the channel's Shorts into playlists (or preview with `dryRun`).
+      x-needs-verification: true
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dryRun: { type: boolean }
+      responses:
+        "200":
+          description: What was (or would be) done.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created: {}
+                  added: {}
+                  skippedPrivate: {}
+                  dryRun: { type: boolean }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /api/youtube/meta:
+    get:
+      tags: [YouTube]
+      operationId: getYouTubeMeta
+      summary: The title, description and tags a reel would be uploaded with.
+      parameters:
+        - { $ref: "#/components/parameters/SlugQuery" }
+      responses:
+        "200":
+          description: Metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  title: { type: string, maxLength: 100 }
+                  description: { type: string, maxLength: 4900 }
+                  tags: { type: array, items: { type: string }, maxItems: 15 }
+                  video: { type: [string, "null"] }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /api/youtube/upload:
+    post:
+      tags: [YouTube]
+      operationId: uploadToYouTube
+      summary: Upload a reel as a Short, now or scheduled (job kind `youtube`, keyed by the slug).
+      description: |
+        Runs beside the render queue and reports through /api/events. Like /api/publish, this route does **not** check
+        the review status; the MCP tool `publish_reel` checks it before calling here. A slug already busy with another job
+        answers 500 with the reason.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug]
+              properties:
+                slug: { $ref: "#/components/schemas/Slug" }
+                at: { $ref: "#/components/schemas/LocalTime" }
+                privacy: { type: string, enum: [private, unlisted, public], default: private }
+      responses:
+        "200": { $ref: "#/components/responses/JobView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  # ---------------------------------------------------------------- Chrome helper
+  /api/helper:
+    get:
+      tags: [Chrome helper]
+      operationId: getHelperStatus
+      summary: Is the helper installed and open, its tabs, per-network sign-in state, and the Chrome connection.
+      responses:
+        "200":
+          description: Status.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  installed: { type: boolean }
+                  open: { type: boolean }
+                  pages: { type: array, items: { type: string } }
+                  signins: { type: object, additionalProperties: { type: [boolean, "null"] } }
+                  browser: { $ref: "#/components/schemas/BrowserState" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/helper/install:
+    post:
+      tags: [Chrome helper]
+      operationId: installHelper
+      summary: Install the helper's one library (playwright-core) into the studio folder.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      responses:
+        "200":
+          description: Installed; the helper status follows.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true, properties: { ok: { type: boolean } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500":
+          description: npm install failed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  detail: { type: string }
+  /api/helper/connect:
+    post:
+      tags: [Chrome helper]
+      operationId: connectChrome
+      summary: Start connecting the helper to your Chrome (or reopen the Welcome window, or cancel); answers at once.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cancel: { type: boolean }
+      responses:
+        "200":
+          description: Browser state; while it waits for the Allow click, `browser.pending` says so (poll GET /api/helper).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  browser: { $ref: "#/components/schemas/BrowserState" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /api/helper/token:
+    post:
+      tags: [Chrome helper]
+      operationId: saveChromeLinkKey
+      summary: Save (or remove) the Chrome link key so the helper connects with no click; never echoed.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token: { type: string, writeOnly: true, description: "The PLAYWRIGHT_MCP_EXTENSION_TOKEN value (the whole NAME=value line is accepted); 16-512 of A-Z a-z 0-9 _ - . = + /." }
+                remove: { type: boolean }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  browser: { $ref: "#/components/schemas/BrowserState" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/helper/signin:
+    post:
+      tags: [Chrome helper]
+      operationId: openSignins
+      summary: Open the sign-in page of each network asked for (or every one signed out) in the helper.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                networks: { type: array, items: { type: string, pattern: "^[a-z-]+$" } }
+      responses:
+        "200":
+          description: Pages opened, or `pending` while Chrome is still connecting.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  opened: { type: array, items: { type: string } }
+                  pending: { type: boolean }
+                  message: { type: string }
+                  signins: { type: object, additionalProperties: true }
+                  browser: { $ref: "#/components/schemas/BrowserState" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /api/helper/post:
+    post:
+      tags: [Chrome helper]
+      operationId: helperPrepare
+      summary: Open a network's upload page in the helper with the reel's file attached and its text written; a person presses Post.
+      description: The route does not check the review status itself; it never presses Post or Schedule (a person does, on the site).
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug, network]
+              properties:
+                slug: { $ref: "#/components/schemas/Slug" }
+                network: { type: string, pattern: "^[a-z-]+$", example: threads }
+      responses:
+        "200":
+          description: What the helper did.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state: { type: string, enum: [ready, partial, signin, connect] }
+                  message: { type: string }
+                  browser: { $ref: "#/components/schemas/BrowserState" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /api/helper/schedule:
+    post:
+      tags: [Chrome helper]
+      operationId: helperSchedule
+      summary: Schedule an approved reel on X, TikTok, Google Maps, LINE or LinkedIn end to end (job key `helper-<slug>-<network>`).
+      description: |
+        Refused with 409 and a plain sentence when the reel is not approved, already held at that moment, the time is
+        under 15 minutes ahead or past the site's limit, there is no file, or it is already being scheduled. When the job
+        ends, `result` is `{state: scheduled|rehearsed|signin|failed, message, proof: {url, shown, seen}, postId}`.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug, network, at]
+              properties:
+                slug: { $ref: "#/components/schemas/Slug" }
+                network: { type: string, enum: [x, tiktok, gbp, line-oa, linkedin] }
+                at: { type: string, description: "With its zone, e.g. 2026-11-16T19:00+09:00.", example: "2026-11-16T19:00+09:00" }
+                id: { type: integer, description: A planned post this fulfils. }
+                rehearse: { type: boolean, description: Every step but the final press. }
+      responses:
+        "200": { $ref: "#/components/responses/JobView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/helper/schedule-week:
+    post:
+      tags: [Chrome helper]
+      operationId: helperScheduleWeek
+      summary: Spread approved reels over the next days, one per network per day; a dry run unless `confirm` is true.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                slugs: { type: array, items: { type: string } }
+                networks: { type: array, items: { type: string, enum: [x, tiktok, gbp, line-oa, linkedin] } }
+                start: { type: string, format: date }
+                days: { type: integer, minimum: 1, maximum: 14, default: 7 }
+                confirm: { type: boolean }
+      responses:
+        "200":
+          description: The plan; with `confirm`, each row carries its queued `job` or `refused`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dryRun: { type: boolean }
+                  start: { type: string }
+                  days: { type: integer }
+                  timeZone: { type: string }
+                  plan:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                      properties:
+                        slug: { type: string }
+                        network: { type: string }
+                        at: { type: string }
+                        day: { type: string }
+                        headline: { type: string }
+                        job: { $ref: "#/components/schemas/Job" }
+                        refused: { type: string }
+                  skipped: { type: array, items: { type: object, properties: { day: { type: string }, network: { type: string }, why: { type: string } } } }
+                  notApproved: { type: array, items: { type: string } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/share:
+    post:
+      tags: [Chrome helper]
+      operationId: makeShareLink
+      summary: A 15-minute local link to one network file of a reel, for a site's upload box open in this browser.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug, channel]
+              properties:
+                slug: { $ref: "#/components/schemas/Slug" }
+                channel: { type: string, pattern: "^[a-z-]+$", example: tiktok }
+                index: { type: integer, default: 0, description: Which of the channel's videos. }
+                fit: { type: number, description: "A size cap in MB; over it a lighter copy is made once and shared instead." }
+      responses:
+        "200":
+          description: The link.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string, description: "http://127.0.0.1:<port>/share/<token>/<file name>" }
+                  name: { type: string }
+                  type: { type: string, const: video/mp4 }
+                  mb: { type: number }
+                  until: { type: integer, description: Expiry, milliseconds since the epoch. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /api/package:
+    post:
+      tags: [Chrome helper]
+      operationId: packageChannels
+      summary: Make the missing network files of an already rendered reel.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug, channels]
+              properties:
+                slug: { $ref: "#/components/schemas/Slug" }
+                channels: { type: array, maxItems: 20, items: { type: string, pattern: "^[a-z-]+$" } }
+      responses:
+        "200":
+          description: Files made.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  slug: { type: string }
+                  made: { type: array, items: { type: string } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "507": { $ref: "#/components/responses/DiskFull" }
+
+  # ---------------------------------------------------------------- Research
+  /api/research:
+    get:
+      tags: [Research]
+      operationId: getResearchStatus
+      summary: Is research ready, Firecrawl credits, cache and today's requests (free).
+      parameters:
+        - name: fresh
+          in: query
+          schema: { type: string, enum: ["1"] }
+          description: "1 re-reads the credit balance."
+      responses:
+        "200":
+          description: Status (docs/research-api.md).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  ready: { type: boolean }
+                  summary: { type: string }
+                  credits: { type: [object, "null"], additionalProperties: true }
+                  creditsError: { type: string }
+                  creditsCode: { type: string }
+                  cache: { type: object, additionalProperties: true }
+                  today: { type: object, additionalProperties: true }
+                  dailyCap: { type: integer }
+                  llm: { type: boolean }
+                  sources: { type: array, items: { type: string } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/CodedError" }
+        "504": { $ref: "#/components/responses/CodedError" }
+  /api/research/ideas:
+    post:
+      tags: [Research]
+      operationId: researchIdeas
+      summary: Recent pages and news on a topic, hashtags, keywords and 3-5 post angles with sources.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                topic: { type: [string, "null"], maxLength: 120 }
+                days: { type: [integer, "null"], minimum: 1, maximum: 365, default: 30 }
+                fresh: { type: boolean }
+      responses:
+        "200":
+          description: Ideas (docs/research-api.md).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ResearchCommon"
+                  - type: object
+                    properties:
+                      topic: { type: [string, "null"] }
+                      queries: { type: array, items: { type: string } }
+                      days: { type: integer }
+                      items: { type: array, items: { type: object, additionalProperties: true } }
+                      hashtags: { type: array, items: { type: object, properties: { tag: { type: string }, count: { type: integer } } } }
+                      keywords: { type: array, items: { type: object, properties: { word: { type: string }, count: { type: integer } } } }
+                      angles: { type: array, items: { type: object, additionalProperties: true } }
+        default: { $ref: "#/components/responses/ResearchError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/research/site-check:
+    post:
+      tags: [Research]
+      operationId: researchSiteCheck
+      summary: The brand website's facts, inclusions and booking link against the approved copy.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url: { type: [string, "null"], maxLength: 2000, description: "Just this page; default is the profile kit's site and its booking page." }
+                fresh: { type: boolean }
+      responses:
+        "200":
+          description: Site check (docs/research-api.md).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ResearchCommon"
+                  - type: object
+                    properties:
+                      site: { type: string }
+                      pages: { type: array, items: { type: string } }
+                      facts: { type: array, items: { type: object, additionalProperties: true } }
+                      inclusions: { type: array, items: { type: object, additionalProperties: true } }
+                      booking: { type: object, additionalProperties: true }
+                      mismatches: { type: array, items: { type: string } }
+                      otherPrices: { type: array, items: { type: object, additionalProperties: true } }
+        default: { $ref: "#/components/responses/ResearchError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/research/page:
+    post:
+      tags: [Research]
+      operationId: researchPage
+      summary: Read one public page; its selling points and what it says that the approved copy does not.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, maxLength: 2000, example: "https://example.com/" }
+                fresh: { type: boolean }
+      responses:
+        "200":
+          description: Page reading (docs/research-api.md).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ResearchCommon"
+                  - type: object
+                    properties:
+                      url: { type: string }
+                      title: { type: string }
+                      name: { type: string }
+                      sellingPoints: { type: array, items: { type: string } }
+                      amenities: { type: array, items: { type: string } }
+                      claims: { type: array, items: { type: string } }
+                      prices: { type: array, items: {} }
+                      pricesDropped: { type: integer }
+                      audience: { type: string }
+                      theySayWeDont: { type: array, items: { type: string } }
+        default: { $ref: "#/components/responses/ResearchError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/research/events:
+    post:
+      tags: [Research]
+      operationId: researchEvents
+      summary: Upcoming local events with a post-by date.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                days: { type: [integer, "null"], minimum: 1, maximum: 90, default: 30 }
+                fresh: { type: boolean }
+      responses:
+        "200":
+          description: Events (docs/research-api.md).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ResearchCommon"
+                  - type: object
+                    properties:
+                      window: { type: object, properties: { from: { type: string }, to: { type: string }, days: { type: integer } } }
+                      queries: { type: array, items: { type: string } }
+                      events: { type: array, items: { type: object, additionalProperties: true } }
+                      undated: { type: array, items: { type: object, additionalProperties: true } }
+        default: { $ref: "#/components/responses/ResearchError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/research/links:
+    post:
+      tags: [Research]
+      operationId: researchLinks
+      summary: Check that every link in planned and scheduled posts and the profile kit still loads.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fresh: { type: boolean }
+      responses:
+        "200":
+          description: Link check (docs/research-api.md).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ResearchCommon"
+                  - type: object
+                    properties:
+                      checked: { type: integer }
+                      broken: { type: array, items: { $ref: "#/components/schemas/LinkRow" } }
+                      unsure: { type: array, items: { $ref: "#/components/schemas/LinkRow" } }
+                      links: { type: array, items: { $ref: "#/components/schemas/LinkRow" } }
+        default: { $ref: "#/components/responses/ResearchError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------- AI
+  /api/ai:
+    get:
+      tags: [AI]
+      operationId: getAiStatus
+      summary: AI keys present (booleans), limits, spend per reel, total and today (free).
+      responses:
+        "200":
+          description: Status (docs/ai-api.md).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  ready: { type: boolean }
+                  keys: { type: object, additionalProperties: { type: boolean } }
+                  caps: { $ref: "#/components/schemas/AiCaps" }
+                  spent: { type: object, additionalProperties: true }
+                  byTool: { type: array, items: { type: object, additionalProperties: true } }
+                  room: { type: object, additionalProperties: true }
+                  tools: { type: array, items: { type: object, additionalProperties: true } }
+                  reviewModel: { type: string }
+                  paidTagging: { type: boolean }
+                  summary: { type: string }
+        default: { $ref: "#/components/responses/CodedError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/ai/credits:
+    get:
+      tags: [AI]
+      operationId: getAiCredits
+      summary: Per provider (fal, openrouter, together, firecrawl) whether a key is saved, what the studio spent with it, and what the provider says is left. Read-only; cached 10 minutes.
+      parameters:
+        - { name: fresh, in: query, required: false, schema: { type: string, enum: ["1"] }, description: Ask the providers again instead of using the cache. }
+      responses:
+        "200":
+          description: Balances and spend; a provider that cannot say carries `error` or `note` instead of `left`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      additionalProperties: true
+                      properties:
+                        key: { type: boolean }
+                        spent: { type: object, properties: { total: { type: number }, today: { type: number }, calls: { type: integer } } }
+                        left: { type: [number, "null"] }
+                        limit: { type: [number, "null"] }
+                        used: { type: [number, "null"] }
+                        unit: { type: string, description: '"credits" for Firecrawl; dollars otherwise' }
+                        currency: { type: string }
+                        renews: { type: string }
+                        error: { type: string }
+                        note: { type: string }
+                        dashboard: { type: string, format: uri }
+                        checked: { type: number, description: Unix seconds of the last real check }
+                  caps: { $ref: "#/components/schemas/AiCaps" }
+                  spent: { type: object, additionalProperties: true }
+        default: { $ref: "#/components/responses/CodedError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/ai/estimate:
+    post:
+      tags: [AI]
+      operationId: aiEstimate
+      summary: Price AI tools on one reel against the per-reel, total and daily limits (free).
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AiRequest" }
+      responses:
+        "200":
+          description: Estimate.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiEstimate" }
+        default: { $ref: "#/components/responses/CodedError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/ai/run:
+    post:
+      tags: [AI]
+      operationId: aiRun
+      summary: Apply AI tools to a reel or an AI copy (job key `ai-<slug>`); priced first and refused over a limit.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/AiRequest"
+                - type: object
+                  properties:
+                    render: { type: boolean, description: Queue a render of the changed reel when the tools finish. }
+      responses:
+        "200":
+          description: The job and its estimate.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job: { $ref: "#/components/schemas/Job" }
+                  estimate: { $ref: "#/components/schemas/AiEstimate" }
+        "402":
+          description: Over a limit; nothing was spent.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  code: { type: string, const: cap }
+                  estimate: { $ref: "#/components/schemas/AiEstimate" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "507": { $ref: "#/components/responses/DiskFull" }
+        default: { $ref: "#/components/responses/CodedError" }
+  /api/ai/review:
+    get:
+      tags: [AI]
+      operationId: getLastAiReview
+      summary: The last AI review of a reel (free).
+      parameters:
+        - { $ref: "#/components/parameters/SlugQuery" }
+      responses:
+        "200":
+          description: The last review, or null.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  slug: { type: string }
+                  review: { oneOf: [{ $ref: "#/components/schemas/AiReview" }, { type: "null" }] }
+        default: { $ref: "#/components/responses/CodedError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [AI]
+      operationId: runAiReview
+      summary: A video model watches the rendered reel and suggests fixes (cached per render; `fresh` pays again).
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug]
+              properties:
+                slug: { $ref: "#/components/schemas/Slug" }
+                fresh: { type: boolean }
+      responses:
+        "200":
+          description: Review.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiReview" }
+        default: { $ref: "#/components/responses/CodedError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------- Results
+  /api/perf:
+    get:
+      tags: [Results]
+      operationId: getReelPerf
+      summary: One reel's features and every post of it, with readings.
+      parameters:
+        - { name: slug, in: query, required: true, schema: { type: string }, example: office-1107 }
+      responses:
+        "200":
+          description: Reel performance (docs/perf-api.md).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  slug: { type: string }
+                  features: { type: object, additionalProperties: true }
+                  posts: { type: array, items: { type: object, additionalProperties: true } }
+        default: { $ref: "#/components/responses/CodedError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/perf/summary:
+    get:
+      tags: [Results]
+      operationId: getPerfSummary
+      summary: What worked and what did not, across networks or for one.
+      parameters:
+        - { $ref: "#/components/parameters/PerfNetwork" }
+      responses:
+        "200":
+          description: Summary (docs/perf-api.md).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  ready: { type: boolean }
+                  measured: { type: integer }
+                  needed: { type: integer }
+                  tooNew: { type: integer }
+                  network: { type: [string, "null"] }
+                  networks: { type: object, additionalProperties: true }
+                  headline: { type: string }
+                  worked: { type: array, items: { type: object, additionalProperties: true } }
+                  didnt: { type: array, items: { type: object, additionalProperties: true } }
+                  features: { type: object, additionalProperties: true }
+                  sentences: { type: array, items: { type: string } }
+                  method: { type: string }
+        default: { $ref: "#/components/responses/CodedError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/perf/scores:
+    get:
+      tags: [Results]
+      operationId: getScores
+      summary: Each reel's score (0-100) with its parts (AI hook and look marks, fresh headline, fitting length); partial without an AI review.
+      responses:
+        "200": { description: Scores by slug., content: { application/json: { schema: { type: object, properties: { scores: { type: object, additionalProperties: true } } } } } }
+  /api/perf/predictions:
+    get:
+      tags: [Results]
+      operationId: getPredictions
+      summary: Every booking's prediction (frozen when made; x the network's typical post with an 80 % range) beside its actual result.
+      responses:
+        "200":
+          description: Rows, coverage of the ranges, and score-to-result rank correlation.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows: { type: array, items: { type: object, additionalProperties: true } }
+                  measured: { type: integer }
+                  inside: { type: integer }
+                  coverage: { type: [number, "null"] }
+                  aim: { type: number }
+                  spearman: { type: [number, "null"] }
+                  summary: { type: string }
+  /api/perf/score-all:
+    post:
+      tags: [Results]
+      operationId: scoreAll
+      summary: One job (score-all) that runs the AI review on every rendered reel without one, priced against the AI limits per reel.
+      responses:
+        "200": { description: The job., content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+  /api/perf/suggest:
+    get:
+      tags: [Results]
+      operationId: getPerfSuggest
+      summary: Next-reel suggestions (look, recipe, layout, length, hour) by Thompson sampling.
+      parameters:
+        - { $ref: "#/components/parameters/PerfNetwork" }
+        - { name: n, in: query, schema: { type: integer, minimum: 1, maximum: 10, default: 3 } }
+        - { name: explore, in: query, schema: { type: number, minimum: 0, maximum: 1, default: 0.3 } }
+        - { name: seed, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Suggestions (docs/perf-api.md).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  ready: { type: boolean }
+                  measured: { type: integer }
+                  needed: { type: integer }
+                  explore: { type: number }
+                  network: { type: [string, "null"] }
+                  metric: { type: string }
+                  suggestions: { type: array, items: { type: object, additionalProperties: true } }
+                  distribution: { type: object, additionalProperties: true }
+                  note: { type: string }
+        default: { $ref: "#/components/responses/CodedError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/perf/status:
+    get:
+      tags: [Results]
+      operationId: getPerfStatus
+      summary: Which collectors are ready, the last run, and the checkpoints.
+      responses:
+        "200":
+          description: Status (docs/perf-api.md).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  collectors: { type: object, additionalProperties: true }
+                  lastRun: { type: [string, "null"] }
+                  readings: { type: integer }
+                  checkpoints: { type: array, items: { type: string } }
+                  csvFields: { type: array, items: { type: string } }
+        default: { $ref: "#/components/responses/CodedError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/perf/collect:
+    post:
+      tags: [Results]
+      operationId: collectPerf
+      summary: Read numbers from the networks with an API (YouTube, Facebook, Bluesky) for posts at a new checkpoint.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fresh: { type: boolean }
+                post_ids: { type: array, maxItems: 500, items: { type: integer } }
+      responses:
+        "200":
+          description: The run (docs/perf-api.md).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  ran: { type: boolean }
+                  at: { type: string }
+                  read: { type: integer }
+                  stored: { type: array, items: { type: object, additionalProperties: true } }
+                  skipped: { type: array, items: { type: object, additionalProperties: true } }
+                  problems: { type: array, items: { type: object, additionalProperties: true } }
+                  notes: { type: array, items: { type: string } }
+                  needsNumbers: { type: array, items: { type: object, additionalProperties: true } }
+                  notOutYet: { type: array, items: { type: object, additionalProperties: true } }
+                  summary: { type: string }
+        "413": { $ref: "#/components/responses/CodedError" }
+        default: { $ref: "#/components/responses/CodedError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/perf/manual:
+    post:
+      tags: [Results]
+      operationId: enterPerfNumbers
+      summary: Store numbers typed by hand for one post.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - type: object
+                  required: [post_id]
+                  properties:
+                    post_id: { type: integer }
+                    at: { type: string, maxLength: 40, description: When the numbers were read (default now; not in the future). }
+                    note: { type: string, maxLength: 200 }
+                - $ref: "#/components/schemas/PerfNumbers"
+      responses:
+        "200":
+          description: Stored.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stored: { type: object, additionalProperties: true }
+                  post:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      slug: { type: string }
+                      network: { type: string }
+                      at: { type: [string, "null"] }
+                      url: { type: [string, "null"] }
+        "413": { $ref: "#/components/responses/CodedError" }
+        default: { $ref: "#/components/responses/CodedError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/perf/import:
+    post:
+      tags: [Results]
+      operationId: importPerfCsv
+      summary: Import a network's CSV export (at most 2 MB), optionally as a dry run.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [network, csv]
+              properties:
+                network: { type: string, maxLength: 30 }
+                csv: { type: string }
+                mapping: { type: object, maxProperties: 40, additionalProperties: { type: string } }
+                post_id: { type: integer }
+                dry_run: { type: boolean }
+      responses:
+        "200":
+          description: Import result (docs/perf-api.md).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  network: { type: string }
+                  dryRun: { type: boolean }
+                  rows: { type: integer }
+                  columns: { type: object, additionalProperties: { type: string } }
+                  stored: { type: array, items: { type: object, additionalProperties: true } }
+                  unmatched: { type: array, items: { type: object, additionalProperties: true } }
+                  duplicates: { type: integer }
+                  summary: { type: string }
+        "413": { $ref: "#/components/responses/CodedError" }
+        default: { $ref: "#/components/responses/CodedError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/perf/collect-browser:
+    post:
+      tags: [Results]
+      operationId: collectPerfInChrome
+      summary: Read numbers off TikTok, X, Pinterest, Google Maps and LinkedIn pages in your Chrome, read-only (job key `helper-perf`).
+      description: "When the job ends, `result` is `{stored, left, summary}` (docs/perf-api.md)."
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                networks: { type: array, items: { type: string, enum: [tiktok, x, pinterest, gbp, linkedin] } }
+      responses:
+        "200": { $ref: "#/components/responses/JobView" }
+        "400": { $ref: "#/components/responses/CodedError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/log:
+    get:
+      tags: [Results]
+      operationId: getActivityLog
+      summary: Spend, local models, how each reel was made, finished jobs and YouTube quota.
+      x-needs-verification: true
+      responses:
+        "200":
+          description: Activity summary (py/studio/activity.py `summary`); the inner shapes are not described here.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  spend: {}
+                  local: {}
+                  reels: {}
+                  jobs: {}
+                  youtube:
+                    type: object
+                    properties:
+                      uploads: { type: integer }
+                      uploadsToday: { type: integer }
+                      uploadLimit: { type: integer }
+                      unitsPerDay: { type: integer }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------- Projects
+  /api/workspaces:
+    get:
+      tags: [Projects]
+      operationId: listProjects
+      summary: Every project, the main one first, and which one is running.
+      responses:
+        "200": { $ref: "#/components/responses/Workspaces" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Projects]
+      operationId: createProject
+      summary: Make a new project with its own data folder (every network off but the ones asked for).
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 40, example: Office }
+                source: { type: string, description: An existing footage folder (default a new one in the project). }
+                tz: { type: string, example: Asia/Tokyo }
+                networks: { type: array, items: { type: string, pattern: "^[a-z-]+$" } }
+                color: { type: string, enum: ["#2f7d4f", "#2563eb", "#c2410c", "#9333ea", "#0e7490", "#be123c", "#a16207", "#4d7c0f"] }
+      responses:
+        "200":
+          description: The new project's id plus the list.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Workspaces"
+                  - type: object
+                    properties:
+                      made: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/workspaces/edit:
+    post:
+      tags: [Projects]
+      operationId: editProject
+      summary: Rename a project or change its colour.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string }
+                name: { type: string, maxLength: 40 }
+                color: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/Workspaces" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/workspaces/forget:
+    post:
+      tags: [Projects]
+      operationId: forgetProject
+      summary: Take a project off the list (its folders and files stay). Not the main or the running one.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [id], properties: { id: { type: string } } }
+      responses:
+        "200": { $ref: "#/components/responses/Workspaces" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/workspaces/export:
+    get:
+      tags: [Projects]
+      operationId: exportProject
+      summary: Download the running project as one share file (name, networks, profile kit, word bank, reel plans). No footage, renders, sign-ins or keys.
+      responses:
+        "200":
+          description: A `lazycow-project` file (version 1), sent as an attachment.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [format, version, name, reels]
+                properties:
+                  format: { type: string, const: lazycow-project }
+                  version: { type: integer, const: 1 }
+                  name: { type: string }
+                  color: { type: string }
+                  tz: { type: [string, "null"] }
+                  networks: { type: [object, "null"], additionalProperties: true }
+                  profiles: { type: [object, "null"], additionalProperties: true }
+                  words: { type: object, additionalProperties: true }
+                  reels: { type: array, items: { type: object, additionalProperties: true } }
+  /api/workspaces/import:
+    post:
+      tags: [Projects]
+      operationId: importProject
+      summary: Make a new project from a share file (up to 20 MB). Reel plans keep their footage paths; the importer points the project at the footage.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [bundle], properties: { bundle: { type: object, additionalProperties: true }, name: { type: string, maxLength: 40 } } }
+      responses:
+        "200": { $ref: "#/components/responses/Workspaces" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { description: The file is larger than 20 MB. }
+  /api/workspaces/switch:
+    post:
+      tags: [Projects]
+      operationId: switchProject
+      summary: >-
+        Open another project; the server restarts on it. While jobs run it is refused (409), unless whenIdle is true:
+        then the switch waits and happens by itself when the last job ends (202). A studio pinned to one project
+        (STUDIO_PROJECT) always answers 409.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string }
+                whenIdle: { type: boolean, description: Wait for running jobs instead of refusing (the page sends true). }
+                cancel: { type: boolean, description: Drop a switch that is waiting. }
+      responses:
+        "200":
+          description: Switching (the server restarts), or the waiting switch was cancelled (the projects list).
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true, properties: { switching: { type: string } } }
+        "202":
+          description: Jobs are running; the switch waits for them.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true, properties: { waiting: { type: integer }, first: { type: string } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  # ---------------------------------------------------------------- Files
+  /proxy:
+    get:
+      tags: [Files]
+      operationId: getPreview
+      summary: A 540p edit preview of a library clip (made once), or a photo's thumbnail.
+      parameters:
+        - { name: id, in: query, required: true, schema: { type: integer } }
+        - { $ref: "#/components/parameters/Range" }
+      responses:
+        "200": { $ref: "#/components/responses/FileBody" }
+        "206": { $ref: "#/components/responses/FilePart" }
+        "304": { description: Not modified (ETag). }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/PlainNotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /file:
+    get:
+      tags: [Files]
+      operationId: getFile
+      summary: A file from the studio's own, audio and footage folders (Range for seeking); `w` gives a small JPEG copy of an image.
+      parameters:
+        - name: p
+          in: query
+          required: true
+          schema: { type: string }
+          description: The file's path; outside the allowed folders answers 403 `outside studio folders` (text/plain).
+        - name: w
+          in: query
+          schema: { type: integer, minimum: 60, maximum: 720 }
+          description: For .jpg/.jpeg/.png/.webp, a copy this many pixels wide.
+        - name: v
+          in: query
+          schema: { type: string }
+          description: Any version marker; a URL with it is cached for good.
+        - { $ref: "#/components/parameters/Range" }
+      responses:
+        "200": { $ref: "#/components/responses/FileBody" }
+        "206": { $ref: "#/components/responses/FilePart" }
+        "304": { description: Not modified (ETag). }
+        "403": { description: "Not loopback or cross-site (JSON), or outside the studio folders (text/plain)." }
+        "404": { $ref: "#/components/responses/PlainNotFound" }
+  /share/{token}/{name}:
+    get:
+      tags: [Files]
+      operationId: getSharedFile
+      summary: The one file a share link points to, readable by any origin for 15 minutes (loopback Host only).
+      description: Not subject to the Origin rule; answers with `access-control-allow-origin` set to the caller's origin and `access-control-allow-private-network`.
+      parameters:
+        - { $ref: "#/components/parameters/ShareToken" }
+        - { $ref: "#/components/parameters/ShareName" }
+        - { $ref: "#/components/parameters/Range" }
+      responses:
+        "200": { $ref: "#/components/responses/FileBody" }
+        "206": { $ref: "#/components/responses/FilePart" }
+        "404": { description: "`expired or unknown link` (text/plain).", content: { text/plain: { schema: { type: string } } } }
+    options:
+      tags: [Files]
+      operationId: preflightSharedFile
+      summary: CORS preflight for a share link.
+      parameters:
+        - { $ref: "#/components/parameters/ShareToken" }
+        - { $ref: "#/components/parameters/ShareName" }
+      responses:
+        "204": { description: "Allowed: GET with a range header, cached 600 s." }
+  /fonts/{name}:
+    get:
+      tags: [Files]
+      operationId: getFont
+      summary: A caption font (public/fonts, .ttf only).
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string, pattern: "^[A-Za-z0-9_.-]+\\.ttf$" } }
+      responses:
+        "200": { description: The font., content: { font/ttf: { schema: { type: string, format: binary } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/PlainNotFound" }
+  /brand/{name}:
+    get:
+      tags: [Files]
+      operationId: getBrandIcon
+      summary: A Lazycow icon (server/brand; .svg, .png or .ico).
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string, pattern: "^[a-z0-9-]+\\.(svg|png|ico)$" } }
+      responses:
+        "200": { $ref: "#/components/responses/IconBody" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/PlainNotFound" }
+  /favicon.svg:
+    get:
+      tags: [Files]
+      operationId: getFaviconSvg
+      summary: The Lazycow mark as the favicon.
+      responses:
+        "200": { $ref: "#/components/responses/IconBody" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/PlainNotFound" }
+  /favicon.ico:
+    get:
+      tags: [Files]
+      operationId: getFaviconIco
+      summary: The favicon in .ico form.
+      responses:
+        "200": { $ref: "#/components/responses/IconBody" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/PlainNotFound" }
+
+components:
+  parameters:
+    Origin:
+      name: Origin
+      in: header
+      required: false
+      description: "The studio's own origin, http://127.0.0.1:<port> (or localhost / [::1]). Required from browsers; a cross-site Origin gets 403."
+      schema: { type: string, example: "http://127.0.0.1:4317" }
+    SlugQuery:
+      name: slug
+      in: query
+      required: true
+      schema: { $ref: "#/components/schemas/Slug" }
+    PickerSessionId:
+      name: id
+      in: query
+      required: true
+      schema: { type: string, pattern: "^[A-Za-z0-9_-]{6,200}$" }
+    PerfNetwork:
+      name: network
+      in: query
+      schema: { type: string, pattern: "^[a-z-]{1,30}$" }
+      description: Only this network (left out, or malformed, pools all networks).
+    Range:
+      name: Range
+      in: header
+      schema: { type: string, example: "bytes=0-" }
+    ShareToken:
+      name: token
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[0-9a-f]{48}$" }
+    ShareName:
+      name: name
+      in: path
+      required: true
+      schema: { type: string }
+      description: The file name (shown to the upload box; not checked).
+
+  requestBodies:
+    ReviewSlug:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [slug]
+            properties:
+              slug: { type: string, pattern: "^[a-z0-9-]+$", example: story-office-1107, description: "The review record's slug (studio reels carry the story- prefix, as in /api/drafts)." }
+    ReviewSlugNote:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [slug]
+            properties:
+              slug: { type: string, pattern: "^[a-z0-9-]+$", example: story-office-1107 }
+              note: { type: string, maxLength: 500 }
+    FolderPath:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [path]
+            properties:
+              path: { type: string, maxLength: 1024, description: "An absolute folder path (a drive letter or a leading slash), no control characters." }
+    PostAction:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [id]
+            properties:
+              id: { type: integer }
+              url: { type: string, maxLength: 500 }
+              at: { $ref: "#/components/schemas/LocalTime" }
+
+  responses:
+    Forbidden:
+      description: Not a loopback Host, or a non-GET request from another origin (`fromStudio`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: the studio only answers its own page on this machine }
+    BadRequest:
+      description: A missing or malformed field (a plain sentence), or a Python ValueError.
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/Error" } }
+    NotFound:
+      description: No such item.
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/Error" } }
+    PlainNotFound:
+      description: Not found (text/plain).
+      content:
+        text/plain: { schema: { type: string } }
+    Conflict:
+      description: Refused because of the current state (busy jobs, a refusal sentence).
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/Error" } }
+    ServerError:
+      description: Python or the helper failed; the reason is the error sentence.
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/Error" } }
+    DiskFull:
+      description: Under the free-space minimum where renders are kept (about 3 GB); nothing was started.
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/Error" } }
+    CodedError:
+      description: "`{error, code}` with the status the Python module chose (400 bad_input, 402 cap/no_credits, 404 not_found, 409 locked/not_rendered, 413 too_big, 429, 5xx, 504 timeout). See docs/ai-api.md and docs/perf-api.md."
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/Error" } }
+    ResearchError:
+      description: "`{error, code}`: 400 no_key/bad_key/bad_input/forbidden, 402 no_credits, 422 blocked/not_found, 429 rate_limited/cap, 500 bug, 502 upstream, 503 network, 504 timeout (docs/research-api.md)."
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/Error" } }
+    JobView:
+      description: The job view; progress follows over /api/events.
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/Job" } }
+    ReviewOk:
+      description: Python's output line (text/plain), e.g. `rejected` or `consent`.
+      content:
+        text/plain: { schema: { type: string } }
+    ReviewFailed:
+      description: "Python's error output (text/plain), or `bad slug`."
+      content:
+        text/plain: { schema: { type: string } }
+    Posts:
+      description: The whole posting log after the change.
+      content:
+        application/json:
+          schema: { type: array, items: { $ref: "#/components/schemas/PostRow" } }
+    Connections:
+      description: Each connector by network id.
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties:
+              type: object
+              additionalProperties: true
+              properties:
+                name: { type: string }
+                how: { type: string }
+                fields: {}
+                links: { type: array, items: {} }
+                canSchedule: { type: boolean }
+                signin: {}
+                connected: { type: boolean }
+                account: { type: [string, "null"] }
+                error: { type: string }
+    Workspaces:
+      description: Projects.
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/Workspaces" } }
+    FileBody:
+      description: The file, with ETag and Accept-Ranges.
+      headers:
+        etag: { schema: { type: string } }
+        accept-ranges: { schema: { type: string } }
+      content:
+        "*/*": { schema: { type: string, format: binary } }
+    FilePart:
+      description: Part of the file (Range).
+      headers:
+        content-range: { schema: { type: string } }
+      content:
+        "*/*": { schema: { type: string, format: binary } }
+    IconBody:
+      description: The icon, cached for a day.
+      content:
+        image/svg+xml: { schema: { type: string } }
+        image/png: { schema: { type: string, format: binary } }
+        image/x-icon: { schema: { type: string, format: binary } }
+
+  schemas:
+    Slug:
+      type: string
+      pattern: "^[a-z0-9-]+$"
+      description: Lowercase letters, digits and dashes.
+      example: office-1107
+    SlugBody:
+      type: object
+      required: [slug]
+      properties:
+        slug: { $ref: "#/components/schemas/Slug" }
+    LocalTime:
+      type: string
+      pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}([+-]\\d{2}:\\d{2})?$"
+      description: "YYYY-MM-DDTHH:MM, optionally with +HH:MM."
+      example: "2026-11-16T19:00"
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, description: One plain sentence. }
+        code: { type: string, description: "Research, AI and performance routes only." }
+    Job:
+      type: object
+      description: |
+        `jobView()`. With no such job only `{status: "none"}` comes back. `kind` values seen: build, remix, scan, watch,
+        discover, import, cameras, post, youtube, ai, helper.
+      required: [status]
+      properties:
+        slug: { type: string }
+        kind: { type: string }
+        status: { type: string, enum: [none, queued, running, done, error, cancelled] }
+        position: { type: integer, description: Place in the render queue (0 when not queued). }
+        stage: { type: integer }
+        stages: { type: integer }
+        done: { type: integer }
+        of: { type: integer }
+        pct: { type: integer, minimum: 0, maximum: 100 }
+        label: { type: string }
+        result: { description: "The job's RESULT (shape depends on the job), or null." }
+        lines: { type: array, maxItems: 6, items: { type: string } }
+        seconds: { type: integer }
+        eta: { type: [integer, "null"], description: Seconds left, from this machine's history. }
+        cancellable: { type: boolean }
+    DraftRow:
+      type: object
+      properties:
+        slug: { type: string }
+        recipe: { type: [string, "null"] }
+        status: { type: string }
+        faces: { type: [integer, "null"] }
+        consent: { type: [integer, "null"] }
+        notes: { type: [string, "null"] }
+        render_natural: { type: [string, "null"] }
+        render_scored: { type: [string, "null"] }
+    PostRow:
+      type: object
+      properties:
+        id: { type: integer }
+        slug: { type: string }
+        network: { type: string }
+        status: { type: string, description: "planned, queued, scheduled, posted, failed or skipped." }
+        at: { type: [string, "null"] }
+        remote_id: { type: [string, "null"] }
+        url: { type: [string, "null"] }
+        note: { type: [string, "null"] }
+        created: { type: string }
+    Asset:
+      type: object
+      properties:
+        id: { type: integer }
+        path: { type: string }
+        file: { type: string }
+        kind: { type: string }
+        duration: { type: [number, "null"] }
+        width: { type: [integer, "null"] }
+        height: { type: [integer, "null"] }
+        fps: { type: [number, "null"] }
+        codec: { type: [string, "null"] }
+        device: { type: [string, "null"] }
+        captured: { type: [string, "null"] }
+        lat: { type: [number, "null"] }
+        lon: { type: [number, "null"] }
+        near: {}
+        mb: { type: number }
+        tags: { type: array, items: { type: object, properties: { tag: { type: string }, ja: { type: string }, score: { type: number } } } }
+        faces: {}
+        sharp: {}
+        expo: {}
+        orientation: {}
+        event: {}
+        season: {}
+        tod: {}
+        thumbs: { type: array, items: { type: string } }
+        usedIn: { type: array, items: {} }
+    BrowserState:
+      type: object
+      properties:
+        mode: { type: string, enum: [extension, own] }
+        setting: { type: string }
+        connected: { type: boolean }
+        extensionInstalled: { type: boolean }
+        extensionStore: { type: string }
+        autoConnect: { type: boolean }
+        pending:
+          type: [object, "null"]
+          properties:
+            since: { type: string, format: date-time }
+            until: { type: [string, "null"], format: date-time }
+            message: { type: string }
+        lastError: { type: [object, "null"], properties: { at: {}, message: { type: string } } }
+        error: { type: [string, "null"] }
+        note: { type: string }
+    YouTubeApp:
+      type: object
+      properties:
+        set: { type: boolean }
+        source: { type: string, enum: [env, file, studio], description: "studio: the app shared from another project (STUDIO_HOME/youtube_client.json)." }
+        type: { type: string }
+        project: { type: [string, "null"] }
+        projectNumber: { type: [string, "null"] }
+        shared: { type: boolean, description: A shared copy of a Google app exists in the studio home, for every project. }
+    Workspaces:
+      type: object
+      properties:
+        active: { type: string }
+        running: { type: string }
+        home: { type: string }
+        list:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              main: { type: boolean }
+              name: { type: string }
+              color: { type: string }
+              data: { type: string }
+              source: { type: string }
+              created: { type: [string, "null"] }
+    ResearchCommon:
+      type: object
+      additionalProperties: true
+      properties:
+        summary: { type: string }
+        sources: { type: array, items: { type: string } }
+        note: { type: string }
+        cached: { type: boolean }
+        cost:
+          type: object
+          properties:
+            firecrawlCalls: { type: integer }
+            fromCache: { type: integer }
+            credits: { type: number }
+    LinkRow:
+      type: object
+      additionalProperties: true
+      properties:
+        url: { type: string }
+        status: { type: string, enum: [ok, broken, blocked] }
+        code: { type: [integer, "null"] }
+        why: { type: string }
+        usedIn: { type: array, items: { type: string } }
+    AiCaps:
+      type: object
+      properties:
+        reel: { type: number }
+        total: { type: number }
+        daily: { type: number }
+    AiRequest:
+      type: object
+      required: [slug, tools]
+      properties:
+        slug: { $ref: "#/components/schemas/Slug" }
+        tools:
+          type: array
+          minItems: 1
+          items: { type: string, enum: [review, sharpen, slowmo, living, foley, behind, music, voice] }
+        options:
+          type: object
+          properties:
+            into: { type: string, pattern: "^[a-z0-9-]{1,60}$", description: "A new slug for an AI copy (required for an approved, scheduled or posted reel).", example: office-1107-ai }
+            shots:
+              type: object
+              description: Shot numbers from 0, at most 20 each.
+              properties:
+                slowmo: { type: array, items: { type: integer, minimum: 0, maximum: 99 } }
+                sharpen: { type: array, items: { type: integer, minimum: 0, maximum: 99 } }
+                living: { type: array, items: { type: integer, minimum: 0, maximum: 99 } }
+                foley: { type: array, items: { type: integer, minimum: 0, maximum: 99 } }
+            max_living: { type: integer, minimum: 0, maximum: 5 }
+            max_foley: { type: integer, minimum: 0, maximum: 12, description: "Natural sound: at most this many silent shots (default 4)." }
+            fresh: { type: boolean }
+    AiEstimate:
+      type: object
+      additionalProperties: true
+      properties:
+        slug: { type: string }
+        into: { type: [string, "null"] }
+        tools: { type: array, items: { type: object, additionalProperties: true } }
+        total: { type: number }
+        caps: { $ref: "#/components/schemas/AiCaps" }
+        spent: { type: object, additionalProperties: true }
+        room: { type: object, additionalProperties: true }
+        fits: { type: boolean }
+        refusal: { type: [string, "null"] }
+        labelRequired: { type: boolean }
+        summary: { type: string }
+    AiReview:
+      type: object
+      additionalProperties: true
+      properties:
+        slug: { type: string }
+        model: { type: string }
+        usd: { type: number }
+        at: { type: string }
+        stamp: { type: string }
+        hook: { type: object, properties: { score: { type: [number, "null"] }, notes: { type: string } } }
+        look: { type: object, properties: { score: { type: [number, "null"] }, notes: { type: string } } }
+        mismatches: { type: array, items: { type: object, additionalProperties: true } }
+        claims: { type: array, items: {} }
+        fixes: { type: array, items: { type: object, additionalProperties: true } }
+        summary: { type: string }
+        guard: { type: array, items: { type: object, additionalProperties: true } }
+        cached: { type: boolean }
+        current: { type: boolean }
+        note: { type: string }
+    PerfNumbers:
+      type: object
+      properties:
+        views: { type: number }
+        likes: { type: number }
+        comments: { type: number }
+        shares: { type: number }
+        saves: { type: number }
+        watch_time_s: { type: number }
+        avg_view_pct: { type: number }
+        avg_view_s: { type: number }
+        completion_pct: { type: number }
+        followers_gained: { type: number }
+        reach: { type: number }

@@ -1,0 +1,24 @@
+name: Idea
+description: Something the studio should do, or do differently.
+labels: [idea]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: The job, not the button. "I post the same reel to four networks and retype the text each time."
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: The studio's rules
+      options:
+        - label: A person still approves every post.
+          required: true
+        - label: Nothing leaves the computer unless the person connects that service.
+          required: true

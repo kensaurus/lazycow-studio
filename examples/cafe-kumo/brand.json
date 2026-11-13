@@ -1,0 +1,15 @@
+{
+  "name": "Cafe Kumo",
+  "nameEn": "",
+  "handle": "@cafe.kumo",
+  "link": "https://cafe-kumo.example/",
+  "tags": [
+    "#cafekumo",
+    "#lunch"
+  ],
+  "banned": [
+    "best in town",
+    "cheapest"
+  ],
+  "noPrices": true
+}

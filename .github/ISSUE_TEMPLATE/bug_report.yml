@@ -1,0 +1,52 @@
+name: Bug report
+description: Something in the studio does not work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please leave out keys, tokens, account names and footage you do not want public.
+        A security problem goes to Security › Report a vulnerability instead (SECURITY.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what the studio did instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to see it again
+      placeholder: |
+        1. Open Reels › Make reels
+        2. Tick one theme and press Make 1 reel
+        3. The card says failed
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Studio version
+      description: The footer of the studio, or "version" in package.json.
+      placeholder: "0.11.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Computer
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true
+  - type: textarea
+    id: system
+    attributes:
+      label: System page
+      description: Press System in the top bar and paste any amber or red lines.
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: The last lines of STUDIO_DATA/renders/job-<reel>.log or the server output. Remove anything private first.
+      render: text

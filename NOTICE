@@ -1,0 +1,18 @@
+Lazycow Studio
+Copyright (c) 2026 kensaurus LLC
+
+This product includes software developed by Kenji Sakuramoto
+(kensaurus, https://kensaur.us) and contributors.
+Original source: https://github.com/kensaurus/lazycow-studio
+
+"Lazycow", "Lazycow Studio" and the sleepy-cow icon are trademarks of
+kensaurus LLC. The Apache License 2.0 does not grant permission to use
+them (section 6). See TRADEMARKS.md.
+
+If you distribute this software or a work based on it, keep this NOTICE
+file (Apache License 2.0, section 4(d)). We also ask that you keep the
+line "Based on Lazycow Studio by kensaurus" with a link to
+https://kensaur.us in your About screen and README.
+
+Third-party components keep their own licences; see
+THIRD_PARTY_NOTICES.md.

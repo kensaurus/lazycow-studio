@@ -1,0 +1,9 @@
+# The double-click setup: cmd.exe and Windows PowerShell want CRLF; bash and macOS want LF, whatever the checkout's
+# core.autocrlf says. README.TXT is for Notepad, so CRLF.
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.TXT text eol=crlf
+*.INF text eol=crlf
+*.sh text eol=lf
+*.command text eol=lf
+packages/** text eol=lf

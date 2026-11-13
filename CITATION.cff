@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use or build on Lazycow Studio, please cite it as below and link to https://kensaur.us."
+type: software
+title: "Lazycow Studio"
+abstract: "A local-first app that turns a solo creator's own footage into short vertical videos and schedules their posts."
+authors:
+  - given-names: Kenji
+    family-names: Sakuramoto
+    alias: kensaurus
+    website: "https://kensaur.us"
+  - name: "kensaurus LLC"
+    website: "https://kensaur.us"
+repository-code: "https://github.com/kensaurus/lazycow-studio"
+url: "https://kensaur.us"
+license: Apache-2.0
+version: 0.7.1
+date-released: 2026-11-09
+keywords:
+  - reels
+  - shorts
+  - video-editing
+  - local-first
+  - remotion
+  - ffmpeg

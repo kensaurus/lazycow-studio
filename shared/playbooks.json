@@ -1,0 +1,386 @@
+{
+  "_documentation": {
+    "FILE": "shared/playbooks.json",
+    "PURPOSE": "Per-network playbook: what each network is for, how to cut and caption for it, tags, times, profile and comment handling. Shown in the UI next to each network.",
+    "SOURCE": "docs/research/2026-11-09-channel-playbooks.md (every value is cited there; [unverified] marks values no official page confirmed).",
+    "RULES": "Owner's rule wins: at most one post per network per day, 19:00 JST by default. times.bestJst are alternatives to test against 19:00, never extra posts; cadencePerWeek is a ceiling.",
+    "FIELDS": "format.idealSec is [min, max]. null means not documented. linkInCaption = a link in the post text is clickable and not discouraged."
+  },
+  "playbooks": [
+    {
+      "id": "youtube-shorts",
+      "role": "Discovery and a long-lived search shelf; points to the long tour via Related video.",
+      "format": { "maxSec": 180, "idealSec": [20, 40], "aspect": "9:16", "hook": "Strongest frame at 0 s; the claim lands in the first 2-3 s." },
+      "caption": {
+        "maxChars": 100,
+        "idealChars": 60,
+        "languages": ["ja", "en"],
+        "cta": "Related video link under the handle; title carries the search words.",
+        "linkInCaption": false,
+        "avoid": ["URLs in the description (not clickable on Shorts)", "More than 60 hashtags (all ignored)", "Unrelated or misleading tags", "Unlicensed music"]
+      },
+      "hashtags": { "min": 3, "max": 5, "mix": "1 broad, 1 niche, 1 local", "examples": ["#嬬恋", "#キャンプ", "#車中泊", "#群馬キャンプ"] },
+      "times": { "bestJst": ["19:00", "21:00"], "cadencePerWeek": 7 },
+      "profile": {
+        "nameMax": null,
+        "bioMax": null,
+        "linkSlot": "Channel links + Related video per Short",
+        "pin": "Pin a comment with the booking route",
+        "tips": ["Handle 3-30 chars, change twice per 14 days", "Renaming the channel removes the verified badge", "Title 100 chars max"]
+      },
+      "community": {
+        "replyWithinHours": 24,
+        "tone": "Warm, short, first person (オーナーです).",
+        "angryTemplateJa": "ご不便・ご不快をおかけし、申し訳ありません。状況をくわしく伺いたいので、公式サイトのお問い合わせからご連絡いただけますか。オーナーが直接お返事します。",
+        "angryTemplateEn": "We're sorry this fell short. Could you reach us through the contact form on our site with the details? The owner will reply personally.",
+        "spam": "Moderation Basic + hold comments with links; hide repeat spammers.",
+        "features": ["Hold: None / Basic / Strict / Hold all", "Blocked words", "Hold comments with links", "Hidden users", "Approved users", "Pause or turn off comments"]
+      },
+      "sources": ["https://support.google.com/youtube/answer/10059070", "https://support.google.com/youtube/answer/6390658", "https://support.google.com/youtube/answer/9483359", "https://support.google.com/youtube/answer/14075157", "https://blog.youtube/creator-and-artist-stories/your-guide-to-getting-started-with-youtube-shorts/"]
+    },
+    {
+      "id": "tiktok",
+      "role": "Reach for under-35s; search-led discovery.",
+      "format": { "maxSec": 600, "idealSec": [15, 25], "aspect": "9:16", "hook": "Proposition in 3 s, hook within 6 s; motion + one short text line; sound on." },
+      "caption": {
+        "maxChars": 4000,
+        "idealChars": 150,
+        "languages": ["ja", "en"],
+        "cta": "「嬬恋牧場」で検索 / プロフィールから",
+        "linkInCaption": false,
+        "avoid": ["URLs (not clickable)", "Bio links before business registration/verification", "Reposts with other apps' watermarks", "Non-Commercial-Library music on a business account", "Misleading claims"]
+      },
+      "hashtags": { "min": 3, "max": 5, "mix": "broad + niche + local + brand; put search words in the caption too", "examples": ["#キャンプ", "#車中泊", "#群馬キャンプ", "#嬬恋", "#tsumagoicamp"] },
+      "times": { "bestJst": ["19:00", "21:00"], "cadencePerWeek": 7 },
+      "profile": {
+        "nameMax": null,
+        "bioMax": 80,
+        "linkSlot": "Website link only for a registered/verified business",
+        "pin": "Pin the best-performing reel [unverified: up to 3]",
+        "tips": ["Username change once per 30 days", "Check TikTok Studio > Analytics > Followers for active hours", "Use Creator Search Insights content gaps"]
+      },
+      "community": {
+        "replyWithinHours": 24,
+        "tone": "Casual, friendly, quick; answer good questions with a video reply.",
+        "angryTemplateJa": "ご不便・ご不快をおかけし、申し訳ありません。状況をくわしく伺いたいので、DMでご連絡いただけますか。オーナーが直接お返事します。",
+        "angryTemplateEn": "We're sorry this fell short. Could you DM us the details? The owner will reply personally.",
+        "spam": "Turn on spam/offensive filter and keyword filter; review filtered comments weekly.",
+        "features": ["Filter all comments", "Filter keywords", "Filter spam and offensive comments", "Creator Care Mode", "Review filtered comments", "Bulk delete up to 100"]
+      },
+      "sources": ["https://ads.tiktok.com/help/article/creative-best-practices", "https://newsroom.tiktok.com/en-us/how-tiktok-recommends-videos-for-you", "https://support.tiktok.com/en/using-tiktok/growing-your-audience/creator-search-insights", "https://www.tiktok.com/support/faq_detail?category=web_using_tiktok&id=7636676985892739605", "https://ads.tiktok.com/help/article/about-tiktok-account-entitlements"]
+    },
+    {
+      "id": "x",
+      "role": "The owner's own voice; news and conversation.",
+      "format": { "maxSec": 140, "idealSec": [8, 15], "aspect": "16:9", "hook": "Movement and brand in the first 3 s; burnt captions for sound-off." },
+      "caption": {
+        "maxChars": 280,
+        "idealChars": 120,
+        "languages": ["ja"],
+        "cta": "One link in the post.",
+        "linkInCaption": true,
+        "avoid": ["Japanese counts 2 per char (140 max)", "Every URL counts 23", "More than 2 hashtags"]
+      },
+      "hashtags": { "min": 1, "max": 2, "mix": "1 local + 1 topic", "examples": ["#嬬恋", "#キャンプ"] },
+      "times": { "bestJst": ["12:00", "19:00"], "cadencePerWeek": 7 },
+      "profile": {
+        "nameMax": null,
+        "bioMax": 160,
+        "linkSlot": "1 website field",
+        "pin": "Pin the best reel with the booking link",
+        "tips": ["Personal account: first person, not ad copy"]
+      },
+      "community": {
+        "replyWithinHours": 24,
+        "tone": "Personal, plain, never sarcastic.",
+        "angryTemplateJa": "ご不便・ご不快をおかけし、申し訳ありません。状況をくわしく伺いたいので、DMでご連絡いただけますか。直接お返事します。",
+        "angryTemplateEn": "Sorry this fell short. Could you DM me the details? I'll reply personally.",
+        "spam": "Hide spam replies, mute words, block repeat accounts; report impersonation.",
+        "features": ["Hide replies", "Who can reply (Everyone / Follow / Mentioned / Verified)", "Muted words", "Block", "Report"]
+      },
+      "sources": ["https://docs.x.com/fundamentals/counting-characters", "https://help.x.com/en/using-x/x-conversations", "https://help.x.com/en/resources/glossary", "https://business.x.com/en/basics/get-your-business-started-with-x", "https://business.x.com/en/advertising/creative-best-practices"]
+    },
+    {
+      "id": "facebook",
+      "role": "Older domestic audience; the Page's Book button converts.",
+      "format": { "maxSec": null, "idealSec": [30, 60], "aspect": "9:16", "hook": "Plain statement and the view in the first 3 s; burnt captions." },
+      "caption": {
+        "maxChars": null,
+        "idealChars": 200,
+        "languages": ["ja", "en"],
+        "cta": "プロフィールのボタンから予約",
+        "linkInCaption": false,
+        "avoid": ["Links in the caption", "More than 5 hashtags", "Long hashtag-heavy captions", "Captions unrelated to the video", "ALL CAPS", "Reels under 10 s"]
+      },
+      "hashtags": { "min": 0, "max": 3, "mix": "local + topic", "examples": ["#嬬恋", "#群馬", "#キャンプ"] },
+      "times": { "bestJst": ["12:00", "19:00"], "cadencePerWeek": 5 },
+      "profile": {
+        "nameMax": null,
+        "bioMax": null,
+        "linkSlot": "Action button (Book now / Learn more)",
+        "pin": "Feature one post",
+        "tips": ["Answer Messenger fast: 90%+ in under 15 min earns the Very Responsive badge"]
+      },
+      "community": {
+        "replyWithinHours": 24,
+        "tone": "Polite, warm, a little formal (です・ます).",
+        "angryTemplateJa": "ご不便・ご不快をおかけし、申し訳ありません。状況をくわしく伺いたいので、メッセージでご連絡いただけますか。オーナーが直接お返事します。",
+        "angryTemplateEn": "We're sorry this fell short. Could you message us the details? The owner will reply personally.",
+        "spam": "Profanity filter on; block keywords like 副業, 稼げる, DMください; ban repeat spammers.",
+        "features": ["Profanity filter", "Blocked keywords (up to 1,000)", "Hide comment", "Delete", "Ban"]
+      },
+      "sources": ["https://about.fb.com/news/2025/04/cracking-down-spammy-content-facebook/", "https://creators.facebook.com/blog/combating-unoriginal-content", "https://about.fb.com/news/2025/06/making-it-easier-create-videos-facebook/", "https://www.facebook.com/help/131671940241729", "https://www.facebook.com/business/help/201893553741970"]
+    },
+    {
+      "id": "threads",
+      "status": "Paused (login issue).",
+      "role": "Conversation: the text is the post, the video is proof.",
+      "format": { "maxSec": 300, "idealSec": [10, 30], "aspect": "9:16", "hook": "The first line of text; end on a question." },
+      "caption": {
+        "maxChars": 500,
+        "idealChars": 200,
+        "languages": ["ja", "en"],
+        "cta": "A question; link in the post or first reply (test both).",
+        "linkInCaption": true,
+        "avoid": ["More than 5 links", "More than 1 topic tag", "Topic tags with . or &"]
+      },
+      "hashtags": { "min": 1, "max": 1, "mix": "exactly one topic tag", "examples": ["キャンプ", "車中泊"] },
+      "times": { "bestJst": ["19:00"], "cadencePerWeek": 7 },
+      "profile": {
+        "nameMax": null,
+        "bioMax": null,
+        "linkSlot": "Up to 5 bio links",
+        "pin": "Pin one post [unverified]",
+        "tips": ["Name/username sync from Instagram", "Up to 10 profile topics (test)"]
+      },
+      "community": {
+        "replyWithinHours": 24,
+        "tone": "Chatty, first person, answer every reply early.",
+        "angryTemplateJa": "ご不便・ご不快をおかけし、申し訳ありません。状況をくわしく伺いたいので、DMでご連絡いただけますか。オーナーが直接お返事します。",
+        "angryTemplateEn": "We're sorry this fell short. Could you DM us the details? The owner will reply personally.",
+        "spam": "Keep Hidden Words on; add custom filters; hide for everyone.",
+        "features": ["Hidden Words (default on)", "Up to 10 custom filters", "Hide for everyone", "Reply options (Anyone / Followers / You follow / Mentioned)", "Reply approvals"]
+      },
+      "sources": ["https://developers.facebook.com/documentation/threads/posts", "https://about.fb.com/news/2025/03/new-threads-features-more-personalized-experience-you-control/", "https://www.threads.com/@threads/post/DLXyw4ugHwu", "https://help.instagram.com/771310471063900"]
+    },
+    {
+      "id": "bluesky",
+      "role": "Small English/tech audience; build in public.",
+      "format": { "maxSec": 180, "idealSec": [10, 30], "aspect": "16:9", "hook": "Movement in the first 2 s; sound-off captions." },
+      "caption": {
+        "maxChars": 300,
+        "idealChars": 200,
+        "languages": ["ja", "en"],
+        "cta": "Link in the post.",
+        "linkInCaption": true,
+        "avoid": ["Over 300 graphemes", "Missing post language (set ja/en)"]
+      },
+      "hashtags": { "min": 0, "max": 2, "mix": "topic only", "examples": ["#キャンプ", "#Japan"] },
+      "times": { "bestJst": ["19:00", "08:00"], "cadencePerWeek": 7 },
+      "profile": {
+        "nameMax": 64,
+        "bioMax": 256,
+        "linkSlot": "Website field + up to 10 links",
+        "pin": "1 pinned post",
+        "tips": ["08:00 JST only for English posts (US evening) [unverified]"]
+      },
+      "community": {
+        "replyWithinHours": 24,
+        "tone": "Plain, transparent, a little nerdy.",
+        "angryTemplateJa": "ご不便・ご不快をおかけし、申し訳ありません。状況をくわしく伺いたいので、DMでご連絡いただけますか。オーナーが直接お返事します。",
+        "angryTemplateEn": "We're sorry this fell short. Could you DM us the details? The owner will reply personally.",
+        "spam": "Hide reply, block, subscribe to a trusted moderation list.",
+        "features": ["Hide reply", "Reply controls (threadgate)", "Muted words and tags", "Block / mute", "Moderation lists", "Labelers"]
+      },
+      "sources": ["https://github.com/bluesky-social/bsky/blob/main/lexicons/app/bsky/feed/post.json", "https://github.com/bluesky-social/bsky/blob/main/lexicons/app/bsky/actor/profile.json", "https://bsky.social/about/blog/08-28-2024-anti-toxicity-features", "https://docs.bsky.app/docs/advanced-guides/moderation"]
+    },
+    {
+      "id": "linkedin",
+      "role": "B2B: team offsites and buyouts (/events).",
+      "format": { "maxSec": 900, "idealSec": [30, 60], "aspect": "4:5", "hook": "A number first: 1,444 m / 50名まで / 光回線." },
+      "caption": {
+        "maxChars": 3000,
+        "idealChars": 600,
+        "languages": ["ja", "en"],
+        "cta": "Link to /events in the post.",
+        "linkInCaption": true,
+        "avoid": ["Automation or scheduling bots (may limit visibility)", "Prices on screen", "Hashtag walls"]
+      },
+      "hashtags": { "min": 0, "max": 3, "mix": "topic only", "examples": ["#ワーケーション", "#オフサイト", "#チームビルディング"] },
+      "times": { "bestJst": ["Sun 19:00", "Tue 08:00"], "cadencePerWeek": 1 },
+      "profile": {
+        "nameMax": null,
+        "bioMax": 2600,
+        "linkSlot": "Featured section (/events)",
+        "pin": "Feature the offsite post",
+        "tips": ["Headline 220 chars [unverified]", "Post from the owner's profile; the Page reshares"]
+      },
+      "community": {
+        "replyWithinHours": 24,
+        "tone": "Professional, concrete, owner's own name.",
+        "angryTemplateJa": "ご不便・ご不快をおかけし、申し訳ありません。状況をくわしく伺いたいので、メッセージでご連絡いただけますか。直接お返事します。",
+        "angryTemplateEn": "I'm sorry this fell short. Could you message me the details? I'll reply personally.",
+        "spam": "Delete or report; never turn comments off afterwards (it deletes them all).",
+        "features": ["Comment control (Anyone / Connections / Off)", "Turning off later deletes existing comments", "Delete comment", "Report"]
+      },
+      "sources": ["https://www.linkedin.com/help/linkedin/answer/a528176", "https://www.linkedin.com/help/linkedin/answer/a523384/", "https://www.linkedin.com/business/talent/blog/product-tips/linkedin-profile-summaries-that-we-love-and-how-to-boost-your-own"]
+    },
+    {
+      "id": "gbp",
+      "role": "High-intent people on Maps/Search deciding where to stay.",
+      "format": { "maxSec": 30, "idealSec": [10, 30], "aspect": "16:9", "hook": "The place itself; no text needed." },
+      "caption": {
+        "maxChars": null,
+        "idealChars": 300,
+        "languages": ["ja"],
+        "cta": "Post button: 予約 (Book).",
+        "linkInCaption": false,
+        "avoid": ["Phone numbers in post text", "Misspellings, filler, gimmick characters", "Stock photos", "Hashtags (no effect)"]
+      },
+      "hashtags": { "min": 0, "max": 0, "mix": "none", "examples": [] },
+      "times": { "bestJst": ["Fri 12:00"], "cadencePerWeek": 1 },
+      "profile": {
+        "nameMax": null,
+        "bioMax": null,
+        "linkSlot": "Website + booking link (not in the description)",
+        "pin": "None; posts archive after 6 months",
+        "tips": ["Name = real-world name only, no keywords", "Description: no links, promos or prices", "Never offer anything for reviews"]
+      },
+      "community": {
+        "replyWithinHours": 48,
+        "tone": "Polite, short, specific; apologise when due; no promotions.",
+        "angryTemplateJa": "このたびはご不便をおかけし、申し訳ありません。ご指摘の点は確認のうえ改善いたします。よろしければ公式サイトのお問い合わせから詳しくお聞かせください。",
+        "angryTemplateEn": "We're sorry for the trouble. We're looking into what you raised. If you can, please tell us more through the contact form on our website.",
+        "spam": "Flag reviews that break policy; never argue or reveal guest details.",
+        "features": ["Public reply (checked before it shows, 10 min to 30 days)", "Flag review", "Reviewer is notified and can edit"]
+      },
+      "sources": ["https://support.google.com/business/answer/7390603", "https://support.google.com/business/answer/7342169", "https://support.google.com/business/answer/3474050", "https://support.google.com/business/answer/3474122", "https://support.google.com/business/answer/3038177"]
+    },
+    {
+      "id": "line-voom",
+      "status": "LINE VOOM ended 2026-09-30. Use LINE OA 投稿 > ショート動画投稿.",
+      "role": "Feed post to LINE users (Home tab, post list, business profile).",
+      "format": { "maxSec": 1200, "idealSec": [15, 30], "aspect": "9:16", "hook": "Big, bright first frame; thumbnail is 1:1." },
+      "caption": {
+        "maxChars": 10000,
+        "idealChars": 120,
+        "languages": ["ja"],
+        "cta": "Short line + booking link.",
+        "linkInCaption": true,
+        "avoid": ["Publishing before checking (published posts cannot be edited)", "Unlabelled AI-made media (tick AIで生成したコンテンツ)", "Other networks' IDs [unverified]"]
+      },
+      "hashtags": { "min": 0, "max": 2, "mix": "local [unverified effect]", "examples": ["#嬬恋", "#キャンプ"] },
+      "times": { "bestJst": ["19:00", "21:00"], "cadencePerWeek": 7 },
+      "profile": {
+        "nameMax": null,
+        "bioMax": 60,
+        "linkSlot": "Business profile buttons",
+        "pin": "Posts appear on the business profile automatically",
+        "tips": ["Video ≤500 MB, thumbnail 1:1 ≤10 MB", "Old VOOM posts do not carry over"]
+      },
+      "community": {
+        "replyWithinHours": 24,
+        "tone": "Friendly, polite.",
+        "angryTemplateJa": "ご不便・ご不快をおかけし、申し訳ありません。状況をくわしく伺いたいので、トークでご連絡いただけますか。オーナーが直接お返事します。",
+        "angryTemplateEn": "We're sorry this fell short. Could you send us the details in chat? The owner will reply personally.",
+        "spam": "Report through the platform; no comment controls documented for 投稿.",
+        "features": ["Schedule", "Unpublish / delete", "Copy post URL"]
+      },
+      "sources": ["https://www.lycbiz.com/jp/news/line-official-account/20260715/", "https://www.lycbiz.com/jp/news/line-official-account/20260730/", "https://www.lycbiz.com/jp/manual/OfficialAccountManager/posts/"]
+    },
+    {
+      "id": "line-oa",
+      "role": "Retention: messages to people who already follow the ranch.",
+      "format": { "maxSec": null, "idealSec": [15, 30], "aspect": "9:16", "hook": "One clear piece of news." },
+      "caption": {
+        "maxChars": null,
+        "idealChars": 100,
+        "languages": ["ja"],
+        "cta": "One link.",
+        "linkInCaption": true,
+        "avoid": ["Broadcasting every reel (200 msgs/month on the free plan)", "More than 3 bubbles per send"]
+      },
+      "hashtags": { "min": 0, "max": 0, "mix": "none", "examples": [] },
+      "times": { "bestJst": ["Sat 10:00"], "cadencePerWeek": 1 },
+      "profile": {
+        "nameMax": null,
+        "bioMax": 60,
+        "linkSlot": "Profile buttons, rich menu, greeting message",
+        "pin": "Rich menu: 予約",
+        "tips": ["Free plan: 200 msgs/month = sends x friends (17 friends = 11 sends)", "Light plan: 5,000 msgs", "Name cannot change once verified"]
+      },
+      "community": {
+        "replyWithinHours": 12,
+        "tone": "Personal, polite; chat is 1:1.",
+        "angryTemplateJa": "ご不便・ご不快をおかけし、申し訳ありません。状況をくわしく伺えますか。オーナーが直接お返事します。",
+        "angryTemplateEn": "We're sorry this fell short. Could you tell us more here? The owner will reply personally.",
+        "spam": "Block the user in chat.",
+        "features": ["1:1 chat", "Auto-reply (free)", "Block user"]
+      },
+      "sources": ["https://www.lycbiz.com/jp/service/line-official-account/plan/", "https://www.lycbiz.com/jp/manual/OfficialAccountManager/profile/"]
+    },
+    {
+      "id": "pinterest",
+      "role": "Trip planning and inspiration; the Pin carries the link for months.",
+      "format": { "maxSec": 300, "idealSec": [6, 15], "aspect": "9:16", "hook": "Beautiful first frame; keep text in the safe zone." },
+      "caption": {
+        "maxChars": 800,
+        "idealChars": 250,
+        "languages": ["ja", "en"],
+        "cta": "The Pin link to /reserve.",
+        "linkInCaption": true,
+        "avoid": ["Titles over 40 chars of key words (only ~40 show)", "Hashtag blocks instead of keywords", "Text outside the safe zone"]
+      },
+      "hashtags": { "min": 0, "max": 2, "mix": "keywords in title + description instead", "examples": ["群馬 キャンプ場", "Japan camping", "#嬬恋"] },
+      "times": { "bestJst": ["21:00"], "cadencePerWeek": 5 },
+      "profile": {
+        "nameMax": null,
+        "bioMax": null,
+        "linkSlot": "Each Pin's link; claim the website [unverified]",
+        "pin": "Board covers",
+        "tips": ["Title ≤100 chars", "Give each board a title and description", "Always add topics"]
+      },
+      "community": {
+        "replyWithinHours": 48,
+        "tone": "Helpful, short.",
+        "angryTemplateJa": "ご不便・ご不快をおかけし、申し訳ありません。公式サイトのお問い合わせから詳しくお聞かせいただけますか。オーナーが直接お返事します。",
+        "angryTemplateEn": "We're sorry this fell short. Could you tell us more through our website's contact form? The owner will reply personally.",
+        "spam": "Delete and report spam comments.",
+        "features": ["Comments on/off per Pin [unverified]", "Delete / report comment"]
+      },
+      "sources": ["https://help.pinterest.com/en/article/review-pin-specs", "https://business.pinterest.com/blog/how-to-build-audience-pinterest/"]
+    },
+    {
+      "id": "xiaohongshu",
+      "role": "Pre-trip and in-trip planning for Chinese visitors to Japan; trust first, no direct booking.",
+      "format": { "maxSec": 900, "idealSec": [15, 45], "aspect": "3:4", "hook": "Cover photo + 4-8 big Chinese characters; image notes (图文) first." },
+      "caption": {
+        "maxChars": 1000,
+        "idealChars": 400,
+        "languages": ["zh-Hans"],
+        "cta": "收藏 / 评论区问我 (no outside route).",
+        "linkInCaption": false,
+        "avoid": ["Links, QR codes, other apps' watermarks", "WeChat/LINE/IG IDs, phone, e-mail (notes, comments, profile)", "'Search us on…' or 'book on our site' wording", "Superlatives 最/第一/最佳 (广告法 §9)", "Exaggerated titles or covers", "Unlabelled AI content", "Titles over 20 chars [unverified]"]
+      },
+      "hashtags": { "min": 5, "max": 10, "mix": "broad travel + Japan region + niche (露营/车中泊) + place", "examples": ["#日本旅行", "#日本露营", "#日本自驾游", "#群马", "#嬬恋村", "#轻井泽周边", "#日本小众景点"] },
+      "times": { "bestJst": ["21:00", "22:00"], "cadencePerWeek": 3 },
+      "profile": {
+        "nameMax": null,
+        "bioMax": null,
+        "linkSlot": "None (no links or IDs allowed)",
+        "pin": "Pin the access / price guide note [unverified]",
+        "tips": ["专业号 verification ¥600/yr, ~3 working days", "Overseas-company eligibility [unverified]", "Use the Chinese name 嬬恋牧场 so people can search maps", "Native speaker checks every note"]
+      },
+      "community": {
+        "replyWithinHours": 24,
+        "tone": "Friendly, honest, practical (种草, not ads).",
+        "angryTemplateJa": "（中国語で返信）ご不便をおかけし申し訳ありません。詳しくは私信でお聞かせください。",
+        "angryTemplateEn": "Sorry for the trouble. Could you send us a private message (私信) with the details? We'll reply there.",
+        "angryTemplateZh": "非常抱歉给你带来不好的体验。方便的话请私信我们具体情况，我们会认真回复。（发布前请母语者确认）",
+        "spam": "Never answer with outside contact details; report spam and scams in-app.",
+        "features": ["私信 (in-app DM)", "Report", "Comment controls [unverified]"]
+      },
+      "sources": ["https://m.gmw.cn/2025-03/12/content_1303989067.htm", "https://pgy.xiaohongshu.com/help/detail?id=1eda0a065dd894063c2e029a49e8f6a1&userType=4", "https://school.xiaohongshu.com/helper/detail/1330", "https://dentsu-ho.com/en/articles/9304", "http://www.npc.gov.cn/zgrdw/npc//xinwen/2018-11/05/content_2065663.htm"]
+    }
+  ]
+}

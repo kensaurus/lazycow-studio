@@ -1,0 +1,7 @@
+; Lazycow Studio
+; In 1997 this file made the CD start by itself. Windows stopped doing that years ago,
+; so it does nothing now. It is here for nostalgia. Read README.TXT, then double-click Start Lazycow.
+[autorun]
+open=Start Lazycow.cmd
+icon=server\brand\favicon.ico
+label=LAZYCOW STUDIO

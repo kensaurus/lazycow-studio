@@ -1,0 +1,16 @@
+# Studio venv. Python 3.13 on this PC (3.12 is only required for the optional gfx1030 ROCm wheel).
+numpy>=2.0
+pillow>=11.0
+opencv-python-headless>=4.10
+scenedetect>=0.6.4
+colour-science>=0.4.6
+pytest>=8.0
+certifi>=2026.1
+librosa>=0.10
+soundfile>=0.12
+pillow-heif>=1.0
+rawpy>=0.24
+cryptography>=44  # ES256 keys for Sign in with Bluesky (DPoP)
+# Installed separately from the CPU index so pip does not pull a CUDA wheel:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   pip install open_clip_torch

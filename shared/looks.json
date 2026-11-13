@@ -1,0 +1,152 @@
+{
+  "_note": "Picture looks and word recipes for Story (src/looks.tsx). A project's `look` / `recipe` / `kicker` / `loop` choose them; a theme in py/studio/assemble.py sets the defaults. Research: docs/research/2026-11-08-reel-effects.md. Motion is transform and opacity only.",
+  "looks": {
+    "film": {
+      "label": "Film",
+      "ja": "フィルム",
+      "what": "16 mm grain that moves every frame, a warm light leak that blooms on each cut, a little gate weave and a soft vignette."
+    },
+    "punch": {
+      "label": "Punch",
+      "ja": "パンチ",
+      "what": "Hard cuts that punch in and slide from alternating sides, a speed ramp (fast into the shot, then slow) on video, and a paper flash on each caption cut."
+    },
+    "split": {
+      "label": "Split",
+      "ja": "スプリット",
+      "what": "Shots play in pairs on a split screen (top and bottom on tall canvases, left and right on wide) at slow motion, wiped in, with each half's season from its capture date."
+    },
+    "ember": {
+      "label": "Ember",
+      "ja": "残り火",
+      "what": "Night mood: firelight that flickers from below, sparks drifting up, a deep vignette."
+    },
+    "whip": {
+      "label": "Whip",
+      "ja": "ウィップ",
+      "what": "Each shot throws the next one in: a fast blurred pan, left, right, up or down."
+    },
+    "zoom": {
+      "label": "Zoom through",
+      "ja": "ズーム",
+      "what": "The camera seems to fly through one shot into the next."
+    },
+    "ridge": {
+      "label": "Ridge",
+      "ja": "稜線",
+      "what": "The next shot rises from below behind a mountain line, a different ridge each cut."
+    },
+    "slats": {
+      "label": "Slats",
+      "ja": "スラット",
+      "what": "The next shot opens through seven bars, one after another, like a blind."
+    },
+    "iris": {
+      "label": "Iris",
+      "ja": "アイリス",
+      "what": "The next shot opens from a circle at the centre of the frame."
+    },
+    "jump": {
+      "label": "Jump",
+      "ja": "ジャンプ",
+      "what": "Hard cuts, and an overlapping jump cut inside each shot: it steps back a moment and punches in."
+    },
+    "mono": {
+      "label": "Colour flood",
+      "ja": "モノクロ",
+      "what": "Every shot opens in black and white, then the colour floods in."
+    },
+    "pulse": {
+      "label": "Pulse",
+      "ja": "パルス",
+      "what": "Hard cuts, and the picture leans in on every half second."
+    },
+    "mix": {
+      "label": "Mix",
+      "ja": "ミックス",
+      "what": "A different cut every time: whip, ridge, zoom, slats, iris and hard cuts, so the rhythm keeps changing."
+    },
+    "spin": {
+      "label": "Spin",
+      "ja": "スピン",
+      "what": "Each shot twists and spins into the next."
+    },
+    "cube": {
+      "label": "Cube",
+      "ja": "キューブ",
+      "what": "The shots are the faces of a box that turns."
+    },
+    "glitch": {
+      "label": "Glitch",
+      "ja": "グリッチ",
+      "what": "The colour channels tear apart for a moment on each cut."
+    },
+    "burn": {
+      "label": "Film burn",
+      "ja": "フィルム焼け",
+      "what": "A hot orange burn blooms across each cut."
+    },
+    "bars": {
+      "label": "Shutter",
+      "ja": "シャッター",
+      "what": "Black bars close like an eyelid and open on the next shot."
+    },
+    "window": {
+      "label": "Window",
+      "ja": "ウィンドウ",
+      "what": "The next shot starts as a small rounded card and grows to fill the frame."
+    },
+    "print": {
+      "label": "Photo dump",
+      "ja": "フォトダンプ",
+      "what": "Each shot lands as a tilted print on a growing pile."
+    },
+    "steps": {
+      "label": "Stop-motion",
+      "ja": "コマ撮り",
+      "what": "The picture changes only every fourth frame, like stop-motion."
+    },
+    "hold": {
+      "label": "Freeze",
+      "ja": "フリーズ",
+      "what": "Each shot stops on a freeze-frame that drains of colour, then a hard cut breaks it."
+    },
+    "mirror": {
+      "label": "Mirror",
+      "ja": "ミラー",
+      "what": "The frame folds onto itself, left against right, then top against bottom. Landscapes only: it folds people in two, so it is never picked at random."
+    },
+    "impact": {
+      "label": "Impact",
+      "ja": "インパクト",
+      "what": "Hard cuts that land too close and shake into place."
+    },
+    "letters": {
+      "label": "Through the words",
+      "ja": "文字抜き",
+      "what": "The reel opens inside the letters of its headline, then flies through them into the picture."
+    }
+  },
+  "recipes": {
+    "countdown": {
+      "label": "Countdown",
+      "ja": "カウントダウン",
+      "what": "A kicker over the headline, then each proof line arrives with a giant outlined number, counting down to 1."
+    },
+    "timeline": {
+      "label": "A day",
+      "ja": "一日",
+      "what": "Shots run morning to night; a rail across the frame marks 朝 昼 夕 夜 from each clip's own capture time and darkness."
+    },
+    "pov": {
+      "label": "POV",
+      "ja": "POV",
+      "what": "The kicker and headline are typed out with a blinking caret, like a note on a phone."
+    },
+    "altitude": {
+      "label": "Altitude",
+      "ja": "標高",
+      "what": "The headline is a counter that climbs to the approved altitude line (標高1,444m) while the shot rises."
+    }
+  }
+}

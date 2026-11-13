@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem
+    url: https://github.com/kensaurus/lazycow-studio/security/advisories/new
+    about: Report it privately (SECURITY.md). Please do not open a public issue.
+  - name: User guide
+    url: https://github.com/kensaurus/lazycow-studio/blob/main/docs/user-guide.md
+    about: How to make, review and post reels, step by step.

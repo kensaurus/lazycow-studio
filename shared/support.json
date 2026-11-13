@@ -1,0 +1,19 @@
+{
+  "_documentation": {
+    "FILE": "shared/support.json",
+    "PURPOSE": "Where people pay for Lazycow Studio's development: one place for the links the About window, README, SUPPORTING.md and .github/FUNDING.yml show.",
+    "NOTES": "Stripe Payment Links on the kensaurus合同会社 account (live, Stripe Tax on, tax-inclusive prices). Not a donation: Stripe Japan does not allow donations to a company without a gift agreement, so these are paid plans with small, real benefits (SUPPORTING.md). Changing a price means a new Stripe price and link; update this file and SUPPORTING.md together."
+  },
+  "legal": "https://kensaur.us/tokushoho/",
+  "manage": "https://billing.stripe.com/p/login/7sY8wRa2QctW0I85HMbII00",
+  "once": {
+    "jpy": "https://buy.stripe.com/28E4gB2AoalOaiIc6abII0c",
+    "usd": "https://buy.stripe.com/14A5kFa2Q0LeaiIeeibII0d"
+  },
+  "monthly": [
+    { "id": "supporter", "name": "Supporter", "ja": "サポーター", "jpy": 500, "usd": 4, "url": "https://buy.stripe.com/cNifZj8YM0Le1McgmqbII0e" },
+    { "id": "backer", "name": "Backer", "ja": "バッカー", "jpy": 1500, "usd": 10, "url": "https://buy.stripe.com/00w00l2Ao0LecqQb26bII0f" },
+    { "id": "sponsor", "name": "Sponsor", "ja": "スポンサー", "jpy": 5000, "usd": 35, "url": "https://buy.stripe.com/6oU6oJ3Es2TmduUgmqbII0g" }
+  ],
+  "sponsors": []
+}

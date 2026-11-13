@@ -1,0 +1,55 @@
+{
+  "themes": {
+    "lunch": {
+      "title": "Lunch above the clouds",
+      "hook": {
+        "ja": "雲の上で、\nランチを。",
+        "en": "Lunch above the clouds."
+      },
+      "lines": [
+        {
+          "ja": "席は12だけ。",
+          "en": "Only twelve seats."
+        },
+        {
+          "ja": "パンは毎朝焼きます。",
+          "en": "Bread baked every morning."
+        }
+      ],
+      "shots": [
+        "a cafe table by a window",
+        "bread on a wooden board",
+        "a cup of coffee",
+        "a view of clouds",
+        "a chef cooking"
+      ],
+      "tags": [
+        "#lunch"
+      ],
+      "style": "lower"
+    },
+    "morning": {
+      "title": "First coffee",
+      "hook": {
+        "ja": "朝は、\nコーヒーから。",
+        "en": "Mornings start with coffee."
+      },
+      "lines": [
+        {
+          "ja": "豆は近所で焙煎。",
+          "en": "Beans roasted down the street."
+        }
+      ],
+      "shots": [
+        "pouring coffee",
+        "steam from a cup",
+        "a window in morning light",
+        "a pastry on a plate"
+      ],
+      "tags": [
+        "#coffee"
+      ],
+      "style": "column"
+    }
+  }
+}

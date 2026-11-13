@@ -1,0 +1,66 @@
+{
+  "name": "lazycow",
+  "version": "0.14.0",
+  "description": "Lazycow Studio by kensaurus: MCP server, API client and one-line installer for the local-first video studio that turns your footage into reels and trip films.",
+  "keywords": [
+    "lazycow",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "claude",
+    "cursor",
+    "ai-agent",
+    "video",
+    "reels",
+    "shorts",
+    "youtube",
+    "social-media",
+    "scheduler",
+    "local-first",
+    "remotion",
+    "kensaurus"
+  ],
+  "author": "kensaurus (Kenji Sakuramoto) (https://kensaur.us)",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/kensaurus/lazycow-studio#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kensaurus/lazycow-studio.git",
+    "directory": "packages/lazycow"
+  },
+  "bugs": {
+    "url": "https://github.com/kensaurus/lazycow-studio/issues"
+  },
+  "funding": {
+    "type": "individual",
+    "url": "https://github.com/kensaurus/lazycow-studio/blob/main/SUPPORTING.md"
+  },
+  "mcpName": "io.github.kensaurus/lazycow",
+  "type": "module",
+  "bin": {
+    "lazycow": "bin/lazycow.mjs"
+  },
+  "main": "./lib/client.mjs",
+  "types": "./lib/client.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/client.d.ts",
+      "default": "./lib/client.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "server.json",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

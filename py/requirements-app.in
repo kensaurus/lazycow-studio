@@ -1,0 +1,16 @@
+# What the packaged studio installs (the double-click setup, scripts/bootstrap). Pinned to the versions the studio is
+# tested with; the lock files next to this one add every dependency with its hash. Re-lock: scripts/bootstrap/README.md.
+numpy==2.5.4
+pillow==13.0.0
+opencv-python-headless==5.0.0.93
+scenedetect==0.7.2
+colour-science==0.4.7
+certifi==2026.10.23
+librosa==1.0.0
+soundfile==0.14.0
+pillow-heif==1.8.1
+rawpy==0.28.0
+cryptography==50.0.2
+torch==2.15.0
+torchvision==0.29.2
+open_clip_torch==4.2.1

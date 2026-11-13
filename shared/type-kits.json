@@ -1,0 +1,57 @@
+{
+  "_": "A reel's type pairing, colours, how its words arrive, and its colour grade. Read by src/typekit.ts (render), py/studio/typekits.py (each new reel draws one of each, seeded, avoiding what the last reels used), server/editor.html (the reel editor's pickers) and the tests. The first entry of each list is the house style: a reel without these fields renders exactly as before. Fonts live in public/fonts with their OFL licences. enScale makes an English face fill the width Cormorant does (measured with canvas measureText on one sentence). weight: how often a new reel draws it.",
+  "kits": [
+    { "id": "house", "en": "Mincho classic", "ja": "明朝クラシック", "weight": 3,
+      "jaFamily": "Shippori Mincho", "jaFaces": [["ShipporiMincho-Bold.ttf", "700"], ["ShipporiMincho-Medium.ttf", "500"]], "hookWeight": 700, "lineWeight": 500,
+      "enFamily": "Cormorant", "enFaces": [["CormorantGaramond-Italic.ttf", "300 700", "italic"]], "enItalic": true, "enWeight": 500, "enScale": 1 },
+    { "id": "editorial", "en": "Editorial", "ja": "エディトリアル", "weight": 2,
+      "jaFamily": "Zen Old Mincho", "jaFaces": [["ZenOldMincho-Bold.ttf", "700"], ["ZenOldMincho-Medium.ttf", "500"]], "hookWeight": 700, "lineWeight": 500,
+      "enFamily": "Playfair Display", "enFaces": [["PlayfairDisplay-Italic.ttf", "400 900", "italic"]], "enItalic": true, "enWeight": 500, "enScale": 0.83 },
+    { "id": "modern", "en": "Clean gothic", "ja": "すっきりゴシック", "weight": 2,
+      "jaFamily": "Zen Kaku Gothic New", "jaFaces": [["ZenKakuGothicNew-Bold.ttf", "700"], ["ZenKakuGothicNew-Medium.ttf", "500"]], "hookWeight": 700, "lineWeight": 500,
+      "enFamily": "DM Sans", "enFaces": [["DMSans.ttf", "100 1000"]], "enItalic": false, "enWeight": 500, "enScale": 0.84 },
+    { "id": "soft", "en": "Soft rounded", "ja": "やわらか丸ゴシック", "weight": 2,
+      "jaFamily": "Zen Maru Gothic", "jaFaces": [["ZenMaruGothic-Bold.ttf", "700"], ["ZenMaruGothic-Medium.ttf", "500"]], "hookWeight": 700, "lineWeight": 500,
+      "enFamily": "Jost", "enFaces": [["Jost.ttf", "100 900"]], "enItalic": false, "enWeight": 400, "enScale": 0.81 },
+    { "id": "poster", "en": "Bold poster", "ja": "ポスター", "weight": 1.5,
+      "jaFamily": "Dela Gothic One", "jaFaces": [["DelaGothicOne-Regular.ttf", "400"]], "hookWeight": 400, "lineWeight": 400,
+      "enFamily": "Bebas Neue", "enFaces": [["BebasNeue-Regular.ttf", "400"]], "enItalic": false, "enWeight": 400, "enScale": 1, "enUpper": true, "enTrack": "0.04em" },
+    { "id": "journal", "en": "Handwritten journal", "ja": "手書きの日記", "weight": 1.5,
+      "jaFamily": "Klee One", "jaFaces": [["KleeOne-SemiBold.ttf", "600"]], "hookWeight": 600, "lineWeight": 600,
+      "enFamily": "Caveat", "enFaces": [["Caveat.ttf", "400 700"]], "enItalic": false, "enWeight": 600, "enScale": 1.06 },
+    { "id": "brush", "en": "Brush", "ja": "筆文字", "weight": 1.5,
+      "jaFamily": "Yuji Syuku", "jaFaces": [["YujiSyuku-Regular.ttf", "400"]], "hookWeight": 400, "lineWeight": 400,
+      "enFamily": "Fraunces", "enFaces": [["Fraunces-Italic.ttf", "100 900", "italic"]], "enItalic": true, "enWeight": 400, "enScale": 0.98 },
+    { "id": "decor", "en": "Decorative", "ja": "装飾", "weight": 1,
+      "jaFamily": "Kaisei Decol", "jaFaces": [["KaiseiDecol-Bold.ttf", "700"]], "hookWeight": 700, "lineWeight": 700,
+      "enFamily": "Bodoni Moda", "enFaces": [["BodoniModa.ttf", "400 900"]], "enItalic": false, "enWeight": 500, "enScale": 0.77 },
+    { "id": "sport", "en": "Condensed sport", "ja": "コンデンス", "weight": 1,
+      "jaFamily": "Zen Kaku Gothic New", "jaFaces": [["ZenKakuGothicNew-Bold.ttf", "700"], ["ZenKakuGothicNew-Medium.ttf", "500"]], "hookWeight": 700, "lineWeight": 700,
+      "enFamily": "Barlow Condensed", "enFaces": [["BarlowCondensed-SemiBold.ttf", "600"]], "enItalic": false, "enWeight": 600, "enScale": 0.98, "enUpper": true, "enTrack": "0.06em" },
+    { "id": "pixel", "en": "Retro pixel", "ja": "レトロドット", "weight": 0.5,
+      "jaFamily": "DotGothic16", "jaFaces": [["DotGothic16-Regular.ttf", "400"]], "hookWeight": 400, "lineWeight": 400,
+      "enFamily": "VT323", "enFaces": [["VT323-Regular.ttf", "400"]], "enItalic": false, "enWeight": 400, "enScale": 0.9 }
+  ],
+  "palettes": [
+    { "id": "paper", "en": "Paper", "ja": "紙", "weight": 3, "text": "#faf8f1", "accent": "#f4c66b", "rule": "#4d6b52", "bar": "#faf8f1", "enColor": "#faf8f1" },
+    { "id": "snow", "en": "Snow and sky", "ja": "雪と空", "weight": 1.5, "text": "#ffffff", "accent": "#9fd3ff", "rule": "#9fd3ff", "bar": "#9fd3ff", "enColor": "#bfe3ff" },
+    { "id": "amber", "en": "Amber", "ja": "琥珀", "weight": 1.5, "text": "#fff1d6", "accent": "#ffb347", "rule": "#ffb347", "bar": "#ffb347", "enColor": "#ffc979" },
+    { "id": "mint", "en": "Meadow", "ja": "草原", "weight": 1.5, "text": "#f2fff6", "accent": "#8fe3b0", "rule": "#8fe3b0", "bar": "#8fe3b0", "enColor": "#a8ecc2" },
+    { "id": "coral", "en": "Sunset", "ja": "夕焼け", "weight": 1, "text": "#fff4ef", "accent": "#ff8a65", "rule": "#ff8a65", "bar": "#ff8a65", "enColor": "#ffab91" },
+    { "id": "mono", "en": "Black and white", "ja": "モノクロ", "weight": 1, "text": "#f5f5f5", "accent": "#ffffff", "rule": "#f5f5f5", "bar": "#f5f5f5", "enColor": "#d9d9d9" }
+  ],
+  "motions": [
+    { "id": "type", "en": "Typed, letter by letter", "ja": "一文字ずつ", "weight": 3 },
+    { "id": "rise", "en": "Lines rise", "ja": "行ごとに上がる", "weight": 2 },
+    { "id": "pop", "en": "Letters pop", "ja": "ポンと出る", "weight": 1.5 },
+    { "id": "blur", "en": "Out of focus into focus", "ja": "ぼかしから", "weight": 1.5 },
+    { "id": "wipe", "en": "Wiped on", "ja": "ワイプ", "weight": 1.5 }
+  ],
+  "grades": [
+    { "id": "house", "en": "House film look", "ja": "いつもの色", "weight": 3, "filter": "" },
+    { "id": "warm", "en": "Warm", "ja": "あたたかい", "weight": 1.5, "filter": "colorbalance=rs=0.03:bs=-0.03:rm=0.035:bm=-0.03:rh=0.03:bh=-0.035" },
+    { "id": "cool", "en": "Cool and clear", "ja": "すずしい", "weight": 1.5, "filter": "colorbalance=rs=-0.03:bs=0.035:rm=-0.02:bm=0.03:rh=-0.01:bh=0.02" },
+    { "id": "matte", "en": "Soft matte", "ja": "やわらかマット", "weight": 1.5, "filter": "curves=master='0/0.07 0.3/0.31 0.7/0.69 1/0.94',eq=saturation=0.9" },
+    { "id": "crisp", "en": "Crisp and vivid", "ja": "くっきり鮮やか", "weight": 1.5, "filter": "curves=master='0/0 0.25/0.21 0.5/0.5 0.75/0.8 1/1',eq=saturation=1.12" }
+  ]
+}

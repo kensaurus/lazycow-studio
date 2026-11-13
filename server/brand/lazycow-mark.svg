@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>Lazycow Studio</title>
+  <!-- Hand-drawn mark: a sleepy cow head, tilted, on a sun-yellow tile. Thick ink lines so it reads at 16 px. -->
+  <rect x="1.5" y="1.5" width="61" height="61" rx="14" fill="#FFD23F" stroke="#111" stroke-width="3"/>
+  <g transform="rotate(-14 32 36)" stroke="#111" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round">
+    <!-- horns -->
+    <path d="M19 17 Q15 10 19 7 Q21 12 24 15" fill="#FFF4D6"/>
+    <path d="M45 17 Q49 10 45 7 Q43 12 40 15" fill="#FFF4D6"/>
+    <!-- ears -->
+    <path d="M14 24 Q5 22 6 29 Q11 31 17 28" fill="#111"/>
+    <path d="M50 24 Q59 22 58 29 Q53 31 47 28" fill="#111"/>
+    <!-- head -->
+    <path d="M16 22 Q16 13 32 13 Q48 13 48 22 L49 38 Q49 46 32 46 Q15 46 15 38 Z" fill="#fff"/>
+    <!-- spot -->
+    <path d="M36 14.5 Q46 14 46.5 22 Q41 25 37 21 Q34 18 36 14.5 Z" fill="#111" stroke-width="0"/>
+    <!-- sleepy eyes -->
+    <path d="M21 29 Q24 32 27 29" fill="none"/>
+    <path d="M37 29 Q40 32 43 29" fill="none"/>
+    <!-- muzzle -->
+    <ellipse cx="32" cy="43" rx="16" ry="9.5" fill="#FF9EB8"/>
+    <ellipse cx="26.5" cy="43" rx="2" ry="2.6" fill="#111" stroke-width="0"/>
+    <ellipse cx="37.5" cy="43" rx="2" ry="2.6" fill="#111" stroke-width="0"/>
+  </g>
+  <!-- zz -->
+  <path d="M50 46 h7 l-7 7 h7" fill="none" stroke="#111" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
