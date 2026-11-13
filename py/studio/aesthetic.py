@@ -15,6 +15,8 @@ NOTES: A nudge, never a gate: the predictor was trained on photos people liked o
 """
 from __future__ import annotations
 
+import os
+
 import numpy as np
 
 from studio.config import DATA
@@ -30,12 +32,23 @@ def _head() -> tuple[np.ndarray, float] | None:
     global _W, _MISSING
     if _W is not None or _MISSING:
         return _W
-    if not HEAD.exists():
+    from studio.config import TOOLS
+
+    # A project made in the studio has its own data folder and never had the head (a trip project scored every picture
+    # a flat 4.5, 13 Nov). Look beside the shared tools too, then fetch it once (3 KB).
+    found = next((p for p in (HEAD, TOOLS / HEAD.name) if p.exists()), None)
+    if found is None and os.environ.get("STUDIO_AESTHETIC_FETCH", "1") != "0":  # tests switch the download off
+        try:
+            fetch()
+            found = HEAD if HEAD.exists() else None
+        except Exception:  # noqa: BLE001 - offline: no aesthetic score, nothing else changes
+            found = None
+    if found is None:
         _MISSING = True
         return None
     import torch
 
-    state = torch.load(str(HEAD), map_location="cpu", weights_only=True)
+    state = torch.load(str(found), map_location="cpu", weights_only=True)
     _W = (state["weight"].numpy().reshape(-1).astype("float32"), float(state["bias"].numpy().reshape(-1)[0]))
     return _W
 

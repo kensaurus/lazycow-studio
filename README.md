@@ -21,7 +21,7 @@ Lazycow Studio is made by **[kensaurus](https://kensaur.us)**. It is free and op
 
 **Who it is for:** a small hotel, guesthouse, café or shop, or a creator, with a folder of footage and no time to edit it. You do not need to code: download, unzip, double-click. It posts to YouTube, Facebook and Bluesky, and fills in the schedulers of X, TikTok, LinkedIn, Google Maps and LINE in your own Chrome.
 
-**[Download](https://github.com/kensaurus/lazycow-studio/releases/latest)** · [Quick start](#quick-start) · [Connect your AI agent](#connect-your-ai-agent) · [User guide](docs/user-guide.md) · [Support Lazycow](#support-lazycow)
+**[Download](https://github.com/kensaurus/lazycow-studio/releases/latest)** · [Quick start](#quick-start) · [Connect your AI agent](#connect-your-ai-agent) · [User guide](docs/user-guide.md) · [Support Lazycow](#support-lazycow) · [日本語](README.ja.md)
 
 ![The Reels page: four reels waiting for review, each with its first frame, its words and its booked time](docs/img/reels.webp)
 

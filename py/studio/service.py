@@ -322,9 +322,10 @@ def handle(req: dict) -> object:
     if cmd == "perf_read":  # scores and predictions read the reel list: the warm one here, not a cold process
         from studio import perf
 
-        if req.get("action") not in ("scores", "predictions"):
-            raise ValueError("action: scores or predictions")
-        return perf.run(req["action"], {})
+        if req.get("action") not in ("scores", "predictions", "get"):
+            raise ValueError("action: scores, predictions or get")
+        # get: one reel's posts and readings (Results › Latest posts asks for six; a cold process each took seconds).
+        return perf.run(req["action"], {"slug": str(req.get("slug") or "")} if req["action"] == "get" else {})
     if cmd == "live":
         from studio import live
 

@@ -200,7 +200,29 @@ def _usable(item: dict, clear: float | None = None) -> bool:
         return False
     if item.get("kind") == "video" and (item.get("duration") or 0) < 1.2:
         return False
+    # Blurry (under the trip's own sharpness floor on the whole frame AND its sharpest part) or too shaky to steady
+    # (studio.quality, measured by `python -m studio quality scan`): left out, not just ranked lower. Part 2 of the
+    # trip series used 16 of 120 shots under the trip's 20th percentile (owner, 13 Nov: "blurry photos used").
+    if _quality_no(item):
+        return False
     return bool(_day(item))
+
+
+_FLOORS: dict | None = None
+
+
+def _quality_no(item: dict) -> str | None:
+    """"blurry" / "shaky" when studio.quality's measurements say so, else None (unmeasured counts as usable)."""
+    global _FLOORS
+    from studio import quality
+
+    if not quality.load():
+        return None
+    if _FLOORS is None:
+        from studio.library import _base_items
+
+        _FLOORS = quality.floors([i for i, _ in _base_items()])
+    return quality.why_not(item, _FLOORS)
 
 
 def _score(item: dict) -> float:
@@ -1623,6 +1645,24 @@ def _part_span(s: dict) -> tuple[float, float] | None:
     return round(part[0] * seg, 2), round((part[0] + 1) * seg, 2)
 
 
+CLEAN_V = "1"  # bump when studio.quality.cleanup changes: cleaned shot files are named by it
+
+
+def _speech_in(src: Path, start: float, sec: float, duration=None) -> bool | None:
+    """Does someone speak in this stretch of the clip? From studio.speech's cache only (a build transcribes its clips
+    anyway): True / False, or None when the clip was never transcribed (then it is cleaned, never turned down)."""
+    from studio import speech
+
+    hit = speech.CACHE / f"{speech._key(src, duration)}.json"
+    if not hit.exists():
+        return None
+    try:
+        segs = json.loads(hit.read_text(encoding="utf-8")).get("segments") or []
+    except ValueError:
+        return None
+    return any(float(g.get("end", 0)) > start and float(g.get("start", 0)) < start + sec and str(g.get("text", "")).strip() for g in segs)
+
+
 def _render_one(job: tuple) -> dict:
     """One shot to 1920x1080 with the studio's grade (+ colour match, + steadying when it shakes). A clip takes its best
     moment that no other video of the plan shows (vlog-windows.json), and gets its sound with a lead-in and a tail."""
@@ -1664,8 +1704,31 @@ def _render_one(job: tuple) -> dict:
     if not out.exists():
         render_shot(src, start, s["sec"], out, SIZE, keep_audio=True, color=color, stab=stab, natural=True)
     vol = _clip_volume(out)
-    bridge = _bridge(src, start, s["sec"], lead, out.with_suffix(".m4a")) if not photo and vol and lead > 0 else None
-    return {"k": k, "start": start, "volume": vol, "out": out, "bridge": bridge}
+    clean = None
+    if not photo and vol:
+        # Wind (owner, 13 Nov: "the wind audio is really bad we hate it"): measured on this shot's own sound; a windy
+        # stretch with nobody speaking is turned right down, with speech it is cleaned, calm sound loses its rumble.
+        from studio import quality
+
+        try:
+            how = quality.cleanup(quality.wind_of(quality.audio_of(out)), _speech_in(src, start, s["sec"], s.get("duration")))
+            cleaned = out.with_name(f"{out.stem}_{how['tag']}{CLEAN_V}{out.suffix}")
+            quality.apply_cleanup(out, cleaned, how)
+            out, clean = cleaned, how
+        except Exception as exc:  # noqa: BLE001 - the shot keeps its sound as rendered; said in the build's log
+            print(f"sound cleanup skipped for {src.name}: {exc}", flush=True)
+    bridge = None
+    if not photo and vol and lead > 0 and (clean is None or clean["gain"] >= 1.0):  # no wind carried across a cut
+        if clean:
+            raw_bridge = out.with_name(out.stem + ".raw.m4a")
+            bridge = _bridge(src, start, s["sec"], lead, raw_bridge)
+            if bridge:
+                from studio import quality
+
+                quality.apply_cleanup(raw_bridge, out.with_suffix(".m4a"), clean, video=False)
+        else:
+            bridge = _bridge(src, start, s["sec"], lead, out.with_suffix(".m4a"))
+    return {"k": k, "start": start, "volume": vol, "out": out, "bridge": bridge, "clean": clean}
 
 
 def _clip_volume(path: Path) -> float:
@@ -1691,7 +1754,10 @@ def _targets(shots: list[dict]) -> dict | None:
 
 def _remotion(props: Path, out: Path, log: Path) -> None:
     npx = shutil.which("npx") or "npx"
-    cmd = [npx, "remotion", "render", "src/index.ts", "Vlog-16x9", str(out), f"--props={props}", "--concurrency=8", "--timeout=120000"]
+    # Fewer render tabs on a computer short of memory (13 Nov: two builds at once ran it out): STUDIO_VLOG_CONCURRENCY.
+    conc = os.environ.get("STUDIO_VLOG_CONCURRENCY", "8")
+    conc = conc if conc.isdigit() and 1 <= int(conc) <= 16 else "8"
+    cmd = [npx, "remotion", "render", "src/index.ts", "Vlog-16x9", str(out), f"--props={props}", f"--concurrency={conc}", "--timeout=120000"]
     with log.open("w", encoding="utf-8") as h:
         proc = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
         for line in proc.stdout:
@@ -1703,18 +1769,104 @@ def _remotion(props: Path, out: Path, log: Path) -> None:
             raise RuntimeError(f"Remotion stopped; see {log}")
 
 
+BED_EQ = "highpass=f=70:poles=2,equalizer=f=120:t=q:w=1.2:g=-5"  # music_beds: no sub-bass rumble under the film
 MOODS = ["dawn on the open plains: warm, spacious, hopeful", "on the move through wild country: steady, adventurous, curious",
          "golden evening light and quiet: gentle, reflective, grateful"]
 
 
+def _audio_sec(path: Path) -> float:
+    try:
+        import soundfile
+
+        return float(soundfile.info(str(path)).duration)
+    except Exception:  # noqa: BLE001 - an mp3 libsndfile cannot read: ask ffmpeg
+        err = subprocess.run([str(ffmpeg_bin()), "-hide_banner", "-i", str(path)], capture_output=True, text=True, encoding="utf-8", errors="replace").stderr
+        m = re.search(r"Duration: (\d+):(\d+):([\d.]+)", err)
+        return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3)) if m else 0.0
+
+
+def _free_music(need: float) -> list[dict]:
+    """Free CC0 / public-domain tracks (studio.sound's library, fetched from Openverse when it holds too little) for
+    `need` seconds, longest first. Each carries its own credit line."""
+    from studio import sound
+
+    def have() -> list[dict]:
+        return sorted([t for t in sound.library() if t["kind"] == "music" and t.get("license") in ("CC0", "PDM") and not t.get("ai")],
+                      key=lambda t: -float(t.get("duration") or 0))
+    tracks = have()
+    if sum(float(t.get("duration") or 0) for t in tracks) < need:
+        for q in ("acoustic guitar", "ambient cinematic", "calm piano", "kalimba"):
+            try:
+                sound.fetch("music", q, n=6)
+            except Exception as exc:  # noqa: BLE001 - offline: use what there is
+                print(f"music: could not fetch free tracks ({exc})", flush=True)
+                break
+        tracks = have()
+    out, got = [], 0.0
+    for t in tracks:
+        if got >= need:
+            break
+        out.append(t)
+        got += float(t.get("duration") or 0)
+    return out
+
+
 def music_beds(slug: str, seconds: float, moods: list[str] | None = None) -> Path | None:
-    """One bed of `seconds`: up to three Stable Audio pieces (one per third of the video), crossfaded. Inside the AI limits."""
+    """One bed that covers all `seconds`: Stable Audio pieces (one per third of the video) inside the AI limits; when
+    the limits stop that, the pieces this video already paid for in earlier builds; then free CC0 tracks; repeated
+    only as a last resort. Crossfaded. Writes bed.json (every piece and its credit) next to bed.wav.
+    A trip series went out with no music (13 Nov): each episode had used its $2 AI limit on earlier beds, the
+    first new piece was refused, and the film was built silent under its own wind."""
     from studio import ai
 
-    if not ai.status().get("ready"):
-        return None
     parts = max(1, min(3, math.ceil(seconds / 175)))
     each = min(180, math.ceil(seconds / parts) + 6)
+    files: list[Path] = []
+    credits: list[dict] = []
+    if ai.status().get("ready"):
+        files = _ai_pieces(slug, parts, each, moods)
+        credits = [{"file": str(f), "credit": "AI-generated (Stable Audio 2.5, via fal.ai)", "license": "AI-GENERATED"} for f in files]
+    total = lambda: sum(_audio_sec(f) for f in files) - 6 * max(0, len(files) - 1)  # noqa: E731 - crossfades overlap
+    if total() < seconds:
+        for f in sorted((OUT / slug / "music").glob(f"vlog_{slug}_*.wav"), key=lambda p: p.stat().st_mtime, reverse=True):
+            if f not in files and _audio_sec(f) > 20:
+                files.append(f)
+                credits.append({"file": str(f), "credit": "AI-generated (Stable Audio 2.5, via fal.ai), made for an earlier cut", "license": "AI-GENERATED"})
+            if total() >= seconds:
+                break
+    if total() < seconds:
+        for t in _free_music(seconds - max(0.0, total())):
+            files.append(Path(t["file"]))
+            credits.append({"file": t["file"], "credit": t.get("attribution") or f"\"{t.get('title')}\" by {t.get('creator')} ({t.get('license')})",
+                            "license": t.get("license"), "landing": t.get("landing")})
+    if not files:
+        return None
+    base = list(files)
+    while total() < seconds and len(files) < 40:  # last resort: the same pieces again, crossfaded
+        files.append(base[len(files) % len(base)])
+    bed = OUT / slug / "music" / "bed.wav"
+    bed.parent.mkdir(parents=True, exist_ok=True)
+    (bed.parent / "bed.json").write_text(json.dumps({"seconds": round(seconds, 1), "pieces": credits}, ensure_ascii=False, indent=1), encoding="utf-8")
+    cmd = [str(ffmpeg_bin()), "-y", "-hide_banner", "-loglevel", "error"]
+    for f in files:
+        cmd += ["-i", str(f)]
+    graph = [f"[{k}:a]aresample=48000,aformat=channel_layouts=stereo[s{k}]" for k in range(len(files))]
+    last = "[s0]"
+    for k in range(1, len(files)):
+        graph.append(f"{last}[s{k}]acrossfade=d=6:c1=tri:c2=tri[x{k}]")
+        last = f"[x{k}]"
+    # The low end tamed: Stable Audio's "documentary score" pieces carried 80-97 % of their energy under 150 Hz, a
+    # sub-bass drone that reads as rumble under the whole film (measured 13 Nov). Under 70 Hz goes; 120 Hz dips 5 dB.
+    graph.append(f"{last}{BED_EQ}[bed]")
+    cmd += ["-filter_complex", ";".join(graph), "-map", "[bed]", str(bed)]
+    subprocess.run(cmd, check=True, capture_output=True, timeout=900)
+    return bed
+
+
+def _ai_pieces(slug: str, parts: int, each: int, moods: list[str] | None) -> list[Path]:
+    """Up to `parts` Stable Audio pieces of `each` seconds, made inside the AI limits (a refused one stops the rest)."""
+    from studio import ai
+
     price = ai.fal_prices([ai.TOOLS["music"][1]]).get(ai.TOOLS["music"][1]) or {"unit_price": 0.2, "unit": "audios"}
     files = []
     for k in range(parts):
@@ -1734,24 +1886,13 @@ def music_beds(slug: str, seconds: float, moods: list[str] | None = None) -> Pat
                 return {"file": str(ai.download((out.get("audio") or {}).get("url") or "", dest))}, None
 
             dest.parent.mkdir(parents=True, exist_ok=True)
-            ai.charge("fal", ai.TOOLS["music"][1], "music", slug, usd, call, note=f"vlog bed {k + 1}/{parts}, {each}s")
+            try:
+                ai.charge("fal", ai.TOOLS["music"][1], "music", slug, usd, call, note=f"vlog bed {k + 1}/{parts}, {each}s")
+            except Exception as exc:  # noqa: BLE001 - a failed call: the earlier pieces and free music fill in
+                print(f"music: Stable Audio failed ({exc})", flush=True)
+                break
         files.append(dest)
-    if not files:
-        return None
-    bed = OUT / slug / "music" / "bed.wav"
-    if len(files) == 1:
-        shutil.copyfile(files[0], bed)
-        return bed
-    graph, last = [], "[0:a]"
-    for k in range(1, len(files)):
-        graph.append(f"{last}[{k}:a]acrossfade=d=6:c1=tri:c2=tri[x{k}]")
-        last = f"[x{k}]"
-    cmd = [str(ffmpeg_bin()), "-y", "-hide_banner", "-loglevel", "error"]
-    for f in files:
-        cmd += ["-i", str(f)]
-    cmd += ["-filter_complex", ";".join(graph), "-map", last, str(bed)]
-    subprocess.run(cmd, check=True, capture_output=True, timeout=600)
-    return bed
+    return files
 
 
 def _stamp(sec: float) -> str:
@@ -1820,14 +1961,155 @@ def _series_text(video: dict, chapters: list[dict], total: float, name: str, sto
             for s in r.get("stops") or []:
                 if s.get("place"):
                     when.append(f"   {(s['leg'] + ' → ') if s.get('leg') else ''}{s['place']}{' · ' + stay_words(s['stay']) if s.get('stay') else ''}")
-    music = "Music: AI-generated (Stable Audio 2.5)." if (LOOKS.get(look_of(video.get("look"))) or {"music": True})["music"] else "No music: every sound is the place's own."
-    desc = (f"{hook}\n\n" + "\n".join(links) + "\n\nWhere and when\n" + "\n".join(when) + f"\n\nChapters\n{lines}\n\n"
+    music = _music_line(video)
+    wild = _wildlife_line(video)
+    desc = (f"{hook}\n\n" + "\n".join(links) + "\n\nWhere and when\n" + "\n".join(when) + (f"\n\n{wild}" if wild else "") + f"\n\nChapters\n{lines}\n\n"
             f"Filmed on our own phones and cameras. {music} Map data: Natural Earth.")
     tags = [name, f"{name} series", "travel vlog", "safari", "East Africa", *[t.lower() for t in things[:10]]]
     # description: ready to paste now (the link lines wait for the links); template: what the link pass fills.
     return {"title": video["title"][:100], "description": fill_links(desc, {}), "template": desc, "chapters": marks, "tags": tags,
             "chaptersValid": len(marks) >= 3 and all(b["at"] - a["at"] >= 10 for a, b in zip(marks, marks[1:])),
             "series": {"n": n, "of": N}}
+
+
+def _frame_at(shots: list[tuple[float, Path]], t: float, dest: Path) -> Path | None:
+    """The frame on screen at `t` s of the film: from the rendered shot that covers it (shots: (start, file))."""
+    cur = None
+    for start, f in shots:
+        if start <= t:
+            cur = (start, f)
+    if not cur:
+        return None
+    try:
+        subprocess.run([str(ffmpeg_bin()), "-y", "-v", "error", "-ss", f"{max(0.0, t - cur[0]):.2f}", "-i", str(cur[1]), "-frames:v", "1",
+                        "-vf", "scale=640:-2", str(dest)], check=True, capture_output=True, timeout=60)
+    except Exception:  # noqa: BLE001
+        return None
+    return dest if dest.exists() else None
+
+
+def check_captions(props: dict, chapters: list[dict], shots: list[tuple[float, Path]], slug: str, folder: Path, places: list[str],
+                   sheets: list[Path] | None = None) -> dict:
+    """Every animal label and one-line note checked against the very frame on screen when it shows; every chapter title
+    against a contact sheet of its whole chapter (`sheets`, one per chapter: a title speaks for minutes, and one frame
+    renamed "Lions and a Buffalo Calf" to "Guineafowl in Grass"). By the reviewer's vision model, inside the AI limits.
+    A label or note it does not see is dropped; a title that does not read as plain sense, or names a camp or person, is
+    replaced by its short fix. Owner, 13 Nov: "some of the captions also doesnt make sense" (Part 2: "Rhinoceros and Acacia
+    Camp Masai Mara", "Antelope" and "Monkeys" labels from a fixed list). No key or over a limit: nothing is changed,
+    and the result says the captions were not checked."""
+    from studio import ai
+
+    work = folder / "check"
+    work.mkdir(parents=True, exist_ok=True)
+    claims = []  # (kind, index, text, frame)
+    for i, o in enumerate(props.get("overlays") or []):
+        if o.get("kind") in ("subject", "note") and o.get("title"):
+            text = o["title"] if o["kind"] == "note" else f"{o['title']} (an animal or thing clearly visible in the picture)"
+            f = _frame_at(shots, float(o["atSec"]) + min(1.2, float(o.get("sec") or 2) / 2), work / f"o{i}.jpg")
+            if f:
+                claims.append(("overlay", i, text, f))
+    for i, c in enumerate(chapters):
+        if c.get("fixed") or not c.get("title"):
+            continue
+        sheet = sheets[i] if sheets and i < len(sheets) and sheets[i] and Path(sheets[i]).exists() else None
+        f = sheet or _frame_at(shots, float(c["atSec"]) + 2.0, work / f"c{i}.jpg")
+        if f:
+            claims.append(("chapter", i, f"chapter title for this contact sheet of the whole chapter: \"{c['title']}\" (false if it does "
+                                         "not read as plain, sensible English, or names a camp, lodge or person)" if sheet else c["title"], f))
+    if not claims:
+        return {"checked": 0, "dropped": 0, "fixed": 0}
+    system = "You check captions against pictures for a documentary editor. Be strict: when unsure, say false. Never invent names."
+    verdict: dict = {}
+    errors: list[str] = []
+    # Batches of 8, each tried twice: one call with 15 pictures came back with no JSON (a thinking model ran out of room).
+    for b0 in range(0, len(claims), 8):
+        batch = claims[b0:b0 + 8]
+        lines = "\n".join(f"{n + 1}. {text}" for n, (_, _, text, _) in enumerate(batch))
+        prompt = (f"Each numbered line below goes with the image of the same number, from a wildlife trip film. Places this film "
+                  f"really visited: {', '.join(places) or 'not given'}. For each line say whether it is plainly true of its own image: an "
+                  "animal or thing it names must be clearly visible (not guessed from a shape far away), and a name of a camp, lodge or "
+                  "person that is neither readable in the image nor in the list of places makes the line false. For a false chapter-style "
+                  "line give a short replacement (at most 6 words, plain, only what is visible). Lines:\n" + lines +
+                  '\nReply with JSON only: {"verdicts": [{"n": 1, "true": true, "fix": ""}, ...]}')
+        for attempt in (1, 2):
+            try:
+                got = ai.vision_json([f for *_, f in batch], system, prompt, slug, purpose="vlog-captions", max_tokens=6000)
+                for v in got.get("verdicts") or []:
+                    if isinstance(v, dict) and str(v.get("n", "")).isdigit():
+                        verdict[b0 + int(v["n"])] = v
+                break
+            except Exception as err:  # noqa: BLE001 - no key, over a limit, or the model failed
+                if attempt == 2 or getattr(err, "code", "") in ("no_key", "over_cap"):
+                    errors.append(str(err)[:200])
+                    break
+    if not verdict:
+        print(f"captions not checked: {'; '.join(errors) or 'no answer'}", flush=True)
+        return {"checked": 0, "dropped": 0, "fixed": 0, "error": ("; ".join(dict.fromkeys(errors)) or "no answer")[:200]}
+    drop, fixed = set(), 0
+    for n, (kind, i, text, _) in enumerate(claims, 1):
+        v = verdict.get(n)
+        if not v or v.get("true") is not False:
+            continue
+        if kind == "overlay":
+            drop.add(i)
+        else:
+            fix = str(v.get("fix") or "").strip().rstrip(".")[:48]
+            chapters[i]["title"] = fix if fix and len(fix.split()) <= 7 else (chapters[i].get("label") or f"Day {chapters[i].get('dayNo', '')}").strip()
+            fixed += 1
+    props["overlays"] = [o for k, o in enumerate(props.get("overlays") or []) if k not in drop]
+    for pc, c in zip(props.get("chapters") or [], chapters):
+        pc["title"] = c["title"]
+    return {"checked": len(claims), "dropped": len(drop), "fixed": fixed}
+
+
+def chapter_sfx(chapters: list[dict], end_at: float | None) -> list[dict]:
+    """A soft whoosh into each chapter card and a riser into the next-part card: editors mark a change of place with a
+    sound as well as a picture (a transition sting). Quieter than a reel's, under a documentary's music. The studio's
+    own effects (studio.sound.synth: made from noise and sine waves, no third-party rights)."""
+    from studio import sound
+
+    have = {p.stem.replace("synth_", ""): p for p in (sound.LIB / "sfx").glob("synth_*.wav")} if (sound.LIB / "sfx").exists() else {}
+    if "whoosh_1" not in have:
+        try:
+            sound.synth()
+        except Exception:  # noqa: BLE001 - no effects: the film is fine without them
+            return []
+        have = {p.stem.replace("synth_", ""): p for p in (sound.LIB / "sfx").glob("synth_*.wav")}
+    out = []
+    for k, c in enumerate(chapters):
+        w = have.get(f"whoosh_{k % 3 + 1}")
+        if w and float(c.get("atSec") or 0) > 1.0:
+            out.append({"name": "whoosh", "file": str(w), "at": round(max(0.0, float(c["atSec"]) - 0.45), 2), "gain": 0.22})
+    if end_at and have.get("riser"):
+        out.append({"name": "riser", "file": str(have["riser"]), "at": round(max(0.0, end_at - 1.2), 2), "gain": 0.2})
+    return out
+
+
+def _music_line(video: dict) -> str:
+    """The music credit for the description, from what was really mixed (bed.json): it said "AI-generated" on four
+    episodes that had no music at all (13 Nov). Free tracks carry their own attribution lines."""
+    f = OUT / str(video.get("slug") or "-") / "music" / "bed.json"
+    try:
+        pieces = json.loads(f.read_text(encoding="utf-8")).get("pieces") or []
+    except (OSError, ValueError):
+        pieces = []
+    if not pieces:
+        return "" if (LOOKS.get(look_of(video.get("look"))) or {"music": True})["music"] else "No music: every sound is the place's own."
+    return "Music: " + "; ".join(dict.fromkeys(p["credit"] for p in pieces)) + "."
+
+
+def _wildlife_line(video: dict) -> str:
+    """"Wildlife in this episode: Lion (simba), ..." from the episode's animal labels in props.json (check_captions
+    keeps only those a vision model saw in that very frame)."""
+    try:
+        props = json.loads((OUT / str(video.get("slug") or "-") / "props.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    seen: dict = {}
+    for o in props.get("overlays") or []:
+        if o.get("kind") == "subject" and o.get("title"):
+            seen.setdefault(o["title"], str(o.get("sub") or "").replace(" in Swahili", ""))
+    return ("Wildlife in this episode: " + ", ".join(f"{k} ({v})" if v else k for k, v in seen.items()) + ".") if seen else ""
 
 
 def youtube_text(video: dict, chapters: list[dict], total: float, name: str, story: dict | None = None) -> dict:
@@ -1847,8 +2129,7 @@ def youtube_text(video: dict, chapters: list[dict], total: float, name: str, sto
     seen = seen + (f"\n\nWhere: {' · '.join(where)}." if where else "")
     desc = (f"{name}, part {video['n']}: {video['span']}.\n\n{seen}\n\n"
             f"Chapters\n{lines}\n\n"
-            "Filmed on our own phones and cameras. " + ("Music: AI-generated (Stable Audio 2.5)." if (LOOKS.get(look_of(video.get("look"))) or {"music": True})["music"]
-                                                         else "No music: every sound is the place's own."))
+            "Filmed on our own phones and cameras. " + _music_line(video))
     tags = [name, "travel vlog", "safari", "East Africa", *[t.lower() for t in things[:10]]]
     return {"title": video["title"][:100], "description": desc, "chapters": marks, "tags": tags, "chaptersValid": len(marks) >= 3}
 
@@ -2265,6 +2546,19 @@ def build(n: int, music: bool = True, workers: int = 6) -> dict:
         for c in video["chapters"]:
             c["shots"] = [s for s in c["shots"] if s["path"] not in held]
         video["chapters"] = [c for c in video["chapters"] if c["shots"]]
+    # A plan made before the quality scan: its blurry and too-shaky pictures come out here too (studio.quality).
+    from studio.library import _base_items
+
+    lib = {i["path"]: i for i, _ in _base_items()}
+    shot_lists = [c["shots"] for c in video["chapters"]] + [video.get(k) or [] for k in ("cold", "recap", "teaser")]
+    poor = {s["path"] for lst in shot_lists for s in lst if _quality_no(lib.get(s["path"]) or s)}
+    if poor:
+        print(f"left out {len(poor)} blurry or shaky pictures", flush=True)
+        for k in ("cold", "recap", "teaser"):
+            video[k] = [s for s in video.get(k) or [] if s["path"] not in poor]
+        for c in video["chapters"]:
+            c["shots"] = [s for s in c["shots"] if s["path"] not in poor]
+        video["chapters"] = [c for c in video["chapters"] if c["shots"]]
     look = look_of(video.get("look") or plan_.get("style")) or "documentary"
     L, fs = LOOKS[look], fade_sec(look)
     ser = video.get("series")
@@ -2348,6 +2642,18 @@ def build(n: int, music: bool = True, workers: int = 6) -> dict:
              "overlays": overlays([j[1] for j in jobs][first:end], starts[first:end], [(c["atSec"], c) for c in chapters], round(t, 2), title_at=round(title_at, 2),
                                   end_quiet=(total - end_at + 1.0) if end_at is not None else 15.0,
                                   title_sec=SERIES_TITLE if ser else 4.5, label_sec=4.5 if ser else 4.2)}
+    # Every label, note and chapter title against the frame on screen when it shows (check_captions).
+    places = sorted({str(r.get("place")) for r in (tp.get("route") or {}).values() if isinstance(r, dict) and r.get("place")}
+                    | {str(c["place"]) for c in chapters if c.get("place")})
+    sheets = []  # one contact sheet per chapter, in the order `chapters` was built (each chapter with shots)
+    for k, c in enumerate(c for c in video["chapters"] if c["shots"]):
+        try:
+            sheets.append(_sheet(c["shots"], folder / "check" / f"chapter-{k}.jpg"))
+        except Exception:  # noqa: BLE001 - a sheet that cannot be made: that title is checked on one frame
+            sheets.append(None)
+    captions = check_captions(props, chapters, [(starts[k], j[2]) for k, j in enumerate(jobs)], slug, folder, places,
+                              sheets if len(sheets) == len(chapters) else None)
+    print(f"captions: {captions}", flush=True)
     if ser:
         props.update(series_props(video, plan_, tp, chapters, show_place, recap, end_at))
     if look == "fieldguide":  # the chapter card already names the animal
@@ -2362,13 +2668,33 @@ def build(n: int, music: bool = True, workers: int = 6) -> dict:
     raw = folder / "raw.mp4"
     _remotion(folder / "props.json", raw, folder / "render.log")
     print("STAGE 3/4 music and mix", flush=True)
-    bed = bed or (music_beds(slug, total, video.get("moods") or L["music"]) if music and L["music"] else None)  # a series episode's own mood
+    wants_music = bool(music and L["music"])
+    bed = bed or (music_beds(slug, total, video.get("moods") or L["music"]) if wants_music else None)  # a series episode's own mood
+    if wants_music and not bed:
+        raise RuntimeError(f"{slug}: no music could be made or found (AI limits, no free tracks offline). Nothing was built without "
+                           "it; build with --no-music to make a film of the place's own sound on purpose.")
     master = folder / "master.mp4"
+    pieces = json.loads((bed.parent / "bed.json").read_text(encoding="utf-8")).get("pieces", []) if bed and (bed.parent / "bed.json").exists() else []
     bed_info = {"file": str(bed), "start": 0.0, "volume": 0.7, "id": bed.name if bed else None, "title": f"Music beds for {slug}",
-                "creator": "Stable Audio 2.5 (AI, via fal.ai)", "license": "AI-GENERATED", "source": "fal.ai"} if bed else None
-    audio = sound.mix(raw, master, total, bed_info, [], peak=-2.5)  # lands near -1 dBTP after AAC (YouTube re-encodes; headroom avoids clipping)
+                "creator": "; ".join(dict.fromkeys(p["credit"] for p in pieces)) or "Stable Audio 2.5 (AI, via fal.ai)",
+                "license": "/".join(dict.fromkeys(str(p.get("license")) for p in pieces)) or "AI-GENERATED", "source": "fal.ai / Openverse"} if bed else None
+    # The music dips for speech, not for every breeze (windy stretches are already down: studio.quality).
+    audio = sound.mix(raw, master, total, bed_info, chapter_sfx(chapters, end_at), peak=-2.5, duck=(0.08, 3.0))  # lands near -1 dBTP after AAC (YouTube re-encodes; headroom avoids clipping)
     print("STAGE 4/4 quality check and YouTube text", flush=True)
-    qa = verify.qa(master, "16x9", music=bool(bed))
+    qa = verify.qa(master, "16x9", music=wants_music)  # music asked for and missing is a failed check, not a pass
+    # What the film's own checks found: captions against their frames, wind, and what the music is made of.
+    cleaned = [d["clean"] for d in done.values() if d.get("clean")]
+    quiet = sum(1 for c in cleaned if c["gain"] < 1.0)
+    windy_speech = sum(1 for c in cleaned if c["tag"] == "w1")
+    qa.setdefault("checks", []).extend([
+        {"id": "captions", "level": "ok" if captions.get("checked") else "warn",
+         "found": (f"{captions['checked']} labels and titles checked against their frames: {captions['dropped']} dropped, {captions['fixed']} titles fixed"
+                   if captions.get("checked") else f"captions not checked ({captions.get('error') or 'nothing to check'})"),
+         "fix": "" if captions.get("checked") else "Add an AI key in Settings › Keys & AI (or raise its limit) and build again."},
+        {"id": "wind", "level": "ok", "found": f"{len(cleaned)} clips cleaned: {quiet} windy with nobody speaking turned down, {windy_speech} windy under speech cleaned", "fix": ""},
+        {"id": "music-source", "level": "ok" if bed else ("bad" if wants_music else "ok"), "found": (bed_info or {}).get("creator") or "no music", "fix": ""},
+    ])
+    qa["ok"] = qa.get("ok", True) and not any(c.get("level") == "bad" for c in qa["checks"])
     story = None
     if ser:
         cold_path = (video.get("cold") or [{}])[0].get("path")
@@ -2379,6 +2705,7 @@ def build(n: int, music: bool = True, workers: int = 6) -> dict:
     thumbnail(n)
     (folder / "description.txt").write_text(yt["description"], encoding="utf-8")
     result = {"slug": slug, "master": str(master), "seconds": total, "shots": len(shots), "chapters": yt["chapters"], "youtube": yt, "qa": qa, "subtitles": subs,
+              "captions": captions, "sound": {"cleaned": len(cleaned), "quietWind": quiet, "windUnderSpeech": windy_speech},
               "audio": audio, "thumbnail": str(folder / "thumbnail.jpg"), "made": datetime.now().isoformat(timespec="seconds")}
     if ser:  # the length the person set, and whether the film kept to it
         sp = plan_.get("series") or {}

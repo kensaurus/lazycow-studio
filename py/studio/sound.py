@@ -433,10 +433,12 @@ def trim_loudness(path: Path, target: float, tolerance: float = 0.5) -> float:
 
 
 def mix(video: Path, dest: Path, seconds: float, music: dict | None, sfx: list[dict], voice: dict | None = None,
-        foley: list[dict] | None = None, peak: float = -1.5) -> dict:
+        foley: list[dict] | None = None, peak: float = -1.5, duck: tuple[float, float] = (0.05, 4.0)) -> dict:
     """Picture copied from `video`; sound = clip + ducked music + effects, loudness-normalised.
     `voice` (studio.ai): {"lines": [{"file", "at", "tempo"}], "gain"}: a read-aloud track over the rest; music and
-    clip sound dip under it. Without a voice the filter graph is exactly the one before voices existed."""
+    clip sound dip under it. Without a voice the filter graph is exactly the one before voices existed.
+    `duck`: (threshold, ratio) of the music's dip under the clip's own sound. A long video passes a higher threshold
+    so the music dips for speech, not for every breeze or bird (its windy stretches are already turned down)."""
     lines = [v for v in ((voice or {}).get("lines") or []) if Path(str(v.get("file", ""))).exists()]
     level = SPEC["loudnessLufs"]
     ff = str(ffmpeg_bin())
@@ -491,7 +493,7 @@ def mix(video: Path, dest: Path, seconds: float, music: dict | None, sfx: list[d
         if lines:
             graph.append("[mus][key2]sidechaincompress=threshold=0.03:ratio=8:attack=30:release=500[duck]")
         else:
-            graph.append("[mus][key]sidechaincompress=threshold=0.05:ratio=4:attack=60:release=450[duck]")
+            graph.append(f"[mus][key]sidechaincompress=threshold={duck[0]:g}:ratio={duck[1]:g}:attack=60:release=450[duck]")
         mixes.append("[duck]")
         n += 1
     elif not lines:

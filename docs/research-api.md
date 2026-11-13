@@ -82,9 +82,12 @@ The key in `.env` wins over a machine-wide `FIRECRAWL_API_KEY` environment varia
 
 ## POST /api/research/ideas — ideas and trends
 
-Request (all optional): `{ "topic": "冬キャンプ", "days": 30, "fresh": false }`. `topic` ≤ 120 characters; default
-"嬬恋村 キャンプ ワーケーション 群馬" (ja) and "Tsumagoi Gunma camping workation" (en). `days` 1–365 (default 30).
-Cost: 2 searches (web + news, 8 each) ≈ 4–8 credits.
+Request (all optional): `{ "topic": "冬キャンプ", "days": 30, "fresh": false }`. `topic` ≤ 120 characters; default:
+the open project's name and its home place's names (Settings › Keys & AI › This project). Where it searches follows the
+home place, as events do: a place in Japan gets a Japanese and an English search in Japan's results; elsewhere one English
+search in that country's results; no home place, one English search with no country. `days` 1–365 (default 30).
+Cost: 1 or 2 searches (web + news, 8 each) ≈ 4–8 credits. The example below is from the original Tsumagoi workspace,
+which keeps its own topic.
 
 ```json
 {
@@ -197,8 +200,11 @@ because Firecrawl bills them through paid providers). Cost: about 5 credits (Mar
 
 ## POST /api/research/events — local events
 
-Request (optional): `{ "days": 30, "fresh": false }` (`days` 1–90). Three Japanese web searches (嬬恋村, 軽井沢,
-群馬 吾妻 草津) naming the months in the window. Cost: ≈ 6 credits.
+Request (optional): `{ "days": 30, "fresh": false }` (`days` 1–90). One web search per home-place name (up to 3,
+Settings › Keys & AI › This project) naming the months in the window: in Japanese and Japan's results for a place in
+Japan, in English and that country's results elsewhere. Without a home place name it answers 400 with the sentence that
+says where to set one. Cost: ≈ 2 credits a search. The example below is from the original Tsumagoi workspace, which
+searches its own three areas.
 
 ```json
 {

@@ -95,6 +95,31 @@ def test_ideas_search_ja_and_en_and_cite_sources(env, monkeypatch):
     assert "approved copy" in r["note"]
 
 
+def test_ideas_search_where_the_project_is_and_never_name_the_ranch(env, monkeypatch):
+    """A public user's project searched "Tsumagoi Gunma camping" in Japan's results when no topic was typed."""
+    from studio import brand
+    monkeypatch.setattr(brand, "RANCH", False)
+    monkeypatch.setattr(brand, "brand", lambda: {"name": "Cafe Kumo"})
+    monkeypatch.setattr(brand, "home_place", lambda: {"lat": 52.52, "lon": 13.40, "radiusKm": 5, "names": ["Berlin Mitte"]})
+    fake = use(monkeypatch, [("POST", "/v2/search", [(200, SEARCH)])])
+    r = research.run("ideas", {"days": 14})
+    calls = fake.find("/v2/search")
+    assert len(calls) == 1, "one English search outside Japan"
+    body = calls[0]["body"]
+    assert body["query"] == "Cafe Kumo Berlin Mitte" and body["location"] == "Germany" and "country" not in body
+    assert "Tsumagoi" not in r["summary"] and "Cafe Kumo Berlin Mitte" in r["summary"]
+    monkeypatch.setattr(brand, "home_place", lambda: None)
+    fake = use(monkeypatch, [("POST", "/v2/search", [(200, SEARCH)])])
+    research.run("ideas", {"days": 14, "fresh": True})
+    body = fake.find("/v2/search")[0]["body"]
+    assert body["query"] == "Cafe Kumo" and "country" not in body and "location" not in body, "no home place: no country"
+    monkeypatch.setattr(brand, "home_place", lambda: {"lat": 35.68, "lon": 139.76, "radiusKm": 5, "names": ["千代田区"]})
+    fake = use(monkeypatch, [("POST", "/v2/search", [(200, SEARCH)])])
+    research.run("ideas", {"days": 14, "fresh": True})
+    calls = fake.find("/v2/search")
+    assert len(calls) == 2 and all(c["body"]["country"] == "JP" for c in calls), "a home place in Japan: Japan's results"
+
+
 def test_ideas_come_from_the_cache_the_second_time(env, monkeypatch):
     fake = use(monkeypatch, [("POST", "/v2/search", [(200, SEARCH)])])
     research.run("ideas", {})
@@ -329,6 +354,11 @@ def test_events_search_where_the_project_is_not_japan_by_default(env, monkeypatc
     fake = use(monkeypatch, [("POST", "/v2/search", [(200, found)])])
     research.run("events", {"days": 30, "fresh": True})
     assert fake.calls[0]["body"]["country"] == "JP" and "イベント" in fake.calls[0]["body"]["query"]
+    # No home place: a sentence that says where to set one and a 400, not "a problem in the studio" (500).
+    monkeypatch.setattr(brand, "home_place", lambda: None)
+    with pytest.raises(research.ResearchError) as err:
+        research.run("events", {"days": 30, "fresh": True})
+    assert err.value.status == 400 and err.value.code == "no_home_place" and "This project" in str(err.value)
 
 
 def test_find_dates_reads_the_common_ways_of_writing_a_date():

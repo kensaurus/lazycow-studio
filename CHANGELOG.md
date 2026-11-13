@@ -2,6 +2,44 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.14.1 (2026-11-13)
+
+### Added
+- **Long videos sound and look finished.** `python -m studio quality scan` measures every picture's sharpness (its
+  sharpest part too), every clip's shake and wind. A plan and a build leave out blurry and too-shaky pictures; each
+  clip's wind is turned down (nobody speaking) or cleaned (speech); the music dips for speech, not breezes; the music
+  bed always covers the film (new AI music, then pieces already paid for, then free CC0 tracks) and a build that asked
+  for music and has none stops; every label, note and chapter title is checked against its frame; the description
+  credits the real music and lists the wildlife seen; a soft whoosh marks each chapter. The quality check reports
+  captions, wind and the music's source.
+- **The Problems list catches more**, each with a button: a post booked but not seen live hours after its time (with
+  **Look on Google Maps** and friends), a sign-in that ends before posts booked after it (red up to two weeks ahead;
+  Bluesky's lasts about two weeks), a network whose measured posts reached nobody yet, and a network booked through
+  your Chrome that nobody has checked is signed in (LINE, Pinterest).
+- `README.ja.md`: the essentials in Japanese.
+- `packages/lazycow`: the npm README shows the studio and lists all 27 MCP tools by area (a test keeps it complete).
+
+### Changed
+- **Posting** leads with one panel, "Before these go out", instead of five differently styled boxes; a post not seen
+  live comes first with **Book again / It is out / Set aside**, and Runs by itself's settings stay folded.
+- Day cards on Posting show the reel's first frame, its words, the network and the time; the file name is small.
+- **Results**: booked is the quiet part of each bar and posted carries the colour; how predictions work and the table
+  fold under one plain line; Latest posts and Keys & AI draw without waiting on a cold Python process.
+- Words in tags and chips are set in the UI face at 12 px (figures stay mono). The needs-you strip no longer covers
+  the page heading and moves away while you scroll. Footage shows the Google account as `ke…@gmail.com`.
+
+### Fixed
+- Posting › Sent and Results › Out and booked counted bookings that had been swapped for a new version: Sent said 36
+  (21 real) and YouTube showed 65 booked (29 real).
+- Results said "Higher scores went with better results by -0.58": it now says better, worse or no clear link by the
+  sign. The first comparison date lost a stray comma ("Mon 16 Nov,.").
+- `research_ideas` searched the original workspace's place (Tsumagoi, Gunma, in Japan's results) for every project
+  without a topic; it now searches the open project's own name and home place, in that country. `research_events`
+  without a home place answers 400 with where to set one (it was a 500).
+- The header showed "Tsumagoi Work&Camp" before a project loaded.
+- The `lazycow` package's author is an object (`name` + `url`). npm read the string form's first parentheses as the
+  URL, so `lazycow@0.14.0` on npm shows "Kenji Sakuramoto" as the author link; the next version links https://kensaur.us.
+
 ## 0.14.0 (2026-11-13)
 
 The first public release.

@@ -1,6 +1,6 @@
 {
   "name": "lazycow",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "description": "Lazycow Studio by kensaurus: MCP server, API client and one-line installer for the local-first video studio that turns your footage into reels and trip films.",
   "keywords": [
     "lazycow",
@@ -18,9 +18,18 @@
     "scheduler",
     "local-first",
     "remotion",
+    "video-editing",
+    "youtube-shorts",
+    "social-media-automation",
+    "human-in-the-loop",
+    "self-hosted",
+    "ffmpeg",
     "kensaurus"
   ],
-  "author": "kensaurus (Kenji Sakuramoto) (https://kensaur.us)",
+  "author": {
+    "name": "kensaurus (Kenji Sakuramoto)",
+    "url": "https://kensaur.us"
+  },
   "license": "Apache-2.0",
   "homepage": "https://github.com/kensaurus/lazycow-studio#readme",
   "repository": {

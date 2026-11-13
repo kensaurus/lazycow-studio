@@ -20,7 +20,8 @@ test("the package is in step with the studio (MCP copy, LICENSE, NOTICE, version
 });
 
 test("attribution: author, licence, NOTICE, registry name and README credit name kensaurus", () => {
-  assert.match(pkg.author, /kensaurus/);
+  // An object, not "name (x) (url)": npm reads the first parentheses as the URL, so 0.14.0 went out linking to "Kenji Sakuramoto".
+  assert.deepEqual(pkg.author, { name: "kensaurus (Kenji Sakuramoto)", url: "https://kensaur.us" });
   assert.equal(pkg.license, "Apache-2.0");
   assert.equal(pkg.repository.url, "git+https://github.com/kensaurus/lazycow-studio.git");
   assert.ok(pkg.files.includes("NOTICE") && pkg.files.includes("LICENSE"));
@@ -59,6 +60,11 @@ test("lazycow mcp answers the MCP handshake and lists tools without a studio run
   assert.equal(init.result.serverInfo.version, pkg.version);
   assert.ok(list.result.tools.length >= 20);
   assert.ok(!list.result.tools.some((t) => /approve/.test(t.name)), "no approve tool");
+  // The npm page is what a stranger reads first: it names every tool, and the count it gives is the real one.
+  const readme = readFileSync(join(PKG, "README.md"), "utf8");
+  const missing = list.result.tools.map((t) => t.name).filter((n) => !readme.includes("`" + n + "`"));
+  assert.deepEqual(missing, [], "tools missing from packages/lazycow/README.md");
+  assert.match(readme, new RegExp(`The ${list.result.tools.length} tools`));
 });
 
 test("createClient: token, own origin on writes, plain errors", async () => {

@@ -301,3 +301,22 @@ test("LINE: a message delivered a minute after its booked time is that booking's
   assert.equal(lineRowFor(rows, at(2026, 12, 5, 9, 0))?.state, "booked");  // exact
   assert.equal(lineRowFor(rows, at(2026, 11, 9, 18, 30)), null);           // not within 5 minutes
 });
+
+test("a Google Maps post counts as out when its first line is on the listing's From the owner (carstay-1108, 13 Nov)", async () => {
+  const { ownerPostSeen } = await import("../server/helper.mjs");
+  const listing = "Tsumagoi Work&Camp\n5.0 (15)\nFrom the owner\n車で来て、車で寝る。\nそれだけの日のため\n5 hours ago\nBook";
+  assert.equal(ownerPostSeen(listing, "車で来て、車で寝る。それだけの日のために、ここへ。"), true);
+  assert.equal(ownerPostSeen(listing, "暗いからこそ、空を仰ぐ。"), false, "another post's words");
+  assert.equal(ownerPostSeen(listing, "  "), false, "no words: never a match");
+  assert.equal(ownerPostSeen("Autumn at 1,444 m — the deck", "autumn at 1444m: the deck!"), true, "spaces, punctuation and case do not matter");
+});
+
+test("TikTok's description is cleared with the keyboard and must start with the first line (file name left in front, 13 Nov)", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../server/helper.mjs", import.meta.url), "utf8");
+  const fn = src.slice(src.indexOf("async function scheduleTikTok"), src.indexOf("step(`setting ${want.date}", src.indexOf("async function scheduleTikTok")));
+  assert.ok(fn.length > 200, "found scheduleTikTok");
+  assert.doesNotMatch(fn, /createRange\(\)/, "a DOM range: Draft.js ignores it and Backspace takes one letter");
+  assert.match(fn, /Control\+A/, "select all with the keyboard");
+  assert.match(fn, /\.trim\(\)\.startsWith\(firstLine\)/, "the text must start with the first line, not just contain it");
+});

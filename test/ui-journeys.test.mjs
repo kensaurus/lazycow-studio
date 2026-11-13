@@ -145,3 +145,28 @@ test("phones: one header row with the project's name, tab rows show a fade when 
   assert.match(script, /const FADE_ROWS = "\.topnav, \.subtabs, \.posttabs";/);
   assert.match(html, /:is\(header \.topnav, \.subtabs, \.posttabs\)\.more-r \{ mask-image/);
 });
+
+test("a swapped-out booking is history: never counted as sent or listed twice (Posting › Sent, Results)", () => {
+  // The Tsumagoi log had 137 rows "replaced by a new render"; they took their replacement's state, so Sent said 36
+  // (21 real) and Results › Out and booked said 65 booked on YouTube (29 real).
+  const pick = (re) => { const m = script.match(re); assert.ok(m, `not found: ${re}`); return m[0]; };
+  const src = [pick(/const isHistory = [^\n]+\n/), pick(/function recentPosts\(limit = 10\) \{[\s\S]*?\n\}\n/)].join("\n");
+  const postsLog = [
+    { slug: "a", network: "youtube", status: "replaced", at: "2026-11-12T19:00+09:00" },
+    { slug: "a", network: "youtube", status: "posted", at: "2026-11-12T19:00+09:00" },
+    { slug: "b", network: "facebook", status: "failed", at: "2026-11-11T19:00+09:00" },
+    { slug: "b", network: "facebook", status: "posted", at: "2026-11-11T19:05+09:00" },
+  ];
+  const postState = (slug) => ({ youtube: { status: "posted" }, facebook: { status: "posted" } });
+  const recentPosts = new Function("postsLog", "postState", `${src}; return recentPosts;`)(postsLog, postState);
+  assert.deepEqual(recentPosts(Infinity).map((p) => `${p.slug}/${p.network}/${p.status}`), ["a/youtube/posted", "b/facebook/posted"]);
+  assert.match(script, /for \(const x of out\) \{\n\s+if \(isHistory\(x\)\) continue;/, "Results › Out and booked skips history rows");
+});
+
+test("a project already open in its own studio opens there at once, not by a switch that waits (owner, 13 Nov)", () => {
+  const server = readFileSync(new URL("../server/review.mjs", import.meta.url), "utf8");
+  assert.match(server, /pinned: PINNED,\s+\/\/ a studio started for one project/, "a pinned studio says which project it holds");
+  assert.match(server, /elsewhere: \{ \.\.\.otherStudios \}/, "the main studio lists projects open in other studios");
+  assert.match(script, /wsView\.elsewhere\?\.\[w\.id\] \? `<a class="btn primary"[^`]*target="_blank"/, "Open its studio is the main button");
+  assert.match(script, /tr\("ws\.pendingwhat"/, "a waiting switch says what it waits for");
+});

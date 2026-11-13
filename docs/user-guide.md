@@ -100,8 +100,6 @@ The top of the page also shows **Runs by itself**, the swap of older bookings, a
 
 **How reels did** compares cut styles, themes and lengths on each network. Numbers come about 3 days after a post. They mean little before about 15 measured posts. **Activity log** lists every finished job, with how long it took and why it failed.
 
-![Results: the latest posts with their views, and a table of posts out and booked per network](img/results.webp)
-
 ### Settings
 
 | Tab | What it is for |
@@ -168,8 +166,6 @@ To change only the music, use the **Audio** tab, then **Apply sound** (about 30 
 
 ### Versions of a booked reel
 
-![Posting › Versions: the live reel and the new cut side by side, with the shot that changed and the buttons Use the new version and Keep the live one](img/versions.webp)
-
 A booked reel keeps posting while the studio makes a better cut beside it. A re-cut keeps the words, music and length. It changes only the shots the AI review found under the wrong caption. Each of those shots is searched again with the caption's own words, and a new shot is kept only when it matches clearly better.
 
 1. Open **Posting › Versions**. Booked reels with captions over the wrong picture are listed at the top. Press **Re-cut these N**.
@@ -227,6 +223,11 @@ For a trip, not a reel: 16:9 parts of about 5 to 10 minutes, made from the trip'
    - **Use private-looking pictures**. Off (the default): pictures that look private, such as a hospital bed or a passport, stay out of every video. On: they may be used like any other picture.
 4. **Pick a plan.** The first option is a **series** (see the next task): parts of the same length, in the order the trip happened. Each option says how many parts, how long, and how much of the time moves. Films that are not a series sit under **More looks (separate films, not a series)**; each of those parts can have its own look (for example Field guide, Black and white, Slow safari, Road movie).
 5. **Build.** Parts build one at a time, about 20 minutes each, with a cold open, a title, chapters by day, the clips' own sound and a quiet music bed. Each part gets a quality check, a title, a description with chapters, and a thumbnail. Building a part's music costs about $0.60, inside the AI limits.
+   What a build does for you, so a part does not go out looking or sounding home-made:
+   - **Blurry and shaky pictures stay out.** A picture under the trip's own sharpness floor is left out (a sharp animal against a soft background stays), and so is a clip too shaky to steady. The first time, run `python -m studio quality scan` (it measures every file once).
+   - **Wind.** Each clip's sound is measured. A windy stretch with nobody speaking is turned right down, so the music carries it; with someone speaking, the wind is cut and the noise lowered; calm sound only loses its low rumble. The music dips for speech, not for every breeze.
+   - **Music, always.** New AI music inside the limits, then music this part already paid for, then free CC0 tracks: the bed covers the whole film. A part that should have music and has none stops instead of going out silent. The description credits the music really used.
+   - **Captions checked.** Every animal label, note and chapter title is checked against the very frame on screen, by the AI reviewer: what it does not see is dropped or renamed. The quality check says how many.
 6. **Watch each part once.**
 7. **Upload** (see the next task), or press **Copy title and description** and upload it yourself.
 
@@ -412,11 +413,18 @@ Each shot in `manifest.json` records what was done: `shots[].color` (measured va
 ## When something goes wrong
 
 First look for the **red or amber button** next to the bell (and the strip under the top bar). It lists what went wrong
-and stays until it is fixed, even if the page was closed when it happened. Red means something will not happen (a post,
-a render) until you fix it: a booked reel that is not approved, a post that did not go out, a job that stopped with an
-error. Amber means it works, but not as well as it could: long videos that repeat days or vary a lot in length. Each one
-has a **Fix** button that opens the right page. Red problems about the future cannot be dismissed, only fixed; the
-strip's × hides it until something new goes wrong (the button stays).
+and stays until it is fixed, even if the page was closed when it happened.
+
+| Colour | Means | For example |
+|:--|:--|:--|
+| Red | Something will not happen until you fix it | a booked reel that is not approved; a post that did not go out, or was not seen live hours after its time; a sign-in (Bluesky's lasts about two weeks) that ends before posts booked after it; a job that stopped with an error |
+| Amber | It works, but not as well as it could | a network whose measured posts reached nobody yet (a new or restricted account, or a number the studio cannot read); a network booked through your Chrome that nobody has checked is signed in (LINE, Pinterest: press **Open … in my Chrome**, then **I'm signed in**); long videos that repeat days or vary a lot in length |
+
+Each one has a **Fix** button that opens the right page, and some have a second one that opens the network itself
+(**Look on Google Maps**, **Open TikTok Studio**). On **Posting**, the same things lead the panel above the calendar,
+with **Book again**, **It is out** and **Set aside** for a post that was not seen. Red problems about the future cannot
+be dismissed, only fixed; the strip's × hides it until something new goes wrong (the button stays), and it moves out
+of the way while you scroll.
 
 <details>
 <summary><b>The page says "the studio is not answering"</b></summary>

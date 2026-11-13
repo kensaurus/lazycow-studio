@@ -7,6 +7,7 @@ import os
 import tempfile
 
 os.environ["STUDIO_DATA"] = tempfile.mkdtemp(prefix="tsumagoi-studio-test-")
+os.environ["STUDIO_AESTHETIC_FETCH"] = "0"  # no download of the aesthetic head during tests
 os.environ.setdefault("STUDIO_RANCH", "1")
 
 

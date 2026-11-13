@@ -268,7 +268,7 @@ def test_words_suggest_and_research_carry_no_ranch_material_in_a_new_project(neu
     for text in sent + [copy, research.site_url(), research.default_topic()["en"], research.angle_system()]:
         assert not any(s in text for s in ("嬬恋", "牧場", "Work&Camp", "Tsumagoi", "群馬", "tsumagoi", "1,444")), text[:200]
     assert "席は12だけ。" in copy and research.site_url() == "https://kumo.example/menu"
-    with pytest.raises(ValueError, match="home place"):
+    with pytest.raises(research.ResearchError, match="home place"):
         research.events({})
 
 

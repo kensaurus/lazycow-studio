@@ -12,6 +12,8 @@
 
 Approving a reel stays a person's job in the studio. Agents and scripts can make, plan and post approved reels. They cannot approve.
 
+![The studio's Reels page: reels waiting for review, each with its first frame, its words and its booked time](https://raw.githubusercontent.com/kensaurus/lazycow-studio/main/docs/img/reels.webp)
+
 ## Install the studio
 
 ```
@@ -40,7 +42,21 @@ Claude Desktop or Cursor (`claude_desktop_config.json` / `.cursor/mcp.json`):
 }
 ```
 
-The server finds the studio by itself: `STUDIO_PORT` and `STUDIO_API_TOKEN` when set, else the `.env` in `LAZYCOW_DIR`, else the folder the setup recorded. So your agent config never holds a copy of the token. Tools: studio status, list and make reels, remix, plan and publish approved reels, jobs, projects, research, priced AI assist, performance. Full list: [docs/mcp.md](https://github.com/kensaurus/lazycow-studio/blob/main/docs/mcp.md).
+The server finds the studio by itself: `STUDIO_PORT` and `STUDIO_API_TOKEN` when set, else the `.env` in `LAZYCOW_DIR`, else the folder the setup recorded. So your agent config never holds a copy of the token.
+
+The 27 tools ("reads" change nothing; "spends" means paid AI, priced first and kept inside the studio's limits):
+
+| Area | Tools |
+|:--|:--|
+| The studio | `studio_status`, `list_projects`, `switch_project`, `read_log` (reads, except switching) |
+| Reels | `list_reels`, `reel_details`, `list_themes` (reads); `make_reels`, `make_reel`, `remix_reel` (render in the background) |
+| Jobs | `job_status`, `cancel_job` |
+| Posting | `list_posts`, `list_accounts` (reads); `plan_post`, `publish_reel`, `schedule_reel` (approved reels only) |
+| Research | `research_ideas`, `research_events`, `research_page`, `research_site_check`, `research_links` (reads the web through the studio; suggestions, never posted) |
+| AI assist | `ai_estimate`, `ai_review` (reads); `ai_run` (spends, never changes an approved reel) |
+| Results | `perf_summary`, `perf_suggest` (reads) |
+
+Every tool, its inputs and examples: [docs/mcp.md](https://github.com/kensaurus/lazycow-studio/blob/main/docs/mcp.md).
 
 Each tool answers with a plain sentence and the data, and the same data as `structuredContent` for programs (a list
 arrives as `{ "items": [...] }`). Account secrets never leave the studio.

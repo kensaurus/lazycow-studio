@@ -67,3 +67,41 @@ test("the store keeps a problem until its cause is gone, and honours dismissals"
   t += 2 * 86400e3;
   assert.deepEqual(store.open(), [], "an event expires");
 });
+
+test("a post booked but not seen live is red, with a link to look on the network (carstay-1108, Google Maps, 13 Nov)", () => {
+  const posts = [{ id: 7, slug: "carstay-1108", network: "gbp", status: "missing", at: "2026-11-13T12:00+09:00", note: "not seen 6 h after its time" }];
+  const [p] = findProblems({ posts, now: NOW + 10 * 3600e3 });
+  assert.equal(p.id, "missed:7");
+  assert.match(p.title, /carstay-1108 was not seen on Google Maps/);
+  assert.match(p.detail, /It's out/);
+  assert.equal(p.also.href, "https://business.google.com/locations");
+});
+
+test("a sign-in that ends before booked posts is red two weeks ahead; with nothing booked after it, only near the end", () => {
+  const connections = { bluesky: { connected: true, until: "2026-11-22T23:35+00:00" }, facebook: { connected: true } };
+  const posts = [
+    { id: 1, slug: "a", network: "bluesky", status: "queued", at: "2026-11-20T19:00+09:00" },
+    { id: 2, slug: "b", network: "bluesky", status: "queued", at: "2026-11-25T19:00+09:00" },
+    { id: 3, slug: "c", network: "bluesky", status: "queued", at: "2026-12-12T19:00+09:00" },
+  ];
+  const reviews = [{ slug: "story-a", status: "approved" }, { slug: "story-b", status: "approved" }, { slug: "story-c", status: "approved" }];
+  const [p] = findProblems({ posts, reviews, connections, now: NOW });
+  assert.equal(p.id, "signin:bluesky");
+  assert.equal(p.level, "red");
+  assert.equal(p.dismissable, false);
+  assert.match(p.title, /Bluesky signs out in 10 days/);
+  assert.match(p.detail, /2 booked posts after that will not go out/);
+  assert.match(p.detail, /App password/);
+  assert.equal(p.fix.href, "#/accounts");
+  assert.deepEqual(findProblems({ posts: posts.slice(0, 1), reviews, connections, now: NOW }), [], "nothing after the end, 10 days left: quiet");
+  const late = findProblems({ posts: [], connections, now: Date.parse("2026-11-21T00:00:00Z") });
+  assert.equal(late[0]?.level, "amber", "2 days left with nothing booked after: a heads-up");
+});
+
+test("a network whose measured posts reached nobody is amber, with where to look (TikTok and Facebook, 0 views)", () => {
+  const perf = { networks: { tiktok: { name: "TikTok", metric: "views", median: 0, posts: 2 }, youtube: { median: 16.5, posts: 2 },
+    facebook: { metric: "views", median: 0, posts: 1 } } };
+  const found = findProblems({ perf, now: NOW });
+  assert.deepEqual(found.map((f) => f.id), ["reach:tiktok"], "one measured post is not a pattern");
+  assert.equal(found[0].also.href, "https://www.tiktok.com/tiktokstudio");
+});

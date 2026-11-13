@@ -594,6 +594,15 @@ def default_topic() -> dict:
     return {"ja": words, "en": words}
 
 
+def home_nation(place: dict | None) -> str | None:
+    """The country the project's home place is in (timeline.country on this computer), or None when it has no point."""
+    try:
+        from studio.timeline import country
+        return country(float(place["lat"]), float(place["lon"]))
+    except Exception:  # noqa: BLE001 - no point or no map: search without a country
+        return None
+
+
 def angle_system() -> str:
     """The angle-writer's brief: the ranch's, or this project's name with no ranch facts."""
     from studio.brand import RANCH, brand
@@ -782,12 +791,20 @@ def ideas(req: dict) -> dict:
     topic = str(req.get("topic") or "").strip()[:120]
     fresh = bool(req.get("fresh"))
     base = default_topic()
-    queries = {"ja": topic or base["ja"], "en": topic or base["en"]}
+    from studio.brand import RANCH, home_place
+
+    # Like events: Japan's results (a Japanese and an English search) for the ranch and for a home place in Japan;
+    # elsewhere one English search in that country's results, or with no country when the project has no home place.
+    nation = "Japan" if RANCH else home_nation(home_place())
+    if nation == "Japan":
+        queries = {"ja": topic or base["ja"], "en": topic or base["en"]}
+        where = {"ja": {"country": "JP", "location": "Japan"}, "en": {"country": "JP"}}
+    else:
+        queries = {"en": topic or base["en"]}
+        where = {"en": {"location": nation} if nation else {}}
     items: list[dict] = []
     for lang, q in queries.items():
-        payload = {"query": q, "limit": 8, "sources": ["web", "news"], "tbs": _tbs(days), "country": "JP", "timeout": 45000}
-        if lang == "ja":
-            payload["location"] = "Japan"
+        payload = {"query": q, "limit": 8, "sources": ["web", "news"], "tbs": _tbs(days), **where[lang], "timeout": 45000}
         items += _items(firecrawl("/search", payload, fresh=fresh, estimate=4), lang, days)
     seen, uniq = set(), []
     for it in items:
@@ -796,11 +813,11 @@ def ideas(req: dict) -> dict:
             uniq.append(it)
     skip = {w.lower() for q in queries.values() for w in re.split(r"\s+", q)}
     hashtags, keywords = _words(uniq, skip)
-    angles = _llm_angles(uniq, topic or base["ja"]) if uniq else None
+    angles = _llm_angles(uniq, topic or base["ja"] if nation == "Japan" else topic or base["en"]) if uniq else None
     angles = angles or _template_angles(keywords, uniq)
     for a in angles:
         a["guard"] = guard_problems(f"{a['title']} {a['why']}")
-    lead = (f"{len(uniq)} recent pages and articles about {topic or 'camp, workation and Tsumagoi'} from the last {days} days, "
+    lead = (f"{len(uniq)} recent pages and articles about {topic or queries[next(iter(queries))]} from the last {days} days, "
             f"{len(angles)} post angles.") if uniq else f"Nothing came back for {topic or 'the default topic'} in the last {days} days. Try a wider topic or more days."
     return {"summary": lead, "topic": topic or None, "queries": list(queries.values()), "days": days, "items": uniq,
             "hashtags": hashtags, "keywords": keywords, "angles": angles, "sources": [it["url"] for it in uniq], "note": NOTE, **_run_info()}
@@ -1216,12 +1233,9 @@ def events(req: dict) -> dict:
         place = home_place() or {}
         names = (place.get("names") or [])[:3]
         if not names:
-            raise ValueError("Events nearby need a home place with a place name: set it in Settings › Keys & AI › This project.")
-        try:
-            from studio.timeline import country
-            nation = country(float(place["lat"]), float(place["lon"]))
-        except Exception:  # noqa: BLE001 - no point or no map: search without a country
-            nation = None
+            raise ResearchError("Events nearby need a home place with a place name: set it in Settings › Keys & AI › This project.",
+                                "no_home_place", 400)
+        nation = home_nation(place)
         if nation == "Japan":
             queries = [f"{n} イベント {when}" for n in names] + [f"{n} events" for n in names[:1]]
         else:

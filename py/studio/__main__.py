@@ -101,6 +101,8 @@ def main() -> None:
     vl.add_argument("--titles", help='plan --series: JSON, your own episode titles in order, e.g. ["A Leopard in a Tree", ...]')
     sp = sub.add_parser("speech", help="what people say in the footage (local, free): scan")
     sp.add_argument("action", choices=["scan"])
+    qu = sub.add_parser("quality", help="blurry pictures, shaky clips and wind, measured once per file: scan")
+    qu.add_argument("action", choices=["scan"])
     lv = sub.add_parser("live", help="did booked posts go out: check, catch-up, tidy, health, settings, waiting")
     lv.add_argument("action", choices=["check", "catch-up", "tidy", "health", "settings", "waiting"])
     asm = sub.add_parser("assemble")
@@ -326,6 +328,10 @@ def main() -> None:
         if args.action == "all":
             for v in json.loads(vlog.PLAN_FILE.read_text(encoding="utf-8"))["videos"]:
                 print("RESULT " + json.dumps(vlog.build(v["n"], music=not args.no_music), ensure_ascii=False, default=str), flush=True)
+    elif args.cmd == "quality":
+        from studio import quality
+
+        print(json.dumps(quality.scan(), indent=1))
     elif args.cmd == "speech":
         from studio import speech
         from studio.library import _base_items

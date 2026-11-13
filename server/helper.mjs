@@ -817,12 +817,16 @@ async function scheduleTikTok(page, { file, text, at, timeZone, rehearse, step }
   step("writing the text", 3);
   const { body, tags } = splitTags(text);
   const editor = page.locator(".public-DraftEditor-content").first();
-  await editor.evaluate((el) => {
-    el.focus();
-    const r = document.createRange(); r.selectNodeContents(el);
-    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
-  });
-  await page.keyboard.press("Backspace");
+  // Clear the file name TikTok puts in the description. Draft.js keeps its own selection: a DOM range was ignored and
+  // Backspace took one letter, so two posts went out as "tsumagoi_focus-1109_1080x192山で働く…" (13 Nov). Select all
+  // with the keyboard, which the editor follows, and clear until it is empty.
+  for (let i = 0; i < 4; i++) {
+    await editor.click();
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
+    await page.keyboard.press("Backspace");
+    await sleep(300);
+    if (!(await editor.innerText().catch(() => "")).trim()) break;
+  }
   await typeLines(page, body.split("\n"));
   if (tags.length) {
     await page.keyboard.press("Enter"); await page.keyboard.press("Enter");
@@ -830,7 +834,8 @@ async function scheduleTikTok(page, { file, text, at, timeZone, rehearse, step }
   }
   const typed = await editor.innerText().catch(() => "");
   const firstLine = body.split("\n").find((l) => l.trim())?.trim().slice(0, 20) || "";
-  if ((firstLine && !typed.includes(firstLine)) || tags.some((t) => !typed.includes(t))) return fail("TikTok: the description did not come out as written, so nothing was scheduled. The window stays open; check it there.");
+  // It must START with the first line: "includes" passed with the file name left in front of it.
+  if ((firstLine && !typed.trim().startsWith(firstLine)) || tags.some((t) => !typed.includes(t))) return fail("TikTok: the description did not come out as written, so nothing was scheduled. The window stays open; check it there.");
   step(`setting ${want.date} ${want.time}`, 4);
   await page.locator('input[type="radio"][value="schedule"]').first().dispatchEvent("click");
   await sleep(1500);
@@ -1601,10 +1606,38 @@ async function readPinterest(page, items) {
   return out;
 }
 
+/** Is a post's first line on this page? Spaces, punctuation and case are ignored, and its first 14 letters are
+    enough: Maps cuts an owner post to two short lines. Pure, for tests. */
+export function ownerPostSeen(pageText, hint) {
+  const norm = (x) => String(x || "").normalize("NFKC").toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+  const want = norm(hint).slice(0, 14);
+  return want.length >= 4 && norm(pageText).includes(want);
+}
+
+/* Google Maps posts: Business Profile's own posts page (business.google.com/posts/l/<id>) now sends you back to the
+   businesses list, so every post read as "not found" (carstay-1108, 13 Nov, live under "From the owner"). Read the
+   public listing instead: the business's name from Business Profile, then its Maps page, where the newest posts
+   show under "From the owner". Found = out (no numbers there). */
+async function readGbp(page, items) {
+  const out = [];
+  await page.goto("https://business.google.com/locations", { waitUntil: "domcontentloaded", timeout: 45000 });
+  await sleep(4000);
+  const name = /\b\d{12,25}\s+([^\n]+)/.exec(await pageText(page))?.[1]?.trim();
+  if (!name) return items.map((it) => ({ ...it, state: "failed", message: "Google Maps: could not read the business's name in Business Profile." }));
+  await page.goto(`https://www.google.com/maps/search/${encodeURIComponent(name)}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+  await sleep(7000);
+  const text = await pageText(page);
+  const listing = page.url();
+  for (const it of items) {
+    if (ownerPostSeen(text, it.hint)) out.push({ ...it, state: "found", page: listing, message: "Google Maps: on the listing under From the owner." });
+    else out.push({ ...it, state: "missing", message: "Google Maps: not among the newest posts under From the owner on the listing (an older one may have scrolled off)." });
+  }
+  return out;
+}
+
 const PERF_LIST = {
   tiktok: () => "https://www.tiktok.com/tiktokstudio/content",
   linkedin: (it) => (/linkedin\.com\/company\/\d+\/admin/.test(it.url || "") ? it.url : null),
-  gbp: (it, home) => { const id = stateValue(home, "gbpLocation"); return id ? `https://business.google.com/posts/l/${id}` : null; },
 };
 const PERF_POST = {
   pinterest: (it) => (/pinterest\.[a-z.]+\/pin\/\d+/.test(it.url || "") ? it.url : null),
@@ -1632,6 +1665,7 @@ export async function readPerf({ home, items, onStep = () => {} }) {
       if (net === "x") out.push(...(await readX(page, mine)));
       else if (net === "pinterest") out.push(...(await readPinterest(page, mine)));
       else if (net === "line-oa") out.push(...(await readLine(page, mine, home)));
+      else if (net === "gbp") out.push(...(await readGbp(page, mine)));
       else {
         const list = PERF_LIST[net]?.(mine[0], home) || null;
         out.push(...(await readFromData(page, net, list, mine, { perPostUrl: PERF_POST[net] })));

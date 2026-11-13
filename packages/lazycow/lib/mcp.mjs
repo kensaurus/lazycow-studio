@@ -578,7 +578,7 @@ const TOOLS = [
   {
     name: "research_ideas",
     title: "Research: ideas and trends",
-    description: "Search recent web pages and news (Japanese and English) about a topic (default: camp, workation, Tsumagoi, Gunma) and return the pages with their URLs, frequent hashtags and keywords, and 3-5 suggested post angles, each citing the pages it came from. Read-only: suggestions for a person, never post copy, never posted. Uses Firecrawl credits (cached 24 h).",
+    description: "Search recent web pages and news (Japanese and English) about a topic (default: the open project's name and home place) and return the pages with their URLs, frequent hashtags and keywords, and 3-5 suggested post angles, each citing the pages it came from. Read-only: suggestions for a person, never post copy, never posted. Uses Firecrawl credits (cached 24 h).",
     inputSchema: {
       type: "object",
       properties: {
@@ -597,7 +597,7 @@ const TOOLS = [
   {
     name: "research_site_check",
     title: "Research: check the website against our facts",
-    description: "Read the brand website (the project's profile link and its booking page) and compare its prices, altitude, inclusions and booking link with the facts the studio's approved copy uses. Returns each fact as match, mismatch, not on the site or only on the site, in plain words (e.g. \"the website says ¥5,500; your copy says ¥5,200\"). Read-only: it changes no copy and posts nothing.",
+    description: "Read the brand website (the project's profile link and its booking page) and compare its prices, key facts, inclusions and booking link with the facts the studio's approved copy uses. Returns each fact as match, mismatch, not on the site or only on the site, in plain words (e.g. \"the website says ¥5,500; your copy says ¥5,200\"). Read-only: it changes no copy and posts nothing.",
     inputSchema: {
       type: "object",
       properties: {

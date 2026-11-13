@@ -282,10 +282,32 @@ function workspacesView() {
     if (x.id === "main") continue;
     out.push({ id: x.id, name: x.name, color: x.color, data: x.env?.STUDIO_DATA || "", source: x.env?.STUDIO_SOURCE || "", created: x.created || null });
   }
+  const busyJobs = [...jobs.values()].filter((j) => j.status === "queued" || j.status === "running");
   const pend = pendingSwitch ? { id: pendingSwitch.id, name: out.find((x) => x.id === pendingSwitch.id)?.name || pendingSwitch.id, since: pendingSwitch.since,
-    busy: [...jobs.values()].filter((j) => j.status === "queued" || j.status === "running").length } : null;
+    busy: busyJobs.length, what: busyJobs[0] ? `${busyJobs[0].slug}: ${busyJobs[0].label || busyJobs[0].kind}`.slice(0, 120) : "" } : null;
   const active = PINNED || w.active;  // a pinned studio shows its own project as the open one
-  return { active: out.some((x) => x.id === active) ? active : "main", running: ACTIVE_WS?.id || "main", home: HOME_DIR, list: out, pending: pend, pinned: PINNED };
+  return { active: out.some((x) => x.id === active) ? active : "main", running: ACTIVE_WS?.id || "main", home: HOME_DIR, list: out, pending: pend, pinned: PINNED,
+    elsewhere: { ...otherStudios } };
+}
+/* Other studios on this computer started for one project (STUDIO_PROJECT): their project opens there at once, with no
+   switch that waits for this studio's work and pauses this project's posting (owner, 13 Nov: "it says i need to wait
+   for work to finish? isnt that bad uiux"). The next few ports, every 30 s; a port that does not answer is skipped. */
+let otherStudios = {};
+async function findOtherStudios() {
+  const found = {};
+  await Promise.all([1, 2, 3, 4].map(async (k) => {
+    const port = PORT + k;
+    try {
+      const r = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(800) });
+      const h = await r.json();
+      if (h && typeof h.pinned === "string" && /^[a-z0-9-]{1,60}$/.test(h.pinned)) found[h.pinned] = `http://127.0.0.1:${port}/`;
+    } catch { /* nothing there */ }
+  }));
+  otherStudios = found;
+}
+if (!PINNED) {
+  setTimeout(() => findOtherStudios().catch(() => {}), 3000);
+  setInterval(() => findOtherStudios().catch(() => {}), 30_000).unref();
 }
 const cleanName = (s) => String(s || "").replace(/[<>\u0000-\u001f]/g, "").trim().slice(0, 40);
 /* A switch asked for while jobs ran: done by itself as soon as nothing is queued or running (checked every 5 s). */
@@ -1510,7 +1532,12 @@ async function tickProblems() {
     const reviews = await reviewRows().catch(() => []);
     let parts = [];
     try { parts = vlogsView().parts || []; } catch { /* no long videos here */ }
-    if (PROBLEMS.checked(findProblems({ posts: Array.isArray(posts) ? posts : [], reviews, parts }))) writeEvent("problems", { count: PROBLEMS.open().length });
+    // Sign-ins (when each ends) and how posts did: each read on its own, a failure only leaves that check out.
+    const [connections, perfNow] = await Promise.all([
+      ask({ cmd: "connections", port: PORT }).catch(() => ({})),
+      perf("summary", {}).catch(() => null),
+    ]);
+    if (PROBLEMS.checked(findProblems({ posts: Array.isArray(posts) ? posts : [], reviews, parts, connections, perf: perfNow }))) writeEvent("problems", { count: PROBLEMS.open().length });
   })().finally(() => { problemsRunning = null; });
   return problemsRunning;
 }
@@ -1625,6 +1652,7 @@ function healthView() {
   try { version = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version; } catch { /* optional */ }
   return {
     build: BUILD, current, stale: current !== BUILD, pageBuild: buildId([PAGE]), version, started: new Date(STARTED).toISOString(), restartPending,
+    pinned: PINNED,  // a studio started for one project (STUDIO_PROJECT): the main studio offers "Open its studio" for it
     queue: { running: running ? running.slug : null, queued: queue.length },
     machine: { threads: facts.threads, cpu: facts.cpuModel, ramGb: Math.round(facts.ramGb), platform: facts.platform },
     ...judgeSystem(facts),
@@ -2603,6 +2631,11 @@ const server = createServer(async (req, res) => {
       if (perfGet === "scores" || perfGet === "predictions") {
         try { return send(res, 200, await ask({ cmd: "perf_read", action: perfGet })); }
         catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+      }
+      // One reel's readings: the warm service too (Results › Latest posts asks for six); a cold process if it is busy.
+      if (perfGet === "get" && SLUG_RX.test(url.searchParams.get("slug") || "")) {
+        try { return send(res, 200, await ask({ cmd: "perf_read", action: "get", slug: url.searchParams.get("slug") })); }
+        catch { /* fall through to a fresh process, which says what is wrong in its own words */ }
       }
       try { return send(res, 200, await perf(perfGet, perfQuery(perfGet, url.searchParams))); }
       catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }

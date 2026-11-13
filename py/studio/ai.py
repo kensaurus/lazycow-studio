@@ -1143,7 +1143,14 @@ def vision_json(images: list[Path], system: str, prompt: str, slug: str, purpose
             text = body["choices"][0]["message"]["content"]
             if isinstance(text, list):
                 text = "".join(x.get("text", "") for x in text if isinstance(x, dict))
-            return json.loads(re.sub(r"^```(json)?|```$", "", text.strip()).strip()), actual
+            text = re.sub(r"^```(json)?|```$", "", (text or "").strip()).strip()
+            try:
+                return json.loads(text), actual
+            except ValueError:  # a model that wraps its JSON in a sentence: the outermost object
+                hit = re.search(r"\{[\s\S]*\}", text)
+                if not hit:
+                    raise
+                return json.loads(hit.group(0)), actual
         except (KeyError, IndexError, TypeError, ValueError):
             raise AiError("The vision model sent back no JSON.", "upstream", 502, charged=True) from None
 
