@@ -17,7 +17,7 @@ import { freeDiskBytes } from "./health.mjs";
 
 export const DROP_PORT = Number(process.env.STUDIO_DROP_PORT || 4319);
 /** Photo and video formats phones and cameras make (the studio catalogs these). */
-export const DROP_TYPES = [".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".dng", ".mp4", ".mov", ".m4v", ".3gp", ".mts", ".avi", ".insv", ".insp"];
+export const DROP_TYPES = [".jpg", ".jpeg", ".png", ".heic", ".heif", ".avif", ".webp", ".tif", ".tiff", ".dng", ".arw", ".cr2", ".cr3", ".nef", ".raf", ".orf", ".rw2", ".mp4", ".mov", ".m4v", ".3gp", ".mts", ".m2ts", ".mxf", ".mkv", ".webm", ".avi", ".mpg", ".mpeg", ".insv", ".insp", ".360"];
 const MAX_FILE = 8 * 1024 ** 3;       // one file at most 8 GB (a long 4K video)
 const KEEP_FREE = 5 * 1024 ** 3;      // never fill the disk the studio renders on: keep 5 GB free after a file
 

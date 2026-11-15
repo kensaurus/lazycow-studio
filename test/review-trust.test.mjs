@@ -130,3 +130,32 @@ test("no other site can frame the studio, and a project slug is never a path (re
   assert.equal((await call("GET", "/api/about")).headers["x-frame-options"], "DENY");
   assert.equal((await call("GET", "/api/project?slug=..%2F..%2Fx")).status, 400);
 });
+
+test("a project keeps the person's word that everyone in its footage agreed to be filmed", async () => {
+  const first = JSON.parse((await call("GET", "/api/workspaces")).body);
+  assert.equal(first.list.find((w) => w.id === "main").consentAll, false);  // off until the person says so
+  const on = await call("POST", "/api/workspaces/edit", { headers: own(), body: { id: "main", consentAll: true } });
+  assert.equal(on.status, 200);
+  assert.equal(JSON.parse(on.body).list.find((w) => w.id === "main").consentAll, true);
+  const junk = await call("POST", "/api/workspaces/edit", { headers: own(), body: { id: "main", consentAll: "yes" } });
+  assert.equal(JSON.parse(junk.body).list.find((w) => w.id === "main").consentAll, true);  // only a real boolean changes it
+  const off = await call("POST", "/api/workspaces/edit", { headers: own(), body: { id: "main", consentAll: false } });
+  assert.equal(JSON.parse(off.body).list.find((w) => w.id === "main").consentAll, false);
+  assert.equal((await call("POST", "/api/workspaces/edit", { headers: { origin: "https://evil.example", "content-type": "application/json" }, body: { id: "main", consentAll: true } })).status, 403);
+});
+
+test("the helper starts once: a server that waited for its port does not start a second, orphaned one", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(SERVER, "utf8");
+  const at = src.indexOf('server.once("listening"');
+  const block = src.slice(at, src.indexOf("});", at));
+  assert.match(block, /if \(!helper\) startHelper\(\);/);
+  assert.doesNotMatch(block.replace(/if \(!helper\) startHelper\(\);/, ""), /startHelper\(\)/);
+});
+
+test("a cancelled build of a reel that no longer exists is not a card on the Reels page", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(SERVER, "utf8");
+  const at = src.indexOf('url.pathname === "/api/overview"');
+  assert.match(src.slice(at, at + 1200), /job\.status !== "cancelled"/);
+});

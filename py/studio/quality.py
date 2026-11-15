@@ -104,9 +104,9 @@ def windy(w: dict | None) -> bool:
 
 
 def audio_of(path: str | Path, start: float = 0.0, sec: float | None = None, rate: int = 16000) -> np.ndarray:
-    cmd = [str(ffmpeg_bin()), "-v", "error", "-ss", f"{max(0.0, start):.3f}", "-i", str(path)]
-    if sec:
-        cmd += ["-t", f"{sec:.3f}"]
+    from studio.formats import seek_input
+
+    cmd = [str(ffmpeg_bin()), "-v", "error", *seek_input(path, start, sec or None)]
     cmd += ["-map", "0:a:0?", "-ac", "1", "-ar", str(rate), "-f", "f32le", "-"]
     out = subprocess.run(cmd, capture_output=True, timeout=300).stdout
     return np.frombuffer(out, dtype=np.float32)

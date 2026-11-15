@@ -108,6 +108,8 @@ def status() -> dict:
         return {"connected": False, "account": None, "error": None}
     account = "@" + (creds.get("account") or creds.get("handle") or "")
     if creds.get("kind") == "oauth":
+        if creds.get("fallback"):  # the app password kept from before the sign-in: posting never stops when it ends
+            return {"connected": True, "account": account, "error": None, "via": "app password" if oauth.ran_out(creds) else "signin", "fallback": True}
         if oauth.ran_out(creds):
             return {"connected": False, "account": account, "error": oauth.RAN_OUT, "via": "signin"}
         until = datetime.fromtimestamp(oauth.until(creds), timezone.utc).isoformat(timespec="minutes")
@@ -121,8 +123,18 @@ def start_signin(fields: dict, port: int) -> dict:
 
 
 def finish_signin(params: dict, port: int) -> dict:
-    """The browser came back from Bluesky: check it, keep the session (replacing an app password), report."""
-    _save(oauth.finish(params, port))
+    """The browser came back from Bluesky: check it and keep the session. An app password already stored for the same
+    account is kept beside it as the fallback: a page sign-in ends after two weeks, an app password does not (13 Nov:
+    a sign-in replaced the owner's app password, and the studio warned the account would sign out in 14 days)."""
+    try:
+        old = _load() or {}
+    except Exception:
+        old = {}
+    sess = oauth.finish(params, port)
+    keep = old.get("fallback") or ({"handle": old["handle"], "app_password": old["app_password"]} if old.get("app_password") else None)
+    if keep and (not old.get("did") or old.get("did") == sess.get("did")):
+        sess["fallback"] = keep
+    _save(sess)
     return status()
 
 
@@ -366,6 +378,43 @@ def _upload(video: Path, did: str, pds: str, call) -> dict:
         _wait(POLL)
 
 
+def account() -> tuple[str, str, str, object]:
+    """The connected account: (did, pds, handle, call). `call(method, url, data=, headers=)` sends a request to the
+    account's own server with its session (the sign-in's DPoP proof, or an app-password session). Posting, reading
+    replies and answering them (studio.comments) all go through it."""
+    try:
+        creds = _load()
+    except Exception as err:
+        raise RuntimeError(f"the stored Bluesky sign-in could not be read ({err}); connect again") from err
+    if not creds:
+        raise RuntimeError("Bluesky is not connected")
+    signed_in = creds.get("kind") == "oauth"
+    if signed_in and creds.get("fallback"):
+        try:  # a sign-in that ran out or cannot refresh: the kept app password posts instead
+            if oauth.ran_out(creds):
+                raise RuntimeError(oauth.RAN_OUT)
+            oauth.fresh(creds, _save)
+        except RuntimeError:
+            signed_in = False
+    if signed_in:
+        # Signed in on Bluesky's page: every request to the account's server carries the session's DPoP proof.
+        oauth.fresh(creds, _save)
+        did, pds, handle = creds["did"], creds["pds"], creds.get("handle") or creds["did"]
+        call = lambda method, url, **kw: oauth.pds_request(creds, method, url, save=_save, **kw)
+    else:
+        creds = creds.get("fallback") or creds
+        try:
+            s = _session(creds["handle"], creds["app_password"])
+        except ValueError as err:
+            raise RuntimeError("Bluesky no longer accepts the stored app password; connect Bluesky again") from err
+        did, access, pds = s["did"], s["accessJwt"], _pds(s)
+        handle = s.get("handle") or creds.get("account") or creds["handle"]
+
+        def call(method, url, *, data=None, headers=None, timeout=120):
+            return _http(method, url, data=data, headers={**(headers or {}), "authorization": f"Bearer {access}"}, timeout=timeout)
+    return did, pds, handle, call
+
+
 def post(video: Path, text: str, at: datetime | None = None) -> dict:
     video = Path(video)
     check_text(text)
@@ -377,27 +426,7 @@ def post(video: Path, text: str, at: datetime | None = None) -> dict:
         raise RuntimeError(f"the video {video.name} is missing; render the reel first")
     if video.stat().st_size > MAX_VIDEO:
         raise RuntimeError("Bluesky takes videos up to 300 MB; this file is larger")
-    try:
-        creds = _load()
-    except Exception as err:
-        raise RuntimeError(f"the stored Bluesky sign-in could not be read ({err}); connect again") from err
-    if not creds:
-        raise RuntimeError("Bluesky is not connected")
-    if creds.get("kind") == "oauth":
-        # Signed in on Bluesky's page: every request to the account's server carries the session's DPoP proof.
-        oauth.fresh(creds, _save)
-        did, pds, handle = creds["did"], creds["pds"], creds.get("handle") or creds["did"]
-        call = lambda method, url, **kw: oauth.pds_request(creds, method, url, save=_save, **kw)
-    else:
-        try:
-            s = _session(creds["handle"], creds["app_password"])
-        except ValueError as err:
-            raise RuntimeError("Bluesky no longer accepts the stored app password; connect Bluesky again") from err
-        did, access, pds = s["did"], s["accessJwt"], _pds(s)
-        handle = s.get("handle") or creds.get("account") or creds["handle"]
-
-        def call(method, url, *, data=None, headers=None, timeout=120):
-            return _http(method, url, data=data, headers={**(headers or {}), "authorization": f"Bearer {access}"}, timeout=timeout)
+    did, pds, handle, call = account()
     _check_limits(pds, call)
     blob = _upload(video, did, pds, call)
     embed = {"$type": "app.bsky.embed.video", "video": blob}

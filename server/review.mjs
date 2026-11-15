@@ -275,12 +275,12 @@ function uploadVlogs(plan, s) {
 function workspacesView() {
   const w = readWorkspaces();
   const main = w.list.find((x) => x.id === "main") || {};
-  const out = [{ id: "main", main: true, name: main.name || FILE_ENV_BASE.STUDIO_WORKSPACE || "Main", color: main.color || WS_COLORS[0],
+  const out = [{ id: "main", main: true, name: main.name || FILE_ENV_BASE.STUDIO_WORKSPACE || "Main", color: main.color || WS_COLORS[0], consentAll: !!main.consentAll,
     // as the studio was started (a shell export wins over .env, as everywhere): switching back to Main restarts from SHELL_ENV
     data: SHELL_ENV.STUDIO_DATA || FILE_ENV_BASE.STUDIO_DATA || join(ROOT, "data"), source: SHELL_ENV.STUDIO_SOURCE || FILE_ENV_BASE.STUDIO_SOURCE || "" }];
   for (const x of w.list) {
     if (x.id === "main") continue;
-    out.push({ id: x.id, name: x.name, color: x.color, data: x.env?.STUDIO_DATA || "", source: x.env?.STUDIO_SOURCE || "", created: x.created || null });
+    out.push({ id: x.id, name: x.name, color: x.color, consentAll: !!x.consentAll, data: x.env?.STUDIO_DATA || "", source: x.env?.STUDIO_SOURCE || "", created: x.created || null });
   }
   const busyJobs = [...jobs.values()].filter((j) => j.status === "queued" || j.status === "running");
   const pend = pendingSwitch ? { id: pendingSwitch.id, name: out.find((x) => x.id === pendingSwitch.id)?.name || pendingSwitch.id, since: pendingSwitch.since,
@@ -289,6 +289,69 @@ function workspacesView() {
   return { active: out.some((x) => x.id === active) ? active : "main", running: ACTIVE_WS?.id || "main", home: HOME_DIR, list: out, pending: pend, pinned: PINNED,
     elsewhere: { ...otherStudios } };
 }
+/* ---------- All projects at once (owner, 14 Nov: "really bad uiux and user journey to keep pressing between different
+   projects"). /api/summary is this studio's own project in a few numbers; /api/projects/summary gathers every studio on
+   this computer (the ports around this one) and lists the projects no studio has open. Read-only. ---------- */
+const SUMMARY_CACHE = { at: 0, data: null };
+async function summaryView() {
+  if (Date.now() - SUMMARY_CACHE.at < 15_000 && SUMMARY_CACHE.data) return { ...SUMMARY_CACHE.data, queue: queueSummary(), vlogs: vlogSummary() };
+  const ws = workspacesView(), id = ACTIVE_WS?.id || "main", me = ws.list.find((x) => x.id === id) || {};
+  let reels = null, posts = null, own = null;
+  try {
+    const o = await ask({ cmd: "overview" });
+    own = new Set((o.reels || []).map((r) => r.slug));
+    const mine = (o.reels || []).filter((r) => !r.house);
+    reels = { total: mine.length, review: mine.filter((r) => r.status === "rendered").length, approved: mine.filter((r) => r.status === "approved").length,
+      rejected: mine.filter((r) => r.status === "rejected").length };
+  } catch { /* the helper is starting: no counts this time */ }
+  try {
+    const rows = await ask({ cmd: "posts" });
+    // the posting log is one for every project: count this project's reels and long videos only
+    try { for (const v of vlogsView().parts || []) own?.add(v.slug); } catch { /* no long videos */ }
+    const list = (Array.isArray(rows) ? rows : rows?.posts || []).filter((x) => !own || own.has(x.slug));
+    const ahead = list.filter((x) => ["scheduled", "queued", "planned"].includes(x.status) && Date.parse(x.at) > Date.now()).sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+    const week = Date.now() - 7 * 864e5;
+    posts = { booked: ahead.length, next: ahead[0] ? { slug: ahead[0].slug, network: ahead[0].network, at: ahead[0].at } : null,
+      postedWeek: list.filter((x) => x.status === "posted" && Date.parse(x.at) > week).length };
+  } catch { /* no posts yet */ }
+  const open = PROBLEMS.open();
+  const data = { id, name: me.name || id, color: me.color || null, url: `http://127.0.0.1:${PORT}/`, here: true,
+    reels, posts, problems: { red: open.filter((x) => x.level === "red").length, amber: open.filter((x) => x.level === "amber").length,
+      top: open.filter((x) => x.level === "red").slice(0, 2).map((x) => ({ title: x.title, ja: x.ja?.title || null, href: x.fix?.href || null })) } };
+  SUMMARY_CACHE.at = Date.now(); SUMMARY_CACHE.data = data;
+  return { ...data, queue: queueSummary(), vlogs: vlogSummary() };
+}
+function queueSummary() {
+  const live = [...jobs.values()].filter((j) => ["build", "remix"].includes(j.kind) && ["queued", "running"].includes(j.status));
+  const run = live.find((j) => j.status === "running"), v = run ? jobView(run) : null;
+  const left = Math.max(0, ...live.map((j) => jobView(j).eta || 0));
+  return { running: v ? { slug: v.slug, pct: v.pct, label: v.label, eta: v.eta } : null, queued: live.filter((j) => j.status === "queued").length, left };
+}
+function vlogSummary() {
+  let parts = [];
+  try { parts = vlogsView().parts || []; } catch { return null; }
+  if (!parts.length) return null;
+  const busy = [...jobs.values()].find((j) => /^vlog-\d+$/.test(j.slug) && j.status === "running");
+  const v = busy ? jobView(busy) : null;
+  return { parts: parts.length, built: parts.filter((x) => x.built).length, uploaded: parts.filter((x) => x.uploaded).length,
+    building: v ? { n: Number(v.slug.slice(5)), pct: v.pct, label: v.label, eta: v.eta } : null };
+}
+async function projectsSummary() {
+  const mine = await summaryView();
+  const ports = [-4, -3, -2, -1, 1, 2, 3, 4].map((k) => PORT + k).filter((x) => x > 1024);
+  const others = (await Promise.all(ports.map(async (port) => {
+    try {
+      const r = await fetch(`http://127.0.0.1:${port}/api/summary`, { signal: AbortSignal.timeout(4000) });
+      const d = r.ok ? await r.json() : null;
+      return d && typeof d.id === "string" ? { ...d, here: false, url: `http://127.0.0.1:${port}/` } : null;
+    } catch { return null; }
+  }))).filter(Boolean);
+  const byId = new Map([[mine.id, mine]]);
+  for (const o of others) if (!byId.has(o.id)) byId.set(o.id, o);
+  const list = workspacesView().list.map((w) => byId.get(w.id) ? { ...byId.get(w.id), name: w.name, color: w.color } : { id: w.id, name: w.name, color: w.color, open: false });
+  return { at: new Date().toISOString(), here: mine.id, list };
+}
+
 /* Other studios on this computer started for one project (STUDIO_PROJECT): their project opens there at once, with no
    switch that waits for this studio's work and pauses this project's posting (owner, 13 Nov: "it says i need to wait
    for work to finish? isnt that bad uiux"). The next few ports, every 30 s; a port that does not answer is skipped. */
@@ -542,25 +605,27 @@ function researchInput(action, b) {
 const PERF_TIMEOUT = { collect: 180_000, import: 60_000 };
 const PERF_NUMBERS = ["views", "likes", "comments", "shares", "saves", "watch_time_s", "avg_view_pct", "avg_view_s", "completion_pct", "followers_gained", "reach"];
 const perfRuns = new Map();
-function perf(action, input = {}) {
-  const key = action + " " + JSON.stringify(input);
+const perf = (action, input = {}) => pyRun("studio.perf", action, input, PERF_TIMEOUT[action] || 60_000, "Performance");
+/* One short Python module call: request JSON on stdin, `RESULT {...}` on stdout; the same call asked twice while it
+   runs shares one run. Used by performance (studio.perf) and comments (studio.comments). */
+function pyRun(module, action, input, limit, what) {
+  const key = module + " " + action + " " + JSON.stringify(input);
   if (perfRuns.has(key)) return perfRuns.get(key);
-  const limit = PERF_TIMEOUT[action] || 60_000;
   const run = new Promise((ok, fail) => {
-    const child = spawn(PY, ["-m", "studio.perf", action], { cwd: ROOT, env: ENV });
+    const child = spawn(PY, ["-m", module, action], { cwd: ROOT, env: ENV });
     let out = "", err = "", late = false;
     const timer = setTimeout(() => { late = true; killTree(child); }, limit);
     child.stdout.on("data", (c) => { out += c; });
     child.stderr.on("data", (c) => { err += c; });
     child.stdin.on("error", () => {});
-    child.on("error", (e) => { clearTimeout(timer); fail(Object.assign(new Error(`Performance could not start Python: ${e.message}`), { status: 500 })); });
+    child.on("error", (e) => { clearTimeout(timer); fail(Object.assign(new Error(`${what} could not start Python: ${e.message}`), { status: 500 })); });
     child.on("exit", (code) => {
       clearTimeout(timer);
       if (late) return fail(Object.assign(new Error(`Reading the numbers took longer than ${Math.round(limit / 1000)} seconds and was stopped. Try again.`), { status: 504, code: "timeout" }));
       const line = out.split(/\r?\n/).reverse().find((l) => l.startsWith("RESULT "));
       let r = null;
       try { r = line ? JSON.parse(line.slice(7)) : null; } catch { r = null; }
-      if (!r) return fail(Object.assign(new Error(lastError(err) || `perf ${action} failed (exit ${code})`), { status: 500 }));
+      if (!r) return fail(Object.assign(new Error(lastError(err) || `${module} ${action} failed (exit ${code})`), { status: 500 }));
       if (!r.ok) return fail(Object.assign(new Error(r.error), { status: r.status || 500, code: r.code || "error" }));
       ok(r.data);
     });
@@ -597,6 +662,8 @@ function perfInput(action, b) {
 function perfQuery(action, q) {
   const out = {};
   if (action === "get") out.slug = q.get("slug") || "";
+  if (action === "table" && /^\d{1,3}$/.test(q.get("days") || "")) out.days = Math.min(365, Number(q.get("days")));
+  if (action === "channel" && q.get("fresh") === "1") out.fresh = true;
   if ((action === "summary" || action === "suggest") && /^[a-z-]{1,30}$/.test(q.get("network") || "")) out.network = q.get("network");
   if (action === "suggest") {
     if (/^\d{1,2}$/.test(q.get("n") || "")) out.n = Number(q.get("n"));
@@ -607,15 +674,60 @@ function perfQuery(action, q) {
 }
 /* At most hourly: read the live posts whose next checkpoint (1 h, 24 h, 72 h, 7 d, 28 d) has come. Python keeps
    the last run time, so a restart does not read twice; a network that fails is retried the next hour. */
+/* The numbers change at most hourly, but every look at Results started a Python process per panel: 1.5-12 s each
+   while a render held the processor, and one (summary) past its 60 s limit, so the page took 73 s to fill and two
+   panels said "could not be read" (15 Nov). The last answer is kept and served at once; one older than PERF_FRESH is
+   served and read again behind it. New numbers (collect, import, typed in) clear it; the hourly read warms it. */
+const PERF_FRESH = 10 * 60_000;
+const PERF_CACHED = new Set(["summary", "suggest", "status", "reach", "table", "channel"]);
+const perfCache = new Map();  // "action input" -> { at, data }
+function perfCached(action, input) {
+  if (!PERF_CACHED.has(action) || input.fresh) {
+    const run = perf(action, input);
+    if (action === "channel") run.then((data) => perfCache.set(`channel ${JSON.stringify({})}`, { at: Date.now(), data }), () => {});
+    return run;
+  }
+  const key = `${action} ${JSON.stringify(input)}`, hit = perfCache.get(key);
+  const read = () => perf(action, input).then((data) => { perfCache.set(key, { at: Date.now(), data }); return data; });
+  if (!hit) return read();
+  if (Date.now() - hit.at > PERF_FRESH) read().catch(() => { /* keep the last answer; the next look tries again */ });
+  return Promise.resolve(hit.data);
+}
+/** What Results asks for when it opens, read one after another (never six Pythons at once). */
+async function warmPerf() {
+  if (QUIET) return;
+  for (const [a, q] of [["summary", ""], ["suggest", "n=3"], ["reach", ""], ["table", "days=90"], ["status", ""], ["channel", ""]]) {
+    try { const input = perfQuery(a, new URLSearchParams(q)); perfCache.delete(`${a} ${JSON.stringify(input)}`); await perfCached(a, input); } catch { /* the page reads it itself */ }
+  }
+}
+setTimeout(warmPerf, 90_000);
 async function tickPerf() {
   if (QUIET) return;  // STUDIO_QUIET: a second studio for looking only (nothing runs by itself)
   try { await perf("collect", { timer: true }); } catch { /* offline or a network refused; the next hour tries again */ }
+  warmPerf();
   // The networks without an API (TikTok, X, Pinterest, Google Maps, LinkedIn): read in your Chrome, but only while the
   // helper is already connected to it. The timer never opens a connect page or asks for a click.
   if (extensionConnected()) startPerfBrowser({ why: "timer" });
 }
 setTimeout(tickPerf, 5 * 60_000);
 setInterval(tickPerf, 60 * 60_000);
+
+/* ---------- comments (py/studio/comments.py): what people write under the posts, and the owner's replies ----------
+   Hourly: read new comments on YouTube, Bluesky and the Facebook Page; when the owner turned on "Answer questions by
+   myself", plain questions get the owner's own saved answers (rules in the module). Everything else waits for a person. */
+const COMMENTS_TIMEOUT = { check: 120_000, reply: 60_000 };
+const comments = (action, input = {}) => pyRun("studio.comments", action, input, COMMENTS_TIMEOUT[action] || 30_000, "Comments");
+let commentsCount = null;  // {open, questions}: the Comments tab's number
+async function tickComments() {
+  if (QUIET) return;
+  try {
+    const v = await comments("check", { timer: true });
+    commentsCount = { open: v.counts?.open || 0, questions: v.counts?.questions || 0 };
+    writeEvent("comments", { counts: v.counts, new: v.new || 0, autoSent: (v.autoSent || []).length });
+  } catch { /* a network refused or the studio is offline: the next hour tries again */ }
+}
+setTimeout(tickComments, 7 * 60_000);
+setInterval(tickComments, 60 * 60_000);
 
 /* ---------- Runs by itself (Posting › Runs by itself; settings in py/studio/live.py, plan rules in server/autoplan.mjs) ----------
    Hourly: tidy failures a newer booking replaced, ask YouTube and Facebook whether due posts went out. Daily: check the
@@ -1511,16 +1623,32 @@ const history = loadHistory();
 /* The Problems list: problems.json beside the project's data, checked every 5 minutes and after each job. */
 const PROBLEMS = problemStore(join(DATA, "problems.json"));
 const PROBLEM_KINDS = { build: "make", remix: "remix", versions: "re-cut", vlog: "long video", vlogup: "upload", publish: "post", upload: "upload" };
+/* What a job did, in words ("helper-perf" is "Reading view numbers"): [English, Japanese], or null for a reel's own name. */
+function jobWords(slug = "") {
+  if (slug === "helper-perf") return ["Reading view numbers", "再生数の読み取り"];
+  if (slug === "footage") return ["Checking footage folders", "素材フォルダの確認"];
+  if (/^live-/.test(slug)) return ["The went-live check", "公開の確認"];
+  if (/^post-due-/.test(slug)) return ["Posting what was due", "予定の投稿"];
+  const v = /^vlog-(\d+)$/.exec(slug); if (v) return [`Long video part ${v[1]}`, `長い動画のパート${v[1]}`];
+  const h = /^helper-(.+)-([a-z]+(?:-[a-z]+)?)$/.exec(slug); if (h) return [`Posting ${h[1]} through your Chrome (${h[2]})`, `Chrome経由の投稿：${h[1]}（${h[2]}）`];
+  return null;
+}
 /** A job that ended in an error: kept as a problem for a week (or until dismissed), with its last line. */
 function noteJobProblem(job) {
+  // The same job finished fine later: its earlier failure is over (a one-off timeout stayed red for a week, 13-14 Nov).
+  if (job.status === "done") { if (PROBLEMS.clear(`job:${job.slug}`)) setTimeout(() => tickProblems().catch(() => {}), 1000); return; }
   if (job.status !== "error" || job.cancelled) return;
   const what = PROBLEM_KINDS[job.kind] || "job";
-  const verUse = /^ver-/.test(job.slug || "") ;
+  const verUse = /^ver-/.test(job.slug || "");
+  const named = jobWords(job.slug);
+  const fix = verUse ? ["Versions", "バージョン", "#/versions"] : /^vlog/.test(job.slug || "") ? ["Long videos", "長い動画", "#/videos"] : ["See the log", "ログを見る", "#/log/activity"];
   PROBLEMS.record({
     id: `job:${job.slug}`, level: "red",
-    title: verUse ? `The new version of ${job.slug.slice(4)} was not used` : `The ${what} of ${job.slug} did not finish`,
+    title: verUse ? `The new version of ${job.slug.slice(4)} was not used` : named ? `${named[0]} did not finish` : `The ${what} of ${job.slug} did not finish`,
     detail: String((job.lines || []).slice(-1)[0] || job.label || "It stopped with an error.").slice(0, 300),
-    fix: verUse ? { label: "Versions", href: "#/versions" } : /^vlog/.test(job.slug || "") ? { label: "Long videos", href: "#/videos" } : { label: "See the log", href: "#/log/activity" },
+    fix: { label: fix[0], href: fix[2] },
+    ja: { title: verUse ? `${job.slug.slice(4)}の新しい版は使われませんでした` : named ? `${named[1]}が最後まで終わりませんでした` : `${job.slug}の処理が最後まで終わりませんでした`,
+      detail: String((job.lines || []).slice(-1)[0] || job.label || "エラーで止まりました。").slice(0, 300), fix: fix[1] },
   });
   setTimeout(() => tickProblems().catch(() => {}), 2000);
 }
@@ -1548,7 +1676,8 @@ try {  // a project switch, said once in the project it switched to
   unlinkSync(join(HOME_DIR, "switched.json"));
   if (Date.now() - Date.parse(sw.at) < 3600e3) PROBLEMS.record({ id: `switch:${sw.at}`, level: "info", title: `This studio switched from ${sw.from}`,
     detail: `At ${new Date(sw.at).toLocaleString("en-GB")}. The other project's booked posts still go out in the background. Switch back any time from the project menu.`,
-    fix: { label: "Projects", href: "#/settings" } }, 2);
+    fix: { label: "Projects", href: "#/settings" },
+    ja: { title: `このスタジオは${sw.from}から切り替わりました`, detail: `${new Date(sw.at).toLocaleString("ja-JP")}。もう一方のプロジェクトの予約投稿は裏で投稿され続けます。プロジェクトメニューからいつでも戻せます。`, fix: "プロジェクト" } }, 2);
 } catch { /* no switch */ }
 
 function recordJob(job) {
@@ -2074,6 +2203,8 @@ const server = createServer(async (req, res) => {
     /* ---------- projects (workspaces) ---------- */
     /* Long videos (py/studio/vlog.py): plan a trip into parts, build each part, watch it, copy its YouTube text. */
     if (req.method === "GET" && url.pathname === "/api/vlogs") return send(res, 200, vlogsView());
+    if (req.method === "GET" && url.pathname === "/api/summary") return send(res, 200, await summaryView());
+    if (req.method === "GET" && url.pathname === "/api/projects/summary") return send(res, 200, await projectsSummary());
     /* The Problems list (server/problems.mjs): what went wrong, kept until it is fixed. */
     if (req.method === "GET" && url.pathname === "/api/problems") {
       if (url.searchParams.get("fresh") === "1") await tickProblems();
@@ -2338,6 +2469,9 @@ const server = createServer(async (req, res) => {
         x.name = n; if (x.id !== "main") x.env.STUDIO_WORKSPACE = n;
       }
       if (WS_COLORS.includes(b.color)) x.color = b.color;
+      // The person's word that everyone in this project's footage agreed to be filmed: no consent reminder on each
+      // reel. Approving still records consent per reel (review_actions), so the record stays per reel.
+      if (typeof b.consentAll === "boolean") x.consentAll = b.consentAll;
       writeWorkspaces(w);
       return send(res, 200, workspacesView());
     }
@@ -2624,7 +2758,8 @@ const server = createServer(async (req, res) => {
       return sendText(res, 200, readFileSync(join(ROOT, "docs", "openapi.yaml"), "utf8"), { "content-type": "application/yaml; charset=utf-8", "cache-control": "no-store" });
     }
     /* ---------- performance: how reels did, what worked, what to try next (docs/perf-api.md); nothing here posts ---------- */
-    const perfGet = { "/api/perf": "get", "/api/perf/summary": "summary", "/api/perf/suggest": "suggest", "/api/perf/status": "status", "/api/perf/predictions": "predictions", "/api/perf/scores": "scores" }[url.pathname];
+    const perfGet = { "/api/perf": "get", "/api/perf/summary": "summary", "/api/perf/suggest": "suggest", "/api/perf/status": "status", "/api/perf/predictions": "predictions",
+      "/api/perf/scores": "scores", "/api/perf/reach": "reach", "/api/perf/table": "table", "/api/perf/channel": "channel" }[url.pathname];
     if (req.method === "GET" && perfGet) {
       // Scores and predictions need the whole reel list: the warm studio service has it cached (0.4 s); a fresh
       // Python process rebuilt it cold every time (17 s, and past the time limit while a long render ran).
@@ -2637,14 +2772,36 @@ const server = createServer(async (req, res) => {
         try { return send(res, 200, await ask({ cmd: "perf_read", action: "get", slug: url.searchParams.get("slug") })); }
         catch { /* fall through to a fresh process, which says what is wrong in its own words */ }
       }
-      try { return send(res, 200, await perf(perfGet, perfQuery(perfGet, url.searchParams))); }
+      try { return send(res, 200, await perfCached(perfGet, perfQuery(perfGet, url.searchParams))); }
       catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
     }
     const perfPost = { "/api/perf/collect": "collect", "/api/perf/manual": "manual", "/api/perf/import": "import" }[url.pathname];
     if (req.method === "POST" && perfPost) {
       if (Number(req.headers["content-length"] || 0) > 2_500_000) return send(res, 413, { error: "csv: the file is over 2 MB; export a shorter date range", code: "too_big" });
-      try { return send(res, 200, await perf(perfPost, perfInput(perfPost, await body(req)))); }
+      perfCache.clear();  // new numbers: Results reads them fresh
+      try { const v = await perf(perfPost, perfInput(perfPost, await body(req))); perfCache.clear(); return send(res, 200, v); }
       catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
+    /* ---------- comments: read them all in one place; a reply goes out only when a person sends it (or the owner's
+       own saved answers, when they turned that on). docs/openapi.yaml #/paths/~1api~1comments ---------- */
+    if (req.method === "GET" && url.pathname === "/api/comments") {
+      try { const v = await comments("view"); commentsCount = { open: v.counts?.open || 0, questions: v.counts?.questions || 0 }; return send(res, 200, v); }
+      catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
+    const commentPost = { "/api/comments/check": "check", "/api/comments/reply": "reply", "/api/comments/skip": "skip",
+      "/api/comments/answers": "save-answers", "/api/comments/settings": "settings" }[url.pathname];
+    if (req.method === "POST" && commentPost) {
+      const b = await body(req);
+      const input = commentPost === "reply" ? { id: String(b.id || "").slice(0, 300), text: String(b.text || "").slice(0, 2000) }
+        : commentPost === "skip" ? { id: String(b.id || "").slice(0, 300), on: b.on !== false }
+        : commentPost === "settings" ? { ...(typeof b.auto === "boolean" ? { auto: b.auto } : {}), ...(b.cap !== undefined ? { cap: b.cap } : {}) }
+        : commentPost === "save-answers" ? { topics: b.topics && typeof b.topics === "object" ? b.topics : {}, ...(typeof b.link === "string" ? { link: b.link.slice(0, 300) } : {}) }
+        : {};
+      try {
+        const v = await comments(commentPost, input);
+        if (v?.counts) commentsCount = { open: v.counts.open || 0, questions: v.counts.questions || 0 };
+        return send(res, 200, v);
+      } catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
     }
     /* ---------- research (Firecrawl): read-only suggestions for a person; nothing here posts ---------- */
     if (req.method === "GET" && url.pathname === "/api/research") {
@@ -2782,7 +2939,8 @@ const server = createServer(async (req, res) => {
       o.reels.forEach((r) => { r.job = jobView(jobs.get(r.slug)); });
       const known = new Set(o.reels.map((r) => r.slug));
       // Only a reel being built is a card; footage scans, folder checks and imports are not reels.
-      for (const [slug, job] of jobs) if (!known.has(slug) && ["build", "remix"].includes(job.kind)) o.reels.unshift({ slug, title: "", status: "draft", job: jobView(job), seconds: 0, clips: 0 });
+      // A cancelled build of a reel that no longer exists is not a card (14 Nov: 31 cancelled drafts stayed on the page).
+      for (const [slug, job] of jobs) if (!known.has(slug) && ["build", "remix"].includes(job.kind) && job.status !== "cancelled") o.reels.unshift({ slug, title: "", status: "draft", job: jobView(job), seconds: 0, clips: 0 });
       return send(res, 200, o);
     }
     if (req.method === "POST" && url.pathname === "/api/alternate") {
@@ -2804,7 +2962,9 @@ const server = createServer(async (req, res) => {
       // One theme per helper call, each render queued as soon as its reel exists: a big batch never waits past the
       // helper's 10-minute limit, and a reel that was made is never left without its render.
       const made = [];
-      const themesIn = (Array.isArray(b.themes) ? b.themes : []).filter((x) => typeof x === "string").slice(0, 40);
+      let themesIn = (Array.isArray(b.themes) ? b.themes : []).filter((x) => typeof x === "string").slice(0, 40);
+      // No themes named: every theme (the MCP tool and docs/openapi.yaml say so). Before 13 Nov an empty list made nothing.
+      if (!themesIn.length) themesIn = Object.keys((await ask({ cmd: "themes" })) || {}).slice(0, 40);
       const mk = { slug: `make-${Date.now().toString(36)}`, kind: "make", status: "running", queued: Date.now(), started: Date.now(), lines: [], stage: 0, stages: 1, done: 0, of: themesIn.length, label: "picking footage" };
       jobs.set(mk.slug, mk); broadcast("job", mk, true);
       for (const t of themesIn) {
@@ -3137,13 +3297,20 @@ const server = createServer(async (req, res) => {
 });
 
 /* Start: retry while a previous copy lets go of the port (a restart), and if another studio is
-   already serving, say so plainly instead of a stack trace. */
+   already serving, say so plainly instead of a stack trace. A previous copy can take more than a few seconds to let go
+   (14 Nov 2026: the Kenya studio gave up after 6 s and the restart left no studio running), so it is waited for up to
+   LISTEN_PATIENCE; only the same build already serving and not restarting (a second start by hand) ends this at once. */
+const LISTEN_STEP = 250, LISTEN_PATIENCE = 60_000;
 function listen(attempt = 0) {
   server.once("error", async (err) => {
     if (err.code !== "EADDRINUSE") throw err;
-    if (attempt < 24) return setTimeout(() => listen(attempt + 1), 250);
     let other = null;
-    try { other = await (await fetch(`http://127.0.0.1:${PORT}/api/health`)).json(); } catch { other = null; }
+    try { other = await (await fetch(`http://127.0.0.1:${PORT}/api/health`, { signal: AbortSignal.timeout(1500) })).json(); } catch { other = null; }
+    const twin = other?.build === BUILD && !other?.restartPending;  // this very build, serving: a double start
+    if (!twin && attempt * LISTEN_STEP < LISTEN_PATIENCE) {
+      if (attempt && attempt % 40 === 0) console.error(`Port ${PORT} is still held (${other?.build ? `studio ${other.build}` : "no answer"}); waiting for it to let go.`);
+      return setTimeout(() => listen(attempt + 1), LISTEN_STEP);
+    }
     console.error(other?.build
       ? `The studio is already running at http://127.0.0.1:${PORT} (build ${other.build}). Open that, or stop it first.`
       : `Port ${PORT} is taken by another program. Close it, then run npm run review again.`);
@@ -3161,6 +3328,8 @@ server.once("listening", () => {
   // that backups of the data folder and the studio's own file route can read (SECURITY.md: never in a log).
   const tokenPart = !API_TOKEN ? "" : process.stdout.isTTY ? `?token=${encodeURIComponent(API_TOKEN)}` : "?token=<STUDIO_API_TOKEN in .env>";
   console.log(`review http://127.0.0.1:${PORT}/${tokenPart} (build ${BUILD})`);
-  startHelper();
+  // Work that runs before the port is free (a restart waiting for the old server to let go) may have started the
+  // helper already: a second start orphaned the first, a whole Python with its model loaded (Kenya, 14 Nov).
+  if (!helper) startHelper();
 });
 listen();

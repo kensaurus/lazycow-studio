@@ -35,6 +35,12 @@ const when = (iso) => {
   const t = Date.parse(iso);
   return Number.isFinite(t) ? new Date(t).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : String(iso || "");
 };
+/* The same in Japanese: every problem carries `ja` {title, detail, fix, also} and the page shows it when it is in Japanese. */
+const whenJa = (iso) => {
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? new Date(t).toLocaleString("ja-JP", { month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" }) : String(iso || "");
+};
+const REACH_JA = { tiktok: "TikTok Studioを開く", facebook: "Meta Business Suiteのインサイトを開く", bluesky: "Blueskyのプロフィールを開く", x: "Xのアナリティクスを開く" };
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
 const listNums = (ns) => (ns.length <= 1 ? String(ns[0] ?? "") : `${ns.slice(0, -1).join(", ")} and ${ns[ns.length - 1]}`);
 
@@ -64,6 +70,9 @@ export function findProblems({ posts = [], reviews = [], parts = [], connections
       title: `${slug} is booked but not approved`,
       detail: `${list.length} booked post${list.length === 1 ? "" : "s"}, the next on ${first.network} at ${when(first.at)}. The studio only posts and updates approved reels, so ${list.length === 1 ? "it waits" : "they wait"} until you approve it${st ? ` (now "${st}")` : ""}. If it shows people, press Consent OK first.`,
       fix: { label: "Open the reel", href: `#/reel/${slug}` }, dismissable: false,
+      ja: { title: `${slug}は予約済みですが、まだ承認されていません`,
+        detail: `予約済みの投稿${list.length}件、次は${first.network}で${whenJa(first.at)}。スタジオは承認済みのリールだけを投稿・更新するので、承認するまで待ちます${st ? `（今は「${st}」）` : ""}。人が映っている場合は、先に「同意OK」を押してください。`,
+        fix: "リールを開く" },
     });
   }
   // 2. Posts that did not go out in the last two weeks.
@@ -73,13 +82,18 @@ export function findProblems({ posts = [], reviews = [], parts = [], connections
     const missing = p.status === "missing", look = /^https?:\/\//.test(p.url || "") ? p.url : LOOK[p.network];
     out.push({
       id: `missed:${p.id ?? `${p.slug}:${p.network}:${p.at}`}`, level: "red",
-      title: missing ? `${p.slug} was not seen on ${netName(p.network)}` : `${p.slug} did not go out on ${netName(p.network)}`,
+      title: missing ? `${p.slug} may not be live on ${netName(p.network)}` : `${p.slug} did not go out on ${netName(p.network)}`,
       detail: missing
         ? `It was booked for ${when(p.at)}, and the studio has not found it live since${p.note ? ` (${String(p.note).slice(0, 140)})` : ""}. Look on ${netName(p.network)}: if it is there, press "It's out" on Posting; if not, book it again.`
         : `It was booked for ${when(p.at)}${p.note ? `: ${String(p.note).slice(0, 160)}` : ""}. Book it again, or post it by hand.`,
       fix: { label: "See Posting", href: "#/posting" },
       ...(missing && look ? { also: { label: `Look on ${netName(p.network)}`, href: look } } : {}),
       dismissable: true,
+      ja: { title: missing ? `${p.slug}は${netName(p.network)}で公開されていないかもしれません` : `${p.slug}は${netName(p.network)}に投稿されませんでした`,
+        detail: missing
+          ? `${whenJa(p.at)}に予約していましたが、公開を確認できていません${p.note ? `（${String(p.note).slice(0, 140)}）` : ""}。${netName(p.network)}で確かめて、出ていれば「投稿」で「公開済み」を押し、出ていなければ予約し直してください。`
+          : `${whenJa(p.at)}に予約していました${p.note ? `：${String(p.note).slice(0, 160)}` : ""}。予約し直すか、手動で投稿してください。`,
+        fix: "投稿を見る", also: `${netName(p.network)}で見る` },
     });
   }
   // 3. Long videos that repeat the same days, or vary a lot in length: viewers see the same moments again, and a
@@ -93,14 +107,15 @@ export function findProblems({ posts = [], reviews = [], parts = [], connections
     const lo = Math.min(...secs), hi = Math.max(...secs);
     const uneven = secs.length >= 3 && lo > 0 && hi / lo >= 2;
     if (shared.length || uneven) {
-      const why = [];
-      if (shared.length) why.push(`parts ${listNums(shared)} show some of the same days`);
-      if (uneven) why.push(`lengths run from ${mmss(lo)} to ${mmss(hi)}`);
+      const why = [], whyJa = [];
+      if (shared.length) { why.push(`parts ${listNums(shared)} show some of the same days`); whyJa.push(`パート${shared.join("・")}に同じ日が入っています`); }
+      if (uneven) { why.push(`lengths run from ${mmss(lo)} to ${mmss(hi)}`); whyJa.push(`長さが${mmss(lo)}から${mmss(hi)}までばらばらです`); }
       out.push({
         id: "vlog-shape", level: "amber",
         title: "Your long videos do not read as one series",
         detail: `${why.join("; ").replace(/^./, (c) => c.toUpperCase())}. Plan them as a series: each day once, in order, about the same length.`,
         fix: { label: "Long videos", href: "#/videos" }, dismissable: true,
+        ja: { title: "長い動画がひとつのシリーズになっていません", detail: `${whyJa.join("。")}。シリーズとして計画してください：各日を一度ずつ、順番に、同じくらいの長さで。`, fix: "長い動画" },
       });
     }
   }
@@ -117,6 +132,9 @@ export function findProblems({ posts = [], reviews = [], parts = [], connections
       title: end <= now ? `${netName(n)} is signed out` : `${netName(n)} signs out in ${days} day${days === 1 ? "" : "s"}`,
       detail: `${end <= now ? "The sign-in ended" : "The sign-in ends"} ${when(c.until)}.${after.length ? ` ${after.length} booked post${after.length === 1 ? "" : "s"} after that will not go out until you sign in again.` : ""} Sign in again on Settings › Accounts: it takes a minute.${n === "bluesky" ? " Signing in with an App password instead (Bluesky › Settings › Privacy and security › App passwords) does not run out." : ""}`,
       fix: { label: `Sign in to ${netName(n)} again`, href: "#/accounts" }, dismissable: false,
+      ja: { title: end <= now ? `${netName(n)}のサインインが切れています` : `${netName(n)}のサインインはあと${days}日で切れます`,
+        detail: `サインインは${whenJa(c.until)}に${end <= now ? "切れました" : "切れます"}。${after.length ? `それ以降の予約投稿${after.length}件は、サインインし直すまで投稿されません。` : ""}設定 › アカウントでサインインし直してください（1分ほどです）。${n === "bluesky" ? "代わりにアプリパスワード（Bluesky › 設定 › プライバシーとセキュリティ › アプリパスワード）でサインインすると、期限切れになりません。" : ""}`,
+        fix: `${netName(n)}にもう一度サインイン` },
     });
   }
   // 5. A network where the posts measured so far reached nobody: worth a look on the network itself (a new or
@@ -129,6 +147,9 @@ export function findProblems({ posts = [], reviews = [], parts = [], connections
       title: `Your ${netName(n)} posts are not being seen yet`,
       detail: `The ${v.posts} ${netName(n)} posts measured so far have 0 ${metric} about three days after they went out. A new account, a restricted account or a missing profile often does this; so can a number the studio cannot read. Check the account on ${netName(n)}, and compare its own numbers.`,
       fix: { label: "Results", href: "#/results" }, ...(REACH[n] ? { also: REACH[n] } : {}), dismissable: true,
+      ja: { title: `${netName(n)}の投稿がまだ見られていません`,
+        detail: `これまでに計測した${netName(n)}の投稿${v.posts}件は、公開から約3日たっても${v.metric === "engagements" ? "いいね・リポスト・返信" : "再生"}が0です。新しいアカウント、制限されたアカウント、プロフィールが未設定のときによく起きます。スタジオが数字を読めていない場合もあります。${netName(n)}でアカウントを確かめ、そちらの数字と比べてください。`,
+        fix: "結果", ...(REACH_JA[n] ? { also: REACH_JA[n] } : {}) },
     });
   }
   return sort(out);
@@ -167,6 +188,12 @@ export function createStore(file, { now = () => Date.now() } = {}) {
       state.items[item.id] = { dismissable: true, ...item, source: "event", first: old?.first || stamp(), last: stamp(), count: (old?.count || 0) + 1,
         expires: new Date(now() + days * DAY).toISOString(), dismissed: null };
       save();
+    },
+    /** An event that is over (the same job finished fine later): gone from the list. Returns whether it was there. */
+    clear(id) {
+      if (!state.items[id] || state.items[id].source !== "event") return false;
+      delete state.items[id]; save();
+      return true;
     },
     dismiss(id) {
       const it = state.items[id];

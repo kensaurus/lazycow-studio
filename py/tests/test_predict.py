@@ -36,7 +36,7 @@ def test_score_parts_partial_and_full():
     assert part["partial"] and set(part["missing"]) == {"hook", "look"} and part["score"] == 100  # fresh + fitting length, of what is known
     full = predict.score({"slug": "a", "sameHook": 3}, 70.0, review={"hook": {"score": 8, "notes": "x"}, "look": {"score": 6}})
     # hook 35*0.8 + look 25*0.6 + fresh 0 + length 0 = 43 of 100
-    assert not full["partial"] and full["score"] == 43 and full["parts"]["fresh"]["points"] == 0
+    assert not full["partial"] and full["score"] == 52 and full["parts"]["fresh"]["points"] == 0  # 35 + 16.7 + 0 + 0
     assert predict.score({"slug": "a", "sameHook": 0})["parts"].keys() == {"fresh"}
 
 
@@ -102,3 +102,28 @@ def test_freeze_once_per_booking_and_report_counts_only_timely_predictions(monke
     assert rep["measured"] == 1 and rep["inside"] == 1 and rep["coverage"] == 1.0
     assert by[901]["inside"] is True and by[902]["late"] and by[902]["inside"] is None and by[903]["actual"] is None
     assert "1 of 1 measured posts" in rep["summary"]
+
+
+def test_a_headline_repeats_only_when_it_goes_out_close_to_another():
+    """The owner reuses good headlines on purpose: weeks apart is fine; within FRESH_DAYS it is a repeat a follower sees."""
+    from datetime import datetime, timezone
+
+    now = datetime(2025, 5, 10, tzinfo=timezone.utc)
+    hooks = {"a": "same", "b": "same", "c": "same", "d": "other", "e": "same"}
+    posts = [{"slug": "a", "status": "posted", "at": "2025-05-01T19:00"}, {"slug": "b", "status": "scheduled", "at": "2025-05-08T19:00"},
+             {"slug": "c", "status": "scheduled", "at": "2025-06-20T19:00"}, {"slug": "d", "status": "scheduled", "at": "2025-05-02T19:00"},
+             {"slug": "e", "status": "skipped", "at": "2025-05-02T19:00"}]
+    near = predict.near_repeats(hooks, posts, now=now)
+    assert near == {"a": 1, "b": 1, "c": 0, "d": 0, "e": 2}  # e is not booked: judged at now, where a and b go out
+    s = predict.score({"slug": "x", "nearHook": 0, "sameHook": 40}, 15.0, review={"hook": {"score": 5}, "look": {"score": 6}})
+    assert s["parts"]["fresh"]["points"] == 25 and s["score"] == 74  # 17.5 + 16.7 + 25 + 15 of 100; a headline used 40 times, months apart: still fresh
+    assert predict.score({"slug": "x", "nearHook": 1}, 15.0, review={})["parts"]["fresh"]["points"] == 12.5
+    assert predict.score({"slug": "x", "nearHook": 2}, 15.0, review={})["parts"]["fresh"]["points"] == 0
+
+
+def test_the_ai_marks_are_read_on_the_scale_they_are_given_in():
+    """The reviewer gives most openings 5 or 6: those read as half and two thirds, not as a failing grade."""
+    assert [round(predict.ai_share(v), 3) for v in (0, 2, 5, 6, 8, 10)] == [0, 0, 0.5, 0.667, 1, 1]
+    typical = predict.score({"slug": "t", "nearHook": 0}, 20.0, review={"hook": {"score": 6}, "look": {"score": 6}})
+    weak = predict.score({"slug": "w", "nearHook": 0}, 20.0, review={"hook": {"score": 3}, "look": {"score": 6}})
+    assert typical["score"] == 80 and weak["score"] == 62 and typical["parts"]["hook"]["value"] == 6

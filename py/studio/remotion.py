@@ -8,20 +8,70 @@ USAGE: from studio.remotion import _remotion, _loud
 """
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
+import tempfile
+import time
 from pathlib import Path
 
 from studio.config import ROOT, SPEC, ffmpeg_bin, ffprobe_bin
 
 
-def _remotion(composition: str, props: Path, out: Path) -> bool:
+STALE_BUNDLE_S = 6 * 3600  # a render takes minutes; a bundle this old was left by one that crashed or was stopped
+
+
+def _link_dir(target: Path, link: Path) -> None:
+    """A directory link with no admin rights: a junction on Windows, a symlink elsewhere."""
+    if os.name == "nt":
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
+def public_dir() -> Path:
+    """The folder Remotion serves files from, made of links to public/'s folders. Remotion copies its public folder
+    into every new bundle, but keeps a link as a link: with the long videos' working files in public/mezz it was
+    copying 104 GB per reel, filled the C: drive mid-copy ("ENOSPC", 15 Nov) and left 600 GB of bundles behind."""
+    src, dst = ROOT / "public", ROOT / ".remotion-public"
+    dst.mkdir(exist_ok=True)
+    for item in src.iterdir():
+        here = dst / item.name
+        if item.is_dir():
+            if here.is_symlink() or getattr(here, "is_junction", lambda: False)() or here.exists():
+                continue
+            _link_dir(item, here)
+        elif not here.exists() or here.stat().st_mtime < item.stat().st_mtime:
+            shutil.copy2(item, here)
+    return dst
+
+
+def tidy_bundles(now: float | None = None) -> int:
+    """Remove Remotion bundles a crashed or stopped render left in the temp folder (they are copies, made again on the
+    next render). Returns how many went."""
+    now = now or time.time()
+    gone = 0
+    for d in Path(tempfile.gettempdir()).glob("remotion-webpack-bundle-*"):
+        try:
+            if d.is_dir() and now - d.stat().st_mtime > STALE_BUNDLE_S:
+                shutil.rmtree(d, ignore_errors=True)
+                gone += 1
+        except OSError:
+            continue
+    return gone
+
+
+def render_cmd(composition: str, props: Path, out: Path, *extra: str) -> list[str]:
+    tidy_bundles()
     npx = shutil.which("npx") or "npx"
-    cmd = [
-        npx, "remotion", "render", "src/index.ts", composition, str(out),
-        f"--props={props}", "--concurrency=4",
-    ]
+    return [npx, "remotion", "render", "src/index.ts", composition, str(out), f"--props={props}", f"--public-dir={public_dir()}", *extra]
+
+
+def _remotion(composition: str, props: Path, out: Path) -> bool:
+    cmd = render_cmd(composition, props, out, "--concurrency=4")
     log = out.with_suffix(".log")
     log.parent.mkdir(parents=True, exist_ok=True)
     # Stream the log so the editor can show frames as they render, not one jump per stage.

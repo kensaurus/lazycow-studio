@@ -4,8 +4,9 @@ PURPOSE: Before a reel goes out, a score (how good it looks on its own) and a pr
          do against that network's typical post); after it went out, the prediction next to what really happened, so
          the owner sees which guesses held and the studio learns what worked.
 OVERVIEW: 1. score(row): 0-100 from what is known before posting, each part shown: the AI reviewer's hook and look
-             marks (ai/reviews/<slug>.json, 0-10), a fresh headline (no other reel with it), and a length that fits
-             short video (12-35 s). Missing parts are left out and the score says it is partial. It ranks reels; it
+             marks (ai/reviews/<slug>.json, 0-10), a fresh headline (no other reel with the same headline goes out
+             within FRESH_DAYS of this one: what a follower would notice; reusing a good headline weeks apart is
+             fine), and a length that fits short video (12-35 s). Missing parts are left out and the score says it is partial. It ranks reels; it
              is not a forecast of views (vendor "virality scores" are not validated as one either).
           2. predict(project, network, at): the additive model in studio.learn summed over the reel's own choices
              (theme, layout, look, recipe, loop, length, clips, music, effects, cut, weekday, hour) on that network,
@@ -40,6 +41,17 @@ Z80 = 1.2815515655446004   # an 80 % central range of a normal on the log scale
 PREDICT_FEATURES = ("theme", "style", "look", "recipe", "loop", "length", "clips", "music", "sfx", "cut", "weekday", "hour")
 REVIEWS = DATA / "ai" / "reviews"
 WEIGHTS = {"hook": 35, "look": 25, "fresh": 25, "length": 15}
+FRESH_DAYS = 14  # another reel with the same headline posted or booked this close to this one is a repeat
+# The AI reviewer's marks bunch: of 184 reels, 163 openings got 5 or 6 out of 10 (Nov 2026), so read straight as a share
+# every ordinary reel scored about 50. Read on this scale instead: 2/10 or less counts as nothing, 8/10 or more in full,
+# in a straight line between (5 → half, 6 → two thirds). The order of reels is the same; the number reads as meant.
+AI_FLOOR, AI_TOP = 2.0, 8.0
+
+
+def ai_share(mark: float) -> float:
+    """An AI reviewer's mark out of 10 as the share of its points (AI_FLOOR..AI_TOP)."""
+    return max(0.0, min(1.0, (float(mark) - AI_FLOOR) / (AI_TOP - AI_FLOOR)))
+OUT = ("posted", "scheduled", "planned", "queued")  # a post that went out or is booked to
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS predictions (
@@ -88,11 +100,17 @@ def score(row: dict, seconds: float | None = None, review: dict | None = None) -
         for k in ("hook", "look"):
             v = (review.get(k) or {}).get("score")
             if isinstance(v, (int, float)):
-                parts[k] = {"value": round(float(v), 1), "of": 10, "points": WEIGHTS[k] * max(0.0, min(1.0, float(v) / 10.0)),
+                parts[k] = {"value": round(float(v), 1), "of": 10, "points": WEIGHTS[k] * ai_share(v),
                             "note": str((review.get(k) or {}).get("notes") or "")[:240]}
-    same = int(row.get("sameHook") or 0)
-    parts["fresh"] = {"value": same, "points": WEIGHTS["fresh"] * max(0.0, 1.0 - same / 3.0),
-                      "note": "no other reel has this headline" if same <= 0 else f"{same} other reel{'s' if same > 1 else ''} use this headline"}
+    if "nearHook" in row:  # repeats a follower would see: same headline within FRESH_DAYS (near_repeats)
+        same = int(row.get("nearHook") or 0)
+        parts["fresh"] = {"value": same, "points": WEIGHTS["fresh"] * max(0.0, 1.0 - same / 2.0), "days": FRESH_DAYS,
+                          "note": f"no other reel with this headline goes out within {FRESH_DAYS} days" if same <= 0
+                          else f"{same} reel{'s' if same > 1 else ''} with this headline go{'' if same > 1 else 'es'} out within {FRESH_DAYS} days"}
+    else:  # a row without posting data: every reel with this headline counts (the old rule)
+        same = int(row.get("sameHook") or 0)
+        parts["fresh"] = {"value": same, "points": WEIGHTS["fresh"] * max(0.0, 1.0 - same / 3.0),
+                          "note": "no other reel has this headline" if same <= 0 else f"{same} other reel{'s' if same > 1 else ''} use this headline"}
     if seconds:
         fit = 1.0 if 12 <= seconds <= 35 else 0.5 if 8 <= seconds < 12 or 35 < seconds <= 60 else 0.0
         parts["length"] = {"value": round(seconds, 1), "points": WEIGHTS["length"] * fit, "note": f"{seconds:.0f} s"}
@@ -158,6 +176,7 @@ def freeze(now: datetime | None = None) -> dict:
     has_numbers = {r["post_id"] for r in perf.readings()}
     made = late = 0
     rows_cache: dict[str, dict] = {}
+    near = None
     with _connect() as con:
         known = {r[0] for r in con.execute("SELECT post_id FROM predictions")}
         for p in _bookings():
@@ -170,7 +189,10 @@ def freeze(now: datetime | None = None) -> dict:
                 continue
             rows_cache[slug] = project
             pr = predict(project, p["network"], p.get("at"), model=model)
-            sc = score({"slug": slug, "sameHook": 0}, learn.reel_features(project, None).get("seconds")).get("score")  # as it stood when booked
+            if near is None:
+                near = _near_all(sorted({b["slug"] for b in _bookings()}))
+            sc = score({"slug": slug, "nearHook": near.get(slug, 0)},  # as it stood when booked, by the cards' rule
+                       learn.reel_features(project, None).get("seconds")).get("score")
             is_late = 1 if p["id"] in has_numbers else 0
             con.execute("INSERT INTO predictions (post_id, slug, network, made_at, mid, lo, hi, sd, posts, score, late) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                         (p["id"], slug, p["network"], now.isoformat(timespec="seconds"), pr["mid"], pr["lo"], pr["hi"], pr["sd"], pr["posts"], sc, is_late))
@@ -249,15 +271,63 @@ def report(overview_rows: list[dict] | None = None) -> dict:
                         else "No post has numbers old enough yet; the first comparisons come about 3 days after a post goes out.")}
 
 
+def _hook(project: dict) -> str:
+    return next((b.get("ja", "").replace("\n", "") for b in project.get("beats") or [] if b.get("kind") == "hook"), "")
+
+
+def near_repeats(hooks: dict[str, str], posts: list[dict], now: datetime | None = None) -> dict[str, int]:
+    """For each reel (slug -> headline): how many other reels with the same headline go out (posted or booked) within
+    FRESH_DAYS of this reel's own posts, or of now when it has none yet."""
+    now = now or _now()
+    when: dict[str, list[datetime]] = {}
+    for p in posts:
+        if p.get("status") not in OUT or not p.get("at"):
+            continue
+        try:
+            t = datetime.fromisoformat(str(p["at"]).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        when.setdefault(p["slug"], []).append(t if t.tzinfo else t.replace(tzinfo=timezone.utc))
+    window = FRESH_DAYS * 86400
+    by_hook: dict[str, list[str]] = {}
+    for slug, h in hooks.items():
+        if h:
+            by_hook.setdefault(h, []).append(slug)
+    out = {}
+    for slug, h in hooks.items():
+        mine = when.get(slug) or [now]
+        out[slug] = sum(1 for other in by_hook.get(h, []) if other != slug
+                        and any(abs((a - b).total_seconds()) <= window for a in mine for b in when.get(other, [])))
+    return out
+
+
+def _near_all(slugs: list[str]) -> dict[str, int]:
+    from studio import posting
+    from studio.projects import load
+
+    hooks = {}
+    for slug in slugs:
+        try:
+            hooks[slug] = _hook(load(slug))
+        except Exception:
+            hooks[slug] = ""
+    try:
+        posts = posting.posts()
+    except Exception:
+        posts = []
+    return near_repeats(hooks, posts)
+
+
 def scores(overview_rows: list[dict]) -> dict:
     """The score of every reel in the overview, with its parts."""
     from studio.projects import load
 
+    near = _near_all([r["slug"] for r in overview_rows])
     out = {}
     for r in overview_rows:
         try:
             sec = learn.reel_features(load(r["slug"]), None).get("seconds")
         except Exception:
             sec = None
-        out[r["slug"]] = score(r, sec)
+        out[r["slug"]] = score({**r, "nearHook": near.get(r["slug"], 0)}, sec)
     return {"scores": out}

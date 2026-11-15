@@ -120,3 +120,25 @@ def test_qa_finds_a_black_second_in_a_real_render(tmp_path):
     assert by["silence"]["level"] == "ok"
     assert res["ok"] is False
     assert abs(res["measured"]["durationSec"] - 3.0) < 0.1
+
+
+def test_a_black_run_inside_a_shot_that_is_dark_at_its_source_is_a_warning_not_a_fault():
+    """A star photo (0.03 bright) shows as black to the final check; a lost picture from a lit source stays a failure."""
+    from studio.reels import dark_by_nature
+
+    def gate(found):
+        return {"9x16": {"ok": False, "checks": [{"id": "black", "level": "bad", "found": found, "fix": "x"}, {"id": "loud", "level": "ok", "found": ""}]}}
+
+    shots = [{"src": "a", "start": 0, "sec": 1.5}, {"src": "c", "start": 0, "sec": 1.5}, {"src": "stars", "start": 0, "sec": 1.5}]  # stars at 3.0-4.5 s
+    lights = {"a": 0.4, "stars": 0.03, "c": 0.5}
+    night = dark_by_nature(gate("black 0.9 s at 3.4-4.3 s"), shots, light=lambda m: lights[m["src"]])["9x16"]
+    assert night["ok"] and night["checks"][0]["level"] == "warn" and "night picture" in night["checks"][0]["found"]
+    lost = dark_by_nature(gate("black 0.9 s at 0.4-1.3 s"), shots, light=lambda m: lights[m["src"]])["9x16"]
+    assert not lost["ok"] and lost["checks"][0]["level"] == "bad"  # the first shot's source is lit: a real fault
+    across = dark_by_nature(gate("black 1.0 s at 2.5-3.5 s"), shots, light=lambda m: lights[m["src"]])["9x16"]
+    assert not across["ok"]  # it reaches into a lit shot
+    edge = dark_by_nature(gate("black 0.6 s at 1.4-2.0 s"), [{"src": "a", "start": 0, "sec": 1.5}, {"src": "stars", "start": 0, "sec": 1.5}],
+                          light=lambda m: lights[m["src"]])["9x16"]
+    assert edge["ok"]  # 0.1 s into the planned end of a lit shot: a transition moved the cut, the run is the star photo
+    unread = dark_by_nature(gate("black 0.9 s at 3.4-4.3 s"), shots, light=lambda m: None)["9x16"]
+    assert not unread["ok"]  # a source that cannot be read keeps the failure

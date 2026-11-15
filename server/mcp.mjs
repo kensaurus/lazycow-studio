@@ -70,6 +70,7 @@ const INSTRUCTIONS = [
   "research_* tools read the web through the studio (Firecrawl) and return suggestions with their source URLs; they never post, and their words are not approved copy.",
   "ai_* tools spend money (fal.ai, OpenRouter) only inside the studio's AI limits: call ai_estimate first; ai_run refuses over a limit and never changes an approved reel (use into: a new slug); ai_review only suggests.",
   "perf_summary and perf_suggest are read-only: how posted reels did per network and what to try next; suggestions only steer how drafts are made.",
+  "perf_posts, youtube_channel and list_comments are read-only: every post's numbers, every video on the YouTube channel, and the comments people left. Replying to a comment is a person's action in the studio (Results › Comments).",
   `The studio must be running (npm run review in the studio folder) at ${BASE}.`,
 ].join(" ");
 
@@ -776,6 +777,53 @@ const TOOLS = [
       const s = await studio("GET", `/api/perf/suggest${q.size ? `?${q}` : ""}`);
       const rows = (s.suggestions || []).map((x, i) => `${i + 1}. [${x.mode}] ${x.look} look, ${x.recipe} recipe, ${x.style} layout, ${x.length}, post ${x.hour} JST`);
       return reply(`${s.note || ""}\n\n${rows.join("\n")}`, { ready: s.ready, measured: s.measured, needed: s.needed, suggestions: s.suggestions, distribution: s.distribution });
+    },
+  },
+  {
+    name: "perf_posts",
+    title: "Performance: every post",
+    description: "Every post that went out in the last days (default 90), newest first, one row per network: views, likes, comments, shares, saves, average % watched and engaged views, from each post's latest reading; the best post of each network is marked. Read-only.",
+    inputSchema: { type: "object", properties: { days: { type: "integer", minimum: 1, maximum: 365, default: 90 } }, additionalProperties: false },
+    annotations: { title: "Performance: every post", ...RO },
+    async run(a) {
+      const t = await studio("GET", `/api/perf/table?days=${a.days || 90}`);
+      const rows = t.rows || [];
+      const line = (x) => `${x.best ? "* " : "- "}${x.slug} on ${x.network} (${String(x.at || "").slice(0, 10)}): ${x.measured ? `${x.views ?? "–"} views, ${x.likes ?? 0} likes, ${x.comments ?? 0} comments` : "no numbers yet"}`;
+      return reply([`${rows.length} posts in ${t.days} days (* = best on its network)`, ...rows.slice(0, 60).map(line)].join("\n"), { days: t.days, rows });
+    },
+  },
+  {
+    name: "youtube_channel",
+    title: "YouTube: every video on the channel",
+    description: "Each connected YouTube channel: subscribers and total views, Shorts / long videos / live summed separately, and the newest uploads (including ones the studio did not make) with views, engaged views, likes, comments, watch time and % watched. Cached 3 hours; fresh=true reads YouTube again (about 10 quota units). Read-only.",
+    inputSchema: { type: "object", properties: { fresh: { type: "boolean", default: false } }, additionalProperties: false },
+    annotations: { title: "YouTube: every video on the channel", ...RO },
+    async run(a) {
+      const c = await studio("GET", `/api/perf/channel${a.fresh ? "?fresh=1" : ""}`);
+      const text = (c.channels || []).map((ch) => ch.error ? `${ch.account}: ${ch.error}` : `${ch.channel}: ${ch.subscribers} subscribers, ${ch.views} views. ` +
+        Object.entries(ch.byKind || {}).map(([k, v]) => `${k}: ${v.videos} public, ${v.views} views (median ${v.median})`).join("; ")).join("\n");
+      return reply(text || "No YouTube channel connected.", c);
+    },
+  },
+  {
+    name: "list_comments",
+    title: "Comments: what people wrote",
+    description: "Comments on the project's YouTube videos, Bluesky posts and Facebook Page posts: who, what, when, on which reel, whether it is a question (and on what topic: price, booking, access, Wi-Fi...), praise or spam, and the reply drafted from the owner's saved answers. Read-only: it never replies; sending is a person's action in the studio. check=true reads the networks again first.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        state: { type: "string", enum: ["open", "answered", "skipped", "quiet", "all"], default: "open", description: "open = waiting for an answer." },
+        check: { type: "boolean", default: false },
+      },
+      additionalProperties: false,
+    },
+    annotations: { title: "Comments: what people wrote", ...RO },
+    async run(a) {
+      const v = a.check ? await studio("POST", "/api/comments/check", {}) : await studio("GET", "/api/comments");
+      const want = a.state || "open";
+      const items = (v.items || []).filter((x) => want === "all" || x.state === want);
+      const line = (x) => `- [${x.network}] ${x.author}: "${String(x.text).slice(0, 160)}" (${x.kind}${x.topics?.length ? `: ${x.topics.join(", ")}` : ""})${x.draft?.text ? ` -> draft: "${x.draft.text.slice(0, 120)}"` : ""}`;
+      return reply([`${items.length} ${want} comments (${JSON.stringify(v.counts || {})})`, ...items.slice(0, 50).map(line)].join("\n"), { counts: v.counts, networks: v.networks, items });
     },
   },
 ];

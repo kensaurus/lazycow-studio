@@ -158,7 +158,9 @@ def render(reel: dict, mezz: Path, blur: bool = False) -> tuple[list[dict], list
             out = mezz / f"L{k:02d}_{tag}.mp4"
             mark = f"{x['src']}|{start}|{x['sec']}|{x['kind']}|blur={int(blur)}"
             stamp = out.with_suffix(".key")
-            if not out.exists() or not stamp.exists() or stamp.read_text(encoding="utf-8") != mark:
+            # Older than studio.shot (its finish changed): made again, as reel shots are.
+            stale = not out.exists() or out.stat().st_mtime < Path(render_shot.__code__.co_filename).stat().st_mtime
+            if stale or not stamp.exists() or stamp.read_text(encoding="utf-8") != mark:
                 render_shot(src, start, x["sec"], out, size, blur=blur)
                 stamp.write_text(mark, encoding="utf-8")
             bucket.append({"src": f"mezz/{reel['slug']}/{out.name}", "atSec": x["at"], "durationSec": x["sec"], "kind": x["kind"],

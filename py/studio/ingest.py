@@ -6,6 +6,8 @@ OVERVIEW: Walks the source, records hash, EXIF, GPS, and ffprobe. Copies nothing
 DEPENDENCIES: studio.db, studio.media, studio.config
 USAGE: ingest(source, do_hash=True, do_proxy=False, limit=None)
 NOTES: A file whose size and mtime already match is left alone, including its hash.
+       An Insta360 recording stored one lens per file is one item: the _00_ file (the
+       renderer stitches it with its _10_ partner); the _10_ file and LRV_ proxies are skipped.
 """
 from __future__ import annotations
 
@@ -45,9 +47,16 @@ def is_output(path: Path) -> bool:
     return any(part in OUTPUT_DIRS or part.startswith("_superseded") for part in path.parts) or bool(EDITED_NAME.search(path.name))
 
 
+def lens_extra(path: Path) -> bool:
+    """The second lens (_10_) of an Insta360 pair, or an LRV_ proxy: not an item of its own."""
+    from studio.sphere import is_lens_extra
+
+    return is_lens_extra(path)
+
+
 def iter_media(source: Path):
     for path in source.rglob("*"):
-        if path.is_file() and path.suffix.lower() in KEEP and not is_output(path):
+        if path.is_file() and path.suffix.lower() in KEEP and not is_output(path) and not lens_extra(path):
             yield path
 
 
@@ -120,6 +129,8 @@ def ingest(
     with connect_autocommit() as con:
         for path in paths if paths is not None else iter_media(source):
             if only and only.lower() not in str(path).lower():
+                continue
+            if lens_extra(path):  # a pair's _10_ lens / an LRV_ proxy handed in by path
                 continue
             if limit is not None and seen >= limit:
                 break

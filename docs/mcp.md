@@ -47,6 +47,9 @@ If the studio is not running, every tool answers: "Lazycow Studio is not running
 | `ai_run` | Apply AI tools (sharpen, slowmo, living, foley, behind, music, voice) to a reel or an AI copy (`into`), then render; refuses over a limit | no (spends money inside the limits; never approves or posts) |
 | `perf_summary` | What worked and what did not across posted reels (look, recipe, layout, length, hook, posting time) in plain sentences with their uncertainty ([perf-api.md](perf-api.md)) | no |
 | `perf_suggest` | Next-reel suggestions (look, recipe, layout, length, posting hour) by Thompson sampling, 30% exploring | no (suggestions only) |
+| `perf_posts` | Every post of the last days with its latest numbers (views, likes, comments, shares, saves, % watched); the best of each network marked | no |
+| `youtube_channel` | Each connected YouTube channel: totals, Shorts / long / live summed, the newest uploads with views, engaged views, watch time and % watched | no |
+| `list_comments` | Comments from YouTube, Bluesky and the Facebook Page, sorted into questions (by topic), praise and spam, with the reply drafted from the owner's saved answers | no (replying is a person's action in the studio) |
 
 **Research is read-only.** The `research_*` tools return suggestions with their source URLs; their words are not
 approved copy and nothing is posted. They need a Firecrawl key in the studio (Settings › Keys & AI); answers are cached
@@ -159,6 +162,6 @@ Arguments are checked against each tool's schema first; a bad one never reaches 
 Tests (`npm test`):
 
 - `test/mcp.test.mjs`: the protocol, the refusals (no approve tool, unapproved reels, AI over the limits), no secrets.
-- `test/mcp-every-tool.test.mjs`: all 27 tools, each called once against a fake studio, through `server/mcp.mjs` and
+- `test/mcp-every-tool.test.mjs`: all 30 tools, each called once against a fake studio, through `server/mcp.mjs` and
   through the npm package (`npx lazycow mcp`); and every route the tools call is in `docs/openapi.yaml`.
 - `test/lazycow-package.test.mjs`: the npm package (files, attribution, client, installer).

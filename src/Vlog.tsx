@@ -46,7 +46,29 @@ export type VlogShot = {
   audio?: string;
   audioLead?: number;
   audioTail?: number;
+  /** How the shot enters over the one before (py/studio/devices.py): drawn inside the look's fade window. */
+  tin?: VlogJoin;
 };
+export type VlogJoin = "dissolve" | "cut" | "iris" | "wipe" | "clock" | "slide" | "whip" | "zoom" | "flash";
+/** A picture layer over the running film (py/studio/devices.py): the base shot keeps playing (and keeps its sound). */
+export type VlogLayer = {
+  kind: "split" | "pip" | "prints" | "snapshot" | "leak";
+  atSec: number;
+  sec: number;
+  /** split / pip / prints: the other pictures (rendered to the pane's size, silent). */
+  srcs?: string[];
+  /** split: the base shot's file and where in it this moment is, so it can take its own pane. */
+  base?: string;
+  baseFrom?: number;
+  corner?: "tr" | "tl";
+  tilts?: number[];
+  /** snapshot: the frozen frame. */
+  still?: string;
+  tilt?: number;
+  seed?: number;
+};
+/** The chapter's own sound under a run of its photographs (they have none of their own). */
+export type VlogAmbience = { src: string; atSec: number; sec: number; volume: number };
 export type VlogChapter = { title: string; sub?: string; atSec: number; place?: string; day?: string; country?: string; border?: string };
 export type VlogOverlay = { kind: "subject" | "note"; atSec: number; sec: number; title: string; sub?: string };
 export type VlogProps = {
@@ -70,6 +92,8 @@ export type VlogProps = {
   titleSec?: number;
   recap?: SeriesRecap;
   next?: SeriesNext;
+  layers?: VlogLayer[];
+  ambience?: VlogAmbience[];
 };
 export type ThumbProps = { src: string; title: string; kicker?: string; look?: VlogLook };
 
@@ -159,9 +183,43 @@ const Rule: React.FC<{ delay?: number; w: number; h: number; color: string; tall
 
 /* ---------- the pictures ---------- */
 
-const Shot: React.FC<{ shot: VlogShot; frames: number; first: boolean; fade: number; look: VlogLook; index: number }> = ({ shot, frames, first, fade, look, index }) => {
+/** How a shot enters (`tin`) over the last `fade` frames of the one before, and how the one before leaves when the
+ *  next one whips or zooms in (`tout`). Masks are only set while the join runs. */
+function joinStyle(tin: VlogJoin, tout: VlogJoin | undefined, frame: number, frames: number, fade: number): { wrap: React.CSSProperties; flash: number } {
+  const n = Math.max(1, fade);
+  const p = interpolate(frame, [0, n], [0, 1], { ...CLAMP, easing: Easing.inOut(Easing.cubic) });
+  const on = frame < n;
+  let wrap: React.CSSProperties = {};
+  let flash = 0;
+  switch (tin) {
+    case "dissolve": wrap = { opacity: fade === 0 ? 1 : interpolate(frame, [0, fade], [0, 1], CLAMP) }; break;
+    case "iris": if (on) wrap = { clipPath: `circle(${(p * 76).toFixed(2)}% at 50% 50%)` }; break;
+    case "wipe": if (on) { const m = `linear-gradient(100deg, #000 ${(p * 140 - 30).toFixed(2)}%, transparent ${(p * 140).toFixed(2)}%)`; wrap = { maskImage: m, WebkitMaskImage: m }; } break;
+    case "clock": if (on) { const m = `conic-gradient(from 0deg at 50% 50%, #000 ${(p * 360).toFixed(2)}deg, transparent ${(p * 360 + 0.6).toFixed(2)}deg)`; wrap = { maskImage: m, WebkitMaskImage: m }; } break;
+    case "slide": if (on) wrap = { transform: `translateX(${((1 - p) * 100).toFixed(2)}%)`, boxShadow: "-40px 0 70px rgba(0,0,0,0.45)" }; break;
+    case "whip": if (on) wrap = { transform: `translateX(${((1 - p) * 100).toFixed(2)}%)`, filter: `blur(${((1 - p) * 26).toFixed(1)}px)` }; break;
+    case "zoom": if (on) wrap = { transform: `scale(${(1.45 - 0.45 * p).toFixed(4)})`, filter: `blur(${((1 - p) * 16).toFixed(1)}px)`, opacity: p }; break;
+    case "flash": flash = interpolate(frame, [0, 6], [0.85, 0], CLAMP); break;
+    default: break;
+  }
+  // The shot before a whip or a zoom moves out with it (the same motion carries across the cut).
+  if (tout === "whip" || tout === "zoom") {
+    const q = interpolate(frame, [frames - n, frames], [0, 1], { ...CLAMP, easing: Easing.in(Easing.cubic) });
+    if (q > 0) {
+      const out = tout === "whip" ? `translateX(${(-q * 45).toFixed(2)}%)` : `scale(${(1 + q * 0.6).toFixed(4)})`;
+      wrap = { ...wrap, transform: `${wrap.transform ?? ""} ${out}`.trim(), filter: `${wrap.filter ?? ""} blur(${(q * (tout === "whip" ? 26 : 14)).toFixed(1)}px)`.trim() };
+    }
+  }
+  return { wrap, flash };
+}
+
+const Shot: React.FC<{ shot: VlogShot; frames: number; first: boolean; fade: number; look: VlogLook; index: number; tout?: VlogJoin }> = ({ shot, frames, first, fade, look, index, tout }) => {
   const frame = useCurrentFrame();
-  const opacity = first || fade === 0 ? 1 : interpolate(frame, [0, fade], [0, 1], CLAMP);
+  const tin: VlogJoin = first ? "cut" : shot.tin ?? (fade === 0 ? "cut" : "dissolve");
+  const { wrap, flash } = joinStyle(tin, tout, frame, frames, fade);
+  const opacity = typeof wrap.opacity === "number" ? wrap.opacity : 1;
+  const motion: React.CSSProperties = { transform: wrap.transform, filter: wrap.filter, clipPath: wrap.clipPath, maskImage: wrap.maskImage,
+    WebkitMaskImage: wrap.WebkitMaskImage, boxShadow: wrap.boxShadow };
   const push = look === "slow" ? 0 : shot.push ?? (shot.photo ? (look === "monochrome" ? 0.04 : 0.07) : 0.025);
   let scale = interpolate(frame, [0, frames], [1, 1 + push], { ...CLAMP, easing: Easing.inOut(Easing.sin) });
   if (look === "energetic") scale *= interpolate(frame, [0, 7], [1.09, 1], OUT); // the punch-in on every cut
@@ -175,7 +233,8 @@ const Shot: React.FC<{ shot: VlogShot; frames: number; first: boolean; fade: num
   if (look === "journal") {
     const tilt = index % 3 === 0 ? -1.4 : index % 3 === 1 ? 1.1 : -0.4;
     return (
-      <AbsoluteFill style={{ opacity, alignItems: "center", justifyContent: "center" }}>
+      <AbsoluteFill style={{ opacity, ...motion, alignItems: "center", justifyContent: "center" }}>
+        {flash ? <AbsoluteFill style={{ background: "#fff", opacity: flash, zIndex: 2 }} /> : null}
         <div style={{ width: 1360, height: 765, padding: 22, background: "#fdfbf6", boxShadow: "0 18px 40px rgba(40,30,10,0.35), 0 2px 6px rgba(40,30,10,0.25)",
           transform: `rotate(${tilt}deg) translateY(-14px)`, boxSizing: "content-box" }}>
           <div style={{ width: "100%", height: "100%", overflow: "hidden" }}>{media}</div>
@@ -185,19 +244,26 @@ const Shot: React.FC<{ shot: VlogShot; frames: number; first: boolean; fade: num
   }
   if (look === "retro") {
     return (
-      <AbsoluteFill style={{ opacity, alignItems: "center" }}>
+      <AbsoluteFill style={{ opacity, ...motion, alignItems: "center" }}>
         <div style={{ width: RETRO_W, height: "100%", overflow: "hidden", borderRadius: 34 }}>{media}</div>
+        {flash ? <AbsoluteFill style={{ background: "#fff", opacity: flash }} /> : null}
       </AbsoluteFill>
     );
   }
   if (look === "monochrome") {
     return (
-      <AbsoluteFill style={{ opacity, alignItems: "center", justifyContent: "center", background: "#0b0b0b" }}>
+      <AbsoluteFill style={{ opacity, ...motion, alignItems: "center", justifyContent: "center", background: "#0b0b0b" }}>
         <div style={{ width: MONO_W, height: MONO_H, overflow: "hidden", outline: "1px solid rgba(255,255,255,0.55)" }}>{media}</div>
+        {flash ? <AbsoluteFill style={{ background: "#fff", opacity: flash }} /> : null}
       </AbsoluteFill>
     );
   }
-  return <AbsoluteFill style={{ opacity }}>{media}</AbsoluteFill>;
+  return (
+    <AbsoluteFill style={{ opacity, ...motion }}>
+      {media}
+      {flash ? <AbsoluteFill style={{ background: "#fff", opacity: flash }} /> : null}
+    </AbsoluteFill>
+  );
 };
 
 /** Film grain: a noise field that changes every frame. */
@@ -240,6 +306,142 @@ const LookLayer: React.FC<{ look: VlogLook }> = ({ look }) => {
   if (look === "roadmovie") return <AbsoluteFill style={{ pointerEvents: "none", background: "linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0) 15%)" }} />;
   return null;
 };
+
+/* ---------- picture layers over the running film (py/studio/devices.py) ---------- */
+
+/** The box a look's pictures sit in, so a layer stays inside it (the 4:3 home movie, the black-and-white print). */
+function lookBox(look: VlogLook): React.CSSProperties {
+  if (look === "retro") return { position: "absolute", left: (1920 - RETRO_W) / 2, top: 0, width: RETRO_W, height: 1080, borderRadius: 34, overflow: "hidden" };
+  if (look === "monochrome") return { position: "absolute", left: (1920 - MONO_W) / 2, top: (1080 - MONO_H) / 2, width: MONO_W, height: MONO_H, overflow: "hidden" };
+  return { position: "absolute", inset: 0, overflow: "hidden" };
+}
+const SPRING = Easing.bezier(0.2, 1.25, 0.35, 1); // a small overshoot: a print lands, an inset settles
+
+const Clip: React.FC<{ src: string; from?: number; style?: React.CSSProperties; mono?: boolean }> = ({ src, from = 0, style, mono }) => {
+  const { fps } = useVideoConfig();
+  return <OffthreadVideo src={staticFile(src)} muted trimBefore={Math.max(0, Math.round(from * fps))}
+    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", filter: mono ? "grayscale(1)" : undefined, ...style }} />;
+};
+
+/** The same minute from two or three cameras: the panes come in one after another, then give the frame back. */
+const SplitLayer: React.FC<{ layer: VlogLayer; frames: number; look: VlogLook }> = ({ layer, frames, look }) => {
+  const frame = useCurrentFrame();
+  const panes = [layer.base ? { src: layer.base, from: layer.baseFrom ?? 0 } : null, ...(layer.srcs ?? []).map((s) => ({ src: s, from: 0 }))].filter(Boolean) as Array<{ src: string; from: number }>;
+  const n = panes.length;
+  if (n < 2) return null;
+  const out = interpolate(frame, [frames - 9, frames], [0, 1], { ...CLAMP, easing: Easing.in(Easing.cubic) });
+  const line = look === "monochrome" ? "#0b0b0b" : look === "retro" ? "#050505" : PAPER;
+  // The dividers show once every pane has landed (before that the film shows through the gaps, never a blank).
+  const landed = (n - 1) * 5 + 12;
+  const back = Math.min(interpolate(frame, [landed - 2, landed + 2], [0, 1], CLAMP), 1 - out);
+  return (
+    <div style={{ ...lookBox(look), display: "flex", gap: 8, background: `rgba(${line === PAPER ? "250,248,241" : "5,5,5"},${back.toFixed(3)})` }}>
+      {panes.map((p, i) => {
+        const t = interpolate(frame - i * 5, [0, 12], [0, 1], { ...CLAMP, easing: Easing.out(Easing.cubic) });
+        const dir = i % 2 === 0 ? 1 : -1;
+        return (
+          <div key={i} style={{ flex: 1, height: "100%", overflow: "hidden", transform: `translateY(${((1 - t) * 100 * dir + out * 100 * -dir).toFixed(2)}%)` }}>
+            <Clip src={p.src} from={p.from} mono={look === "monochrome"} />
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+/** Another camera's view of the same moment in a corner, with a paper edge and a shadow. */
+const PipLayer: React.FC<{ layer: VlogLayer; frames: number; look: VlogLook }> = ({ layer, frames, look }) => {
+  const frame = useCurrentFrame();
+  const src = layer.srcs?.[0];
+  if (!src) return null;
+  const t = interpolate(frame, [0, 14], [0, 1], { ...CLAMP, easing: SPRING });
+  const out = interpolate(frame, [frames - 8, frames], [1, 0], CLAMP);
+  const right = layer.corner !== "tl";
+  const top = look === "cinematic" ? BAR + 40 : 72;
+  return (
+    <div style={{ position: "absolute", top, [right ? "right" : "left"]: 96, width: 640, height: 360, opacity: out,
+      transform: `translateX(${((1 - t) * (right ? 120 : -120)).toFixed(1)}px) scale(${(0.92 + 0.08 * t).toFixed(4)})`,
+      border: `6px solid ${PAPER}`, boxShadow: "0 18px 46px rgba(0,0,0,0.5)", overflow: "hidden", background: "#000" }}>
+      <Clip src={src} mono={look === "monochrome"} />
+    </div>
+  );
+};
+
+/** The day's photographs land on the film one by one, like prints dropped on a table; the film dims a little under them. */
+const PrintsLayer: React.FC<{ layer: VlogLayer; frames: number; look: VlogLook }> = ({ layer, frames, look }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const srcs = layer.srcs ?? [];
+  const n = srcs.length;
+  if (!n) return null;
+  const step = Math.min(0.7 * fps, (frames - 1.2 * fps) / Math.max(1, n));
+  const out = interpolate(frame, [frames - 10, frames], [1, 0], CLAMP);
+  const dim = Math.min(interpolate(frame, [0, 10], [0, 0.32], CLAMP), out * 0.32);
+  // Spread across the frame, slightly overlapping, clear of the lower third.
+  const spots = [[-430, -40], [-140, 30], [160, -50], [440, 20]];
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none" }}>
+      <AbsoluteFill style={{ background: `rgba(0,0,0,${dim.toFixed(3)})` }} />
+      {srcs.map((src, i) => {
+        const t = interpolate(frame - 4 - i * step, [0, 12], [0, 1], { ...CLAMP, easing: SPRING });
+        if (t <= 0) return null;
+        const [x, y] = spots[(i + (n < 4 ? 1 : 0)) % spots.length];
+        const tilt = layer.tilts?.[i] ?? 0;
+        return (
+          <div key={i} style={{ position: "absolute", left: 960 + x, top: 470 + y, transform: `translate(-50%, -50%) rotate(${tilt}deg) scale(${(1.25 - 0.25 * t).toFixed(4)})`,
+            opacity: Math.min(t * 1.4, 1) * out, background: "#fdfbf6", padding: "16px 16px 46px", boxShadow: "0 22px 44px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.3)" }}>
+            <div style={{ width: 500, height: 350, overflow: "hidden" }}><Clip src={src} mono={look === "monochrome"} /></div>
+          </div>
+        );
+      })}
+    </AbsoluteFill>
+  );
+};
+
+/** The moment freezes with a flash, shrinks into a print and settles in a corner while the film runs on underneath. */
+const SnapshotLayer: React.FC<{ layer: VlogLayer; frames: number; look: VlogLook }> = ({ layer, frames, look }) => {
+  const frame = useCurrentFrame();
+  if (!layer.still) return null;
+  const flash = interpolate(frame, [0, 2, 7], [0, 0.9, 0], CLAMP);
+  const t = interpolate(frame, [6, 22], [0, 1], { ...CLAMP, easing: Easing.inOut(Easing.cubic) });
+  const out = interpolate(frame, [frames - 10, frames], [0, 1], { ...CLAMP, easing: Easing.in(Easing.cubic) });
+  const scale = 1 - 0.64 * t;
+  const top = look === "cinematic" ? BAR + 30 : 60;
+  const x = t * (1920 / 2 - 96 - (1920 * 0.36) / 2) + out * 700, y = t * (top + (1080 * 0.36) / 2 - 1080 / 2);
+  const tilt = (layer.tilt ?? 3) * t;
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none" }}>
+      <div style={{ position: "absolute", left: 0, top: 0, width: 1920, height: 1080, transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) rotate(${tilt.toFixed(2)}deg) scale(${scale.toFixed(4)})`,
+        background: "#fdfbf6", padding: `${(t * 26).toFixed(1)}px`, boxSizing: "border-box", boxShadow: t > 0 ? `0 ${(30 * t).toFixed(0)}px ${(70 * t).toFixed(0)}px rgba(0,0,0,0.5)` : undefined,
+        opacity: 1 - out }}>
+        <Img src={staticFile(layer.still)} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", filter: look === "monochrome" ? "grayscale(1)" : undefined }} />
+      </div>
+      <AbsoluteFill style={{ background: "#fff", opacity: flash }} />
+    </AbsoluteFill>
+  );
+};
+
+/** Warm light washing over a chapter change (screen blend, drawn here: no WebGL, the same on every machine). */
+const LeakLayer: React.FC<{ layer: VlogLayer; frames: number; look: VlogLook }> = ({ layer, frames, look }) => {
+  const frame = useCurrentFrame();
+  const t = frame / Math.max(1, frames - 1);
+  const a = Math.sin(Math.PI * Math.min(1, Math.max(0, t)));
+  const s = layer.seed ?? 0;
+  const x0 = 10 + (s % 7) * 12, y0 = 20 + (s % 5) * 14;
+  const drift = t * 40;
+  const warm = look === "monochrome" ? "255,255,255" : "255,170,80";
+  const hot = look === "monochrome" ? "255,255,255" : "255,226,170";
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none", mixBlendMode: "screen", opacity: a * 0.85 }}>
+      <AbsoluteFill style={{ background: `radial-gradient(ellipse 60% 80% at ${x0 + drift}% ${y0}%, rgba(${hot},0.95) 0%, rgba(${warm},0.55) 35%, rgba(${warm},0) 70%)` }} />
+      <AbsoluteFill style={{ background: `radial-gradient(ellipse 45% 60% at ${100 - x0 - drift / 2}% ${100 - y0}%, rgba(${warm},0.5) 0%, rgba(${warm},0) 65%)` }} />
+    </AbsoluteFill>
+  );
+};
+
+const Layer: React.FC<{ layer: VlogLayer; frames: number; look: VlogLook }> = (p) =>
+  p.layer.kind === "split" ? <SplitLayer {...p} /> : p.layer.kind === "pip" ? <PipLayer {...p} /> : p.layer.kind === "prints" ? <PrintsLayer {...p} />
+    : p.layer.kind === "snapshot" ? <SnapshotLayer {...p} /> : p.layer.kind === "leak" ? <LeakLayer {...p} /> : null;
 
 /** The retro look's camcorder date, from the day the shot on screen was taken. */
 const DateStamp: React.FC<{ marks: Array<[number, string]> }> = ({ marks }) => {
@@ -631,7 +833,7 @@ const Outro: React.FC<{ text: string; look: VlogLook }> = ({ text, look }) => {
 /* ---------- the film ---------- */
 
 export const Vlog: React.FC<VlogProps> = ({ shots, chapters, title, subtitle, titleAtSec = 0, hook, outro = "Thanks for watching", overlays = [], look = "documentary", fade,
-  series, route = [], leg = [], titleSec, recap, next }) => {
+  series, route = [], leg = [], titleSec, recap, next, layers: devLayers = [], ambience = [] }) => {
   const { fps } = useVideoConfig();
   const f = fadeOf({ fade });
   const total = vlogFrames({ shots, chapters, title, fade: f }, fps);
@@ -644,7 +846,7 @@ export const Vlog: React.FC<VlogProps> = ({ shots, chapters, title, subtitle, ti
     marks.push([start, shot.date || ""]);
     return (
       <Sequence key={i} from={start} durationInFrames={frames} premountFor={fps}>
-        <Shot shot={shot} frames={frames} first={i === 0} fade={f} look={look} index={i} />
+        <Shot shot={shot} frames={frames} first={i === 0} fade={f} look={look} index={i} tout={shots[i + 1]?.tin} />
       </Sequence>
     );
   });
@@ -676,6 +878,19 @@ export const Vlog: React.FC<VlogProps> = ({ shots, chapters, title, subtitle, ti
     <AbsoluteFill style={{ background: look === "journal" ? paper : look === "retro" ? "#050505" : look === "monochrome" ? "#0b0b0b" : "#0d0f0b" }}>
       {layers}
       {bridges}
+      {ambience.map((a, i) => (
+        <Sequence key={`amb${i}`} from={Math.round(a.atSec * fps)} durationInFrames={Math.max(1, Math.round(a.sec * fps))} layout="none">
+          <Audio src={staticFile(a.src)} volume={a.volume} />
+        </Sequence>
+      ))}
+      {devLayers.map((l, i) => {
+        const frames = Math.max(2, Math.round(l.sec * fps));
+        return (
+          <Sequence key={`dev${i}`} from={Math.round(l.atSec * fps)} durationInFrames={frames} premountFor={fps}>
+            <Layer layer={l} frames={frames} look={look} />
+          </Sequence>
+        );
+      })}
       <LookLayer look={look} />
       {look === "retro" ? <DateStamp marks={marks} /> : null}
       {look === "roadmovie" ? <RouteBar chapters={chapters} /> : null}

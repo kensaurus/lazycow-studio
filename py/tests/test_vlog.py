@@ -239,3 +239,10 @@ def test_a_private_looking_picture_is_held_back_unless_the_person_lets_it_in(mon
     assert vlog.private_paths(rows) == {"bed.jpg": "hospital"}
     (tmp_path / "trip.json").write_text('{"privateOk": true}', encoding="utf-8")
     assert vlog.private_paths(rows) == {}, "the person lets private pictures in"
+
+
+def test_render_tabs_follow_the_memory_free():
+    """13 Nov: a build with 8 tabs on a machine with 7 GB free ran out of memory; it now builds slower instead."""
+    assert vlog.render_tabs(7.6) == 5 and vlog.render_tabs(2.0) == 2 and vlog.render_tabs(40.0) == 8
+    assert vlog.render_tabs(0.0) == 8  # unknown: as before
+    assert vlog.free_gb() > 0

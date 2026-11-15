@@ -472,3 +472,42 @@ def test_cli_answers_one_result_line_and_scrubs_errors(world, monkeypatch, capsy
     perf.main(["nope"])
     assert json.loads(capsys.readouterr().out.removeprefix("RESULT "))["code"] == "bad_input"
     assert perf._scrub(f"Bearer {TOKEN} access_token={FB_TOKEN}&x=1") == "[hidden] [hidden]&x=1"
+
+
+def test_reach_says_per_network_whether_anyone_saw_the_posts(monkeypatch):
+    """14 Nov: the Results page said "0 views, 1.0x a typical post" and the owner could not tell good from bad."""
+    from datetime import datetime, timedelta, timezone
+
+    from studio import perf, posting
+
+    now = datetime(2026, 11, 14, 12, tzinfo=timezone.utc)
+    day = lambda d: (now - timedelta(days=d)).isoformat()  # noqa: E731
+    posts = [
+        {"id": 1, "slug": "a", "network": "youtube", "status": "posted", "at": day(3), "url": "u1"},
+        {"id": 2, "slug": "b", "network": "youtube", "status": "posted", "at": day(2), "url": "u2"},
+        {"id": 3, "slug": "a", "network": "tiktok", "status": "posted", "at": day(3)},
+        {"id": 4, "slug": "a", "network": "x", "status": "posted", "at": day(3)},
+        {"id": 5, "slug": "a", "network": "bluesky", "status": "posted", "at": day(3)},
+        {"id": 6, "slug": "a", "network": "gbp", "status": "posted", "at": day(3)},
+        {"id": 7, "slug": "c", "network": "youtube", "status": "posted", "at": day(90)},  # too old
+        {"id": 8, "slug": "d", "network": "youtube", "status": "scheduled", "at": day(-1)},  # not out
+    ]
+    reads = [
+        {"post_id": 1, "views": 100, "likes": 1}, {"post_id": 1, "views": 900, "likes": 5, "comments": 1},  # the latest counts
+        {"post_id": 2, "views": 300, "likes": 2},
+        {"post_id": 3, "views": 0, "likes": 0},
+        {"post_id": 4, "views": 12},
+        {"post_id": 5, "views": None, "likes": 0, "shares": 0},
+        {"post_id": 7, "views": 99999},
+    ]
+    monkeypatch.setattr(posting, "posts", lambda: posts)
+    monkeypatch.setattr(perf, "readings", lambda: reads)
+    r = perf.reach(now=now)
+    by = {n["network"]: n for n in r["networks"]}
+    assert by["youtube"]["verdict"] == "working" and by["youtube"]["views"] == 1200 and by["youtube"]["measured"] == 2
+    assert by["youtube"]["best"]["slug"] == "a" and by["youtube"]["reactions"] == 8
+    assert by["tiktok"]["verdict"] == "none" and by["tiktok"]["zero"] == 1
+    assert by["x"]["verdict"] == "few"
+    assert by["bluesky"]["verdict"] == "none"  # no view count there: no reactions is nobody
+    assert by["gbp"]["verdict"] == "unmeasured"
+    assert [n["network"] for n in r["networks"]][0] == "youtube" and r["totals"]["out"] == 6

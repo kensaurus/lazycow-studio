@@ -24,6 +24,7 @@ import hashlib
 import json
 import math
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -252,7 +253,7 @@ SWAHILI = {"Lion": "simba", "Cheetah": "duma", "Leopard": "chui", "Elephant": "t
 EAST_AFRICA = re.compile(r"kenya|tanzania|uganda|rwanda|zanzibar|serengeti|mara|ngorongoro|amboseli|tsavo|nairobi|arusha|kilimanjaro|manyara|tarangire", re.I)
 LABEL_MIN, LABEL_GAP = 0.09, 0.02
 RAW_360 = (".insv", ".insp", ".lrv")
-MEZZ_V = "n2"  # the finish every shot is rendered with (natural grade): part of each shot file's name
+MEZZ_V = "n4"  # the finish every shot is rendered with (natural grade): part of each shot file's name; n4: 10-bit sources brought to 8 bits first
 THUMB_STARS = {"Lions", "Leopards", "Cheetahs", "Elephants", "Giraffes", "Zebras", "Rhinos", "Hippos", "Flamingos", "Wildebeest", "Buffalo"}
 THUMB_NEVER = {"Vultures", "Hyenas", "Crocodiles", "Jackals"}  # scavengers and kills are part of the film, not its cover
 
@@ -260,37 +261,37 @@ THUMB_NEVER = {"Vultures", "Hyenas", "Crocodiles", "Jackals"}  # scavengers and 
 # may take: the planner sizes a part from the footage with it), a grade laid on every shot (ffmpeg, after the
 # studio's own), the music brief, and the drawing in src/Vlog.tsx (type, frame, transitions, overlays) by its name.
 LOOKS = {
-    "documentary": {"photo": 3.2, "videoMin": 3.0, "videoMax": 8.0, "photoShare": 0.4, "fade": 12, "grade": "",
+    "documentary": {"photo": 3.2, "videoMin": 3.0, "videoMax": 8.0, "photoShare": 0.4, "fade": 12, "grade": "", "lut": ("warm-film", 0.35),
                     "music": ["a calm wildlife documentary score: fingerpicked acoustic guitar, kalimba, soft hand percussion and warm strings, spacious and observant",
                               "a gentle nature documentary theme: warm strings and marimba over soft hand drums, unhurried, golden afternoon light"]},
     "cinematic": {"photo": 4.0, "videoMin": 3.5, "videoMax": 8.0, "photoShare": 0.3, "fade": 24,
-                  "grade": "colorbalance=rs=-0.035:bs=0.045:rh=0.045:gh=0.012:bh=-0.04,eq=contrast=1.04:saturation=0.93",  # a restrained teal-and-warm split
+                  "grade": "", "lut": ("teal-amber", 0.6),  # a restrained teal-and-warm split (studio.lut)
                   "music": ["an epic cinematic orchestral score: swelling strings, deep low brass, soft choir pads and distant taiko hits, a slow build, full of awe",
                             "a sweeping cinematic theme: soaring strings and French horns over a steady low pulse, majestic and emotional"]},
     "energetic": {"photo": 1.6, "videoMin": 1.2, "videoMax": 3.6, "photoShare": 0.25, "fade": 0, "beat": True,
-                  "grade": "eq=contrast=1.06:saturation=1.12",
+                  "grade": "", "lut": ("punch", 0.6),
                   "music": ["an upbeat travel montage track at 120 BPM: driving afro-house drums, a bright marimba hook, punchy bass and claps, joyful",
                             "a high-energy percussion groove at 120 BPM with a catchy marimba riff and big drum fills, euphoric"]},
     "journal": {"photo": 4.2, "videoMin": 2.8, "videoMax": 8.0, "photoShare": 0.75, "fade": 18, "lead": "photo",
-                "grade": "eq=saturation=0.94:gamma=1.04,colorbalance=rh=0.03:gh=0.01:bh=-0.02",
+                "grade": "eq=gamma=1.04", "lut": ("warm-film", 0.5),
                 "music": ["a gentle travel-journal piece: warm fingerpicked acoustic guitar, soft piano and a light shaker, intimate and nostalgic",
                           "a cosy acoustic folk instrumental: ukulele and acoustic guitar, soft hand claps far back, sunny and personal"]},
     "retro": {"photo": 3.0, "videoMin": 2.4, "videoMax": 8.0, "photoShare": 0.45, "fade": 6,
-              "grade": "curves=master='0/0.06 0.5/0.52 1/0.94':blue='0/0.05 1/0.9',colorbalance=rm=0.04:gm=0.015:bm=-0.03,eq=saturation=0.86,noise=alls=7:allf=t",  # faded and warm, never murky
+              "grade": "noise=alls=7:allf=t", "lut": ("soft-matte", 0.8),  # faded and warm, never murky
               "music": ["a lo-fi retro home-movie track: dusty vinyl crackle, mellow Rhodes piano, tape-wobbled guitar and laid-back drums",
                         "a warm 1970s soft-rock instrumental with tape hiss: electric piano, brushed drums and a gentle bass line"]},
     # Four more, each cut by its own rule (extend): by animal, photos in black and white, long holds with no music,
     # and the journey itself (camps, tracks, airstrips, people) without the animals.
-    "fieldguide": {"photo": 3.6, "videoMin": 3.0, "videoMax": 8.0, "photoShare": 0.45, "fade": 10, "grade": "",
+    "fieldguide": {"photo": 3.6, "videoMin": 3.0, "videoMax": 8.0, "photoShare": 0.45, "fade": 10, "grade": "", "lut": ("savanna", 0.5),
                    "music": ["a light, curious natural-history theme: pizzicato strings, marimba and clarinet, playful and warm",
                              "a gentle woodwind and marimba piece with soft pizzicato strings, inquisitive and bright"]},
     "monochrome": {"photo": 5.0, "videoMin": 3.0, "videoMax": 7.0, "photoShare": 0.8, "fade": 30, "lead": "photo",
-                   "grade": "hue=s=0,eq=contrast=1.1",
+                   "grade": "eq=contrast=1.1", "lut": ("mono-neutral", 1.0),
                    "music": ["a spare, intimate solo piano piece with a slow cello line, long silences between the notes, contemplative",
                              "a quiet minimalist piece for felt piano and soft strings, slow and reflective"]},
-    "slow": {"photo": 6.0, "videoMin": 9.0, "videoMax": 36.0, "photoShare": 0.0, "fade": 45, "grade": "", "music": []},  # the place's own sound only
+    "slow": {"photo": 6.0, "videoMin": 9.0, "videoMax": 36.0, "photoShare": 0.0, "fade": 45, "grade": "", "lut": None, "music": []},  # the place's own sound only
     "roadmovie": {"photo": 2.8, "videoMin": 2.4, "videoMax": 7.0, "photoShare": 0.5, "fade": 8,
-                  "grade": "colorbalance=rs=0.03:bs=-0.035:rh=0.035:bh=-0.03,eq=contrast=1.03:saturation=1.04",
+                  "grade": "", "lut": ("warm-film", 0.8),
                   "music": ["a warm road-trip instrumental: slide guitar, hand claps, upright bass and a loping drum groove, sunny and easy",
                             "an easy-going afro-folk road tune without vocals: nylon guitar, shakers and a walking bass line"]},
 }
@@ -1653,11 +1654,15 @@ SPHERE_SEC = {"video": 5.5, "photo": 4.2}
 
 
 def sphere_ok(item: dict) -> bool:
-    """A 360 file the studio reframes cleanly: a stitched (equirectangular) video or a JPEG 360 photo. Raw dual-fisheye
-    originals (.insv, .lrv) need the maker's stitcher (Insta360 Studio: export as 360 video); an .insp showed a seam
-    and a tilt where the JPEG of the same shot was clean (13 Nov), so the JPEG is used."""
+    """A 360 file the studio reframes cleanly: a stitched (equirectangular) video, a JPEG 360 photo, or a raw
+    one-lens-per-file recording (VID_..._00_n.insv) whose second lens is beside it (studio.sphere stitches the pair;
+    planets are left out for those, their seam shows). An .insp showed a seam and a tilt where the JPEG of the same shot
+    was clean (13 Nov), so the JPEG is used; proxies (LRV_, .lrv) and single raw files are not used."""
+    from studio import sphere
+
     p = str(item.get("path") or "").lower()
-    if not (item.get("is360") or p.endswith(RAW_360)) or p.endswith((".insv", ".lrv", ".insp")):
+    pair = p.endswith(".insv") and sphere.pair_of(item.get("path") or "") is not None
+    if not pair and (not (item.get("is360") or p.endswith(RAW_360)) or p.endswith((".insv", ".lrv", ".insp"))):
         return False
     return bool(_day(item)) and not _quality_no(item) and not item.get("vetoed")
 
@@ -1681,19 +1686,33 @@ def with_360(video: dict, lib: dict) -> int:
     pool: dict[str, list[dict]] = {}
     for it in best.values():
         pool.setdefault(_day(it), []).append(it)
+    from studio import sphere
+
     added = 0
+    chosen = []
     for c in video["chapters"]:
         day = str(c.get("day") or "")[:10]
         cands = sorted(pool.get(day, []), key=lambda i: (i.get("kind") != "video", -float(i.get("duration") or 0), -float(i.get("aesthetic") or 0)))
         picks = cands[:SPHERE_PER_CHAPTER]
+        for it in picks:  # taken now: two chapters of one day share its 360 moments, never repeat one (14 Nov crash)
+            pool[day].remove(it)
+        chosen.append(picks)
+    total = sum(len(x) for x in chosen)
+    rnd = random.Random(str(video.get("slug") or video.get("n")))
+    g = 0  # the film's 360 moments in order: varied moves (studio.sphere.move_plan), some entering or leaving with a whip or a roll
+    for c, picks in zip(video["chapters"], chosen):
+        day = str(c.get("day") or "")[:10]
         for n, it in enumerate(picks):
             kind = "video" if it.get("kind") == "video" else "photo"
-            move = ("planet", 1) if kind == "photo" else (("unroll", 1) if n == 0 else ("reveal", -1))
+            name, direction = sphere.move_for(g, kind, total)
+            head = rnd.choice([None, None, "whip"]) if kind == "video" else None
+            tail = rnd.choice([None, "whip", "rollx"]) if kind == "video" else None
+            move = (name, direction, head, tail)
+            g += 1
             shot = {"path": it["path"], "kind": kind, "sec": SPHERE_SEC[kind], "captured": it.get("captured"), "local": it.get("local"),
                     "duration": it.get("duration"), "is360": True, "move": list(move), "score": 0.0, "subject": None, "clear": 0.0, "gap": False}
             at = max(1, round(len(c["shots"]) * (n + 1) / (len(picks) + 1)))
             c["shots"].insert(min(at, len(c["shots"])), shot)
-            pool[day].remove(it)
             added += 1
     return added
 
@@ -1723,6 +1742,7 @@ def _render_one(job: tuple) -> dict:
     grade = rest[0] if rest else ""
     avoid = rest[1] if len(rest) > 1 else []
     lead = rest[2] if len(rest) > 2 else 0.0
+    lut_name, lut_strength = rest[3] if len(rest) > 3 and rest[3] else (None, 1.0)  # the look's colour preset (studio.lut)
     src = Path(s["path"])
     photo = src.suffix.lower() in PHOTO_EXT
     start = 0.0
@@ -1752,8 +1772,21 @@ def _render_one(job: tuple) -> dict:
                 stab = None
     color = ",".join(x for x in (color, grade) if x)
     if not out.exists():
-        render_shot(src, start, s["sec"], out, SIZE, keep_audio=True, color=color, stab=stab, natural=True,
-                    move=tuple(s["move"]) if s.get("is360") and s.get("move") else None)
+        from studio.shot import ShotError
+
+        move = tuple(s["move"]) if s.get("is360") and s.get("move") else None
+        try:
+            render_shot(src, start, s["sec"], out, SIZE, keep_audio=True, color=color, stab=stab, natural=True, lut=lut_name,
+                        lut_strength=lut_strength, move=move)
+        except ShotError as err:
+            # Wrong twice at this moment: one other moment of the same clip, so one bad stretch never stops a long film.
+            dur = float(s.get("duration") or 0)
+            other = (start + s["sec"]) if start + 2 * s["sec"] <= dur else max(0.0, start - s["sec"])
+            if photo or not dur or abs(other - start) < 0.1:
+                raise
+            print(f"{err} Trying {src.name} at {other:.1f} s instead.", flush=True)
+            start, out = other, out.with_name(f"{out.stem}_w{int(round(other * 10))}{out.suffix}")
+            render_shot(src, start, s["sec"], out, SIZE, keep_audio=True, natural=True, lut=lut_name, lut_strength=lut_strength, move=move)
     vol = _clip_volume(out)
     clean = None
     if not photo and vol:
@@ -1803,12 +1836,43 @@ def _targets(shots: list[dict]) -> dict | None:
     return match_target(stats)
 
 
+TAB_GB = 1.5  # what one Remotion render tab of a 1080p film takes, with room for the rest of the build
+
+
+def free_gb() -> float:
+    """Memory free now, in GB (0 when it cannot be read)."""
+    try:
+        if os.name == "nt":
+            import ctypes
+
+            class Mem(ctypes.Structure):
+                _fields_ = [("len", ctypes.c_ulong), ("load", ctypes.c_ulong), ("total", ctypes.c_ulonglong), ("avail", ctypes.c_ulonglong),
+                            ("tpage", ctypes.c_ulonglong), ("apage", ctypes.c_ulonglong), ("tvirt", ctypes.c_ulonglong),
+                            ("avirt", ctypes.c_ulonglong), ("ext", ctypes.c_ulonglong)]
+
+            m = Mem()
+            m.len = ctypes.sizeof(Mem)
+            return m.avail / 2**30 if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m)) else 0.0
+        return os.sysconf("SC_AVPHYS_PAGES") * os.sysconf("SC_PAGE_SIZE") / 2**30
+    except Exception:
+        return 0.0
+
+
+def render_tabs(free: float | None = None) -> int:
+    """Render tabs for the memory free: TAB_GB each, at least 2, at most 8 (8 when memory cannot be read)."""
+    free = free_gb() if free is None else free
+    return 8 if free <= 0 else max(2, min(8, int(free // TAB_GB)))
+
+
 def _remotion(props: Path, out: Path, log: Path) -> None:
-    npx = shutil.which("npx") or "npx"
-    # Fewer render tabs on a computer short of memory (13 Nov: two builds at once ran it out): STUDIO_VLOG_CONCURRENCY.
-    conc = os.environ.get("STUDIO_VLOG_CONCURRENCY", "8")
-    conc = conc if conc.isdigit() and 1 <= int(conc) <= 16 else "8"
-    cmd = [npx, "remotion", "render", "src/index.ts", "Vlog-16x9", str(out), f"--props={props}", f"--concurrency={conc}", "--timeout=120000"]
+    # Fewer render tabs on a computer short of memory (13 Nov: two builds at once ran it out). STUDIO_VLOG_CONCURRENCY
+    # when set; otherwise from the memory free now (render_tabs), so a busy machine builds slower instead of failing.
+    conc = os.environ.get("STUDIO_VLOG_CONCURRENCY", "")
+    conc = conc if conc.isdigit() and 1 <= int(conc) <= 16 else str(render_tabs())
+    print(f"RENDER {conc} tabs ({free_gb():.1f} GB free)", flush=True)
+    from studio.remotion import render_cmd
+
+    cmd = render_cmd("Vlog-16x9", props, out, f"--concurrency={conc}", "--timeout=120000")
     with log.open("w", encoding="utf-8") as h:
         proc = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
         for line in proc.stdout:
@@ -1862,6 +1926,27 @@ def _free_music(need: float) -> list[dict]:
     return out
 
 
+BED_QUIET_DB = -50  # _sounding: quieter than this at a piece's head or tail is silence, not music
+
+
+def _sounding(path: Path) -> tuple[float, float]:
+    """(start, end) of the part of a music piece that sounds: its silent head and tail left off. A Stable Audio piece
+    asked for 180 s can stop at 170 and run 10 s of silence; crossfaded 6 s into the next, it left a 5 s hole in the
+    music and 3.5 s of dead air in an episode of a trip series (15 Nov). Unmeasurable: the whole piece."""
+    dur = _audio_sec(path)
+    try:
+        err = subprocess.run([str(ffmpeg_bin()), "-hide_banner", "-nostats", "-i", str(path), "-af",
+                              f"silencedetect=n={BED_QUIET_DB}dB:d=0.3", "-f", "null", "-"],
+                             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300).stderr
+        starts = [float(x) for x in re.findall(r"silence_start: (-?[\d.]+)", err)]
+        ends = [float(x) for x in re.findall(r"silence_end: ([\d.]+)", err)]
+    except Exception:  # noqa: BLE001 - no ffmpeg answer: keep the piece as it is
+        return 0.0, dur
+    head = ends[0] if starts and starts[0] <= 0.05 and ends else 0.0
+    tail = starts[-1] if starts and len(starts) > len(ends) else (starts[-1] if starts and ends and ends[-1] >= dur - 0.05 else dur)
+    return (head, tail) if tail - head > 5 else (0.0, dur)
+
+
 def music_beds(slug: str, seconds: float, moods: list[str] | None = None) -> Path | None:
     """One bed that covers all `seconds`: Stable Audio pieces (one per third of the video) inside the AI limits; when
     the limits stop that, the pieces this video already paid for in earlier builds; then free CC0 tracks; repeated
@@ -1877,7 +1962,14 @@ def music_beds(slug: str, seconds: float, moods: list[str] | None = None) -> Pat
     if ai.status().get("ready"):
         files = _ai_pieces(slug, parts, each, moods)
         credits = [{"file": str(f), "credit": "AI-generated (Stable Audio 2.5, via fal.ai)", "license": "AI-GENERATED"} for f in files]
-    total = lambda: sum(_audio_sec(f) for f in files) - 6 * max(0, len(files) - 1)  # noqa: E731 - crossfades overlap
+    spans: dict[Path, tuple[float, float]] = {}
+
+    def span(f: Path) -> tuple[float, float]:
+        if f not in spans:
+            spans[f] = _sounding(f)
+        return spans[f]
+
+    total = lambda: sum(span(f)[1] - span(f)[0] for f in files) - 6 * max(0, len(files) - 1)  # noqa: E731 - crossfades overlap
     if total() < seconds:
         for f in sorted((OUT / slug / "music").glob(f"vlog_{slug}_*.wav"), key=lambda p: p.stat().st_mtime, reverse=True):
             if f not in files and _audio_sec(f) > 20:
@@ -1901,7 +1993,8 @@ def music_beds(slug: str, seconds: float, moods: list[str] | None = None) -> Pat
     cmd = [str(ffmpeg_bin()), "-y", "-hide_banner", "-loglevel", "error"]
     for f in files:
         cmd += ["-i", str(f)]
-    graph = [f"[{k}:a]aresample=48000,aformat=channel_layouts=stereo[s{k}]" for k in range(len(files))]
+    graph = [f"[{k}:a]atrim={span(f)[0]:.3f}:{span(f)[1]:.3f},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[s{k}]"
+             for k, f in enumerate(files)]  # each piece without its silent head and tail, so a crossfade never meets silence
     last = "[s0]"
     for k in range(1, len(files)):
         graph.append(f"{last}[s{k}]acrossfade=d=6:c1=tri:c2=tri[x{k}]")
@@ -2360,11 +2453,14 @@ def thumbnail(n: int) -> Path:
     except (NameError, KeyError, IndexError):
         pass
     words = video.get("thumb") or _short(title)
+    earlier = {str(v.get("thumb") or "").lower() for v in plan_["videos"] if v["n"] < n}
     if video.get("series"):
         words = video.get("thumb") or _short(video.get("episode") or title, 5)
+        if words.lower() in earlier:  # 15 Nov: the plan gave Parts 1 and 2 both "Male Lion in Grass"
+            words = _short(video.get("episode") or title, 5)
     elif video.get("fixedTitle"):  # a film cut by theme carries its own name
         words = MORE_THUMB.get(video.get("look") or "", _short(video.get("card") or title))
-    elif words.lower() in {str(v.get("thumb") or "").lower() for v in plan_["videos"] if v["n"] < n}:
+    elif words.lower() in earlier:
         words = _short(title)  # an earlier part's thumbnail already says this: no two thumbnails with the same words
     if not video.get("fixedTitle") and not video.get("series"):
         if alt_words:
@@ -2461,17 +2557,10 @@ def _on_beats(seq: list[dict], beats: list[float]) -> list[dict]:
 
 
 def background_priority() -> None:
-    """A long build runs below the studio itself (and every ffmpeg / Remotion it starts inherits that), so the
-    studio's pages stay quick while a 10-minute video renders. Best effort."""
-    try:
-        if os.name == "nt":
-            import ctypes
+    """A long build runs below the studio itself (studio.priority)."""
+    from studio.priority import background_priority as lower
 
-            ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), 0x4000)  # BELOW_NORMAL
-        else:
-            os.nice(10)
-    except Exception:
-        pass
+    lower()
 
 
 def _sequence(video: dict) -> tuple[list[dict], list[str]]:
@@ -2638,7 +2727,7 @@ def build(n: int, music: bool = True, workers: int = 6) -> dict:
     # "Previously" and the teaser show another part's moments again on purpose: they take no window of their own.
     name_of = lambda s: s["path"] + str(s["sec"]) + look + MEZZ_V + (str(s["part"]) if s.get("part") else "")  # noqa: E731
     jobs = [(k, s, mezz / f"{k:03d}_{hashlib.sha1(name_of(s).encode()).hexdigest()[:8]}.mp4", target, L["grade"],
-             others(s["path"]) if roles[k] in ("cold", "body") else [], lead) for k, s in enumerate(seq)]
+             others(s["path"]) if roles[k] in ("cold", "body") else [], lead, L.get("lut")) for k, s in enumerate(seq)]
     done = {}
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for r in pool.map(_render_one, jobs):
@@ -2712,6 +2801,14 @@ def build(n: int, music: bool = True, workers: int = 6) -> dict:
         props.update(series_props(video, plan_, tp, chapters, show_place, recap, end_at))
     if look == "fieldguide":  # the chapter card already names the animal
         props["overlays"] = [o for o in props["overlays"] if o["kind"] != "subject"]
+    dev_sfx = []
+    try:  # joins, layers and ambience (studio.devices); a film without them is still a whole film
+        from studio import devices_build
+
+        dev_sfx = devices_build.apply(props, jobs, done, starts, roles, look, L, lib, mezz, slug, total, end_at, title_at,
+                                      SERIES_TITLE if ser else 4.5, held, recap)
+    except Exception as exc:  # noqa: BLE001 - said in the build log
+        print(f"devices skipped: {exc}", flush=True)
     (folder / "props.json").write_text(json.dumps(props, ensure_ascii=False, indent=1), encoding="utf-8")
     if L.get("beat"):  # 1-3 s cuts break every sentence: a beat-cut film is carried by its music, not by speech
         (folder / "subtitles.srt").unlink(missing_ok=True)
@@ -2733,7 +2830,7 @@ def build(n: int, music: bool = True, workers: int = 6) -> dict:
                 "creator": "; ".join(dict.fromkeys(p["credit"] for p in pieces)) or "Stable Audio 2.5 (AI, via fal.ai)",
                 "license": "/".join(dict.fromkeys(str(p.get("license")) for p in pieces)) or "AI-GENERATED", "source": "fal.ai / Openverse"} if bed else None
     # The music dips for speech, not for every breeze (windy stretches are already down: studio.quality).
-    audio = sound.mix(raw, master, total, bed_info, chapter_sfx(chapters, end_at), peak=-2.5, duck=(0.08, 3.0))  # lands near -1 dBTP after AAC (YouTube re-encodes; headroom avoids clipping)
+    audio = sound.mix(raw, master, total, bed_info, chapter_sfx(chapters, end_at) + dev_sfx, peak=-2.5, duck=(0.08, 3.0))  # lands near -1 dBTP after AAC (YouTube re-encodes; headroom avoids clipping)
     print("STAGE 4/4 quality check and YouTube text", flush=True)
     qa = verify.qa(master, "16x9", music=wants_music)  # music asked for and missing is a failed check, not a pass
     # What the film's own checks found: captions against their frames, wind, and what the music is made of.

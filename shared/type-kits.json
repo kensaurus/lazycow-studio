@@ -52,6 +52,16 @@
     { "id": "warm", "en": "Warm", "ja": "あたたかい", "weight": 1.5, "filter": "colorbalance=rs=0.03:bs=-0.03:rm=0.035:bm=-0.03:rh=0.03:bh=-0.035" },
     { "id": "cool", "en": "Cool and clear", "ja": "すずしい", "weight": 1.5, "filter": "colorbalance=rs=-0.03:bs=0.035:rm=-0.02:bm=0.03:rh=-0.01:bh=0.02" },
     { "id": "matte", "en": "Soft matte", "ja": "やわらかマット", "weight": 1.5, "filter": "curves=master='0/0.07 0.3/0.31 0.7/0.69 1/0.94',eq=saturation=0.9" },
-    { "id": "crisp", "en": "Crisp and vivid", "ja": "くっきり鮮やか", "weight": 1.5, "filter": "curves=master='0/0 0.25/0.21 0.5/0.5 0.75/0.8 1/1',eq=saturation=1.12" }
+    { "id": "crisp", "en": "Crisp and vivid", "ja": "くっきり鮮やか", "weight": 1.5, "filter": "curves=master='0/0 0.25/0.21 0.5/0.5 0.75/0.8 1/1',eq=saturation=1.12" },
+    { "id": "film", "en": "Print film", "ja": "フィルム風", "weight": 1.2, "filter": "", "lut": "warm-film", "strength": 0.6 },
+    { "id": "teal", "en": "Teal and amber", "ja": "ティール＆アンバー", "weight": 1, "filter": "", "lut": "teal-amber", "strength": 0.5 },
+    { "id": "golden", "en": "Golden hour", "ja": "ゴールデンアワー", "weight": 1.2, "filter": "", "lut": "golden-hour", "strength": 0.6 },
+    { "id": "morning", "en": "Cool morning", "ja": "朝のすずしさ", "weight": 1, "filter": "", "lut": "cool-morning", "strength": 0.6 },
+    { "id": "bleach", "en": "Bleach bypass", "ja": "ブリーチバイパス", "weight": 0.6, "filter": "", "lut": "bleach", "strength": 0.5 },
+    { "id": "pastel", "en": "Faded pastel", "ja": "パステル", "weight": 1, "filter": "", "lut": "soft-matte", "strength": 0.7 },
+    { "id": "forest", "en": "Deep greens", "ja": "深い緑", "weight": 1.2, "filter": "", "lut": "deep-green", "strength": 0.6 },
+    { "id": "savanna", "en": "Dry gold", "ja": "乾いた金色", "weight": 0.8, "filter": "", "lut": "savanna", "strength": 0.5 },
+    { "id": "vivid", "en": "Vivid", "ja": "ビビッド", "weight": 1, "filter": "", "lut": "punch", "strength": 0.55 },
+    { "id": "sepia", "en": "Warm black and white", "ja": "セピアモノクロ", "weight": 0.4, "filter": "", "lut": "mono-warm", "strength": 1 }
   ]
 }

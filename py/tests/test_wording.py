@@ -147,3 +147,149 @@ def test_every_draw_keeps_the_theme(bank):
             d = wording.draw(theme, THEMES[theme]["slots"], random.Random(seed))
             texts = [d["hook"][0], *[x for x, _ in d["lines"]]]
             assert any(wording.topics_of(t) & core for t in texts), (theme, seed, texts)
+
+
+def test_a_line_must_not_say_what_its_picture_contradicts():
+    """13 Nov review: a tent before the lodge under "no buildings", a lit lounge under "no lights on the field at night",
+    zucchini under the stars, a kite on a car park under "the next tent is not too close"."""
+    def shot(*tags, tod="day", season="summer"):
+        return {"tod": tod, "season": season, "tags": set(tags)}
+
+    assert not wording.picture_fits("窓の外を眺めても、\n建物は見えません。", [shot("tent", "building")])
+    assert wording.picture_fits("窓の外を眺めても、\n建物は見えません。", [shot("mountains", "field")])
+    assert not wording.picture_fits("夜のフィールドに、\n外灯はありません。", [shot("interior", tod="night")])
+    assert wording.picture_fits("夜のフィールドに、\n外灯はありません。", [shot("field", "night", tod="night")])
+    assert not wording.picture_fits("晴れた夜は、\n星もくっきり見えます。", [shot("food", "kitchen", tod="night")])
+    assert not wording.picture_fits("となりのテントと、\n距離が近すぎない。", [shot("parking", "people")])
+    assert wording.picture_fits("となりのテントと、\n距離が近すぎない。", [shot("tent", "field")])
+    assert not wording.picture_fits("中のラウンジは、\nこたつと光回線。", [shot("tent", "field")])
+    assert wording.picture_fits("中のラウンジは、\nこたつと光回線。", [shot("interior", "desk", season="winter")])
+    assert not wording.picture_fits("共用キッチンで、\n自分で作って。", [shot("car", "road")])
+    assert not wording.picture_fits("不便だからこそ、\n景色がいい。", [shot("kitchen", "food")])
+    assert wording.picture_fits("不便だからこそ、\n景色がいい。", [shot("mountains", "sky")])
+    stars = "晴れた夜空には、くっきり光る星。"
+    assert not wording.picture_fits(stars, [shot("night", tod="night"), shot("forest", "road"), shot("grill", tod="night")])
+    assert wording.picture_fits(stars, [shot("night", tod="night"), shot("sky", tod="dusk")])
+    parking = "駐車場は、1晩に5台まで。"
+    assert not wording.picture_fits(parking, [shot("kitchen"), shot("interior", "kitchen")])
+    assert wording.picture_fits(parking, [shot("parking", "car")])
+    # a clip the library never tagged never blocks a line
+    assert wording.picture_fits("窓の外を眺めても、\n建物は見えません。", [{"tod": "day", "season": "summer"}])
+
+
+def test_a_shot_that_shows_a_building_or_a_room_does_not_play_under_open_country(monkeypatch):
+    """nightfire-1114: the lounge under "one open field"; a road ending at a house under "no buildings outside"."""
+    import numpy as np
+    vec = {"a photo of a house or a building": np.array([1.0, 0.0], "float32"),
+           "a photo of open nature, fields and mountains with no buildings": np.array([0.0, 1.0], "float32")}
+    import studio.library as library
+    monkeypatch.setattr(library, "text_embedding", lambda q: vec[q])
+    assert wording.built(np.array([0.30, 0.25], "float32")) is True and wording.built(np.array([0.25, 0.27], "float32")) is False
+    assert wording.built(None) is None
+    house = {"tod": "day", "season": "autumn", "tags": {"road", "sky"}, "built": True}
+    field = {"tod": "day", "season": "autumn", "tags": {"field", "mountains"}, "built": False}
+    lounge = {"tod": "day", "season": "summer", "tags": {"interior", "kitchen", "fire"}, "built": True}
+    nobuild = "窓の外に、建物はありません。"
+    onefield = "区画のない、ひとつの草原。"
+    assert not wording.picture_fits(nobuild, [field, house])
+    assert wording.picture_fits(nobuild, [field])
+    assert not wording.picture_fits(onefield, [field, lounge])
+    assert wording.picture_fits(onefield, [field])
+
+
+def test_the_shot_a_line_starts_on_must_show_it_and_no_buildings_means_open_country():
+    """office-1114-2 and carstay-1114 (14 Nov): an aerial of the lodge under "no buildings", a car park under "the next
+    tent is never too close", daytime kite flying under "winter nights drop below zero"."""
+    def shot(*tags, tod="day", season="summer"):
+        return {"tod": tod, "season": season, "tags": set(tags), "built": False}
+
+    nobuild = "窓の外に、建物はありません。"
+    assert not wording.picture_fits(nobuild, [shot("aerial", "mountains", "deck")])
+    assert wording.picture_fits(nobuild, [shot("aerial", "mountains"), shot("field")])
+    spacing = "となりのテントと、距離が近すぎない。"
+    assert not wording.picture_fits(spacing, [shot("car", "parking"), shot("tent", "field")])  # starts on the car park
+    assert wording.picture_fits(spacing, [shot("tent", "field"), shot("car")])
+    winter = "冬の夜は、氷点下まで下がります。"
+    assert not wording.picture_fits(winter, [shot("sky", season="autumn")])
+    assert wording.picture_fits(winter, [shot("snow", season="winter")])
+
+
+def test_a_pitching_line_starts_on_a_tent_or_open_ground():
+    pitch = "区画がないから、好きな場所に張る。"
+    assert not wording.picture_fits(pitch, [{"tod": "day", "season": "autumn", "tags": {"kitchen", "food"}}])
+    assert wording.picture_fits(pitch, [{"tod": "day", "season": "autumn", "tags": {"tent", "field"}}])
+
+
+def test_a_car_line_starts_on_a_car():
+    car = "車で来て、車で寝る。"
+    assert not wording.picture_fits(car, [{"tod": "day", "season": "autumn", "tags": {"working", "building"}}, {"tod": "day", "season": "autumn", "tags": {"car"}}])
+    assert wording.picture_fits(car, [{"tod": "day", "season": "autumn", "tags": {"car", "field"}}])
+
+
+def test_a_kitchen_line_starts_in_the_kitchen_not_at_the_grill():
+    kit = "共用キッチンで、自分で作って。"
+    assert not wording.picture_fits(kit, [{"tod": "night", "season": "summer", "tags": {"grill", "fire"}}])
+    assert wording.picture_fits(kit, [{"tod": "day", "season": "summer", "tags": {"kitchen", "interior"}}])
+
+
+def test_a_choose_your_spot_line_starts_on_open_ground():
+    spot = "区画がないからこそ、好きな場所を選べる。"
+    assert not wording.picture_fits(spot, [{"tod": "day", "season": "summer", "tags": {"food", "kitchen"}}])
+    assert wording.picture_fits(spot, [{"tod": "day", "season": "summer", "tags": {"field", "mountains"}}])
+
+
+def test_a_fire_line_starts_on_a_fire_not_on_the_kitchen_hob():
+    fire = "お店がないからこそ、火を囲んで食べる。"
+    hob = {"tod": "day", "season": "autumn", "tags": {"food", "grill", "kitchen"}}
+    assert not wording.picture_fits(fire, [hob, {"tod": "day", "season": "summer", "tags": {"aerial", "building"}}])
+    assert wording.picture_fits(fire, [{"tod": "night", "season": "summer", "tags": {"fire", "grill"}}])
+    assert wording.picture_fits(fire, [{"tod": "day", "season": "summer", "tags": {"grill", "pizza"}}])  # the grill outside
+
+
+def test_a_work_line_starts_at_a_desk_or_in_a_room():
+    work = "山で働く。冬でも、夜通しでも。"
+    assert not wording.picture_fits(work, [{"tod": "day", "season": "autumn", "tags": {"food", "kitchen"}}])
+    assert not wording.picture_fits("仕事は浅く、つながりは深く。", [{"tod": "day", "season": "autumn", "tags": {"kitchen"}}])
+    assert wording.picture_fits(work, [{"tod": "day", "season": "winter", "tags": {"desk", "interior"}}])
+    # working among the autumn leaves is outdoors: not held to a desk
+    assert wording.picture_fits("平日、紅葉の中で働く", [{"tod": "day", "season": "autumn", "tags": {"aerial", "mountains"}}])
+
+
+def test_no_buildings_never_over_a_bare_aerial_of_the_site_or_the_car_park():
+    line = "窓の外に、建物はありません。"
+    assert not wording.picture_fits(line, [{"tod": "day", "season": "summer", "tags": {"aerial"}}])
+    assert not wording.picture_fits(line, [{"tod": "day", "season": "summer", "tags": {"car", "mountains"}}])
+    assert wording.picture_fits(line, [{"tod": "day", "season": "autumn", "tags": {"aerial", "mountains"}}])
+
+
+def test_making_it_yourselves_starts_on_food_or_fire_and_a_desk_label_on_a_desk():
+    make = "お店がないからこそ、手で作る。"
+    assert not wording.picture_fits(make, [{"tod": "day", "season": "summer", "tags": {"car"}}])
+    assert wording.picture_fits(make, [{"tod": "day", "season": "summer", "tags": {"pizza", "grill"}}])
+    assert not wording.picture_fits("POV：今日のデスク", [{"tod": "day", "season": "summer", "tags": {"car"}}])
+    assert wording.picture_fits("POV：今日のデスク", [{"tod": "day", "season": "summer", "tags": {"desk", "interior"}}])
+
+
+def _at(*tags, tod="day", season="summer"):
+    return [{"tod": tod, "season": season, "tags": set(tags)}]
+
+
+def test_fifteen_november_review_lines_start_on_what_they_say():
+    fits = wording.picture_fits
+    # one open grassland: not the lodge or the car park
+    assert not fits("区画のない、ひとつの草原。", _at("aerial", "building", "mountains"))
+    assert fits("区画のない、ひとつの草原。", _at("aerial", "mountains"))
+    assert not fits("区画のない、ひとつの草原。", _at("deck", "mountains"))
+    assert not fits("山にこもって、どこまで進むか。", _at("food", "kitchen"))
+    # the fibre line: a desk or a room, never the stove
+    assert not fits("標高1,444m、100Mbpsの光回線。", _at("desk", "fire", "grill", season="autumn"))
+    assert fits("標高1,444m、100Mbpsの光回線。", _at("desk", "interior"))
+    # an altitude headline: the mountain, not lunch
+    assert not fits("東京の逆を、標高1,444mで。", _at("food", "kitchen"))
+    assert not fits("東京の逆を、標高1,444mで。", _at("grill"))
+    assert fits("東京の逆を、標高1,444mで。", _at("grill", "mountains"))
+    assert fits("東京の逆を、標高1,444mで。", _at("field", "mountains"))
+    # loud: the fire or the evening, not a parked car
+    assert not fits("遠いからこそ、騒げる。", _at("car", "parking", season="autumn"))
+    assert fits("遠いからこそ、騒げる。", _at("fire", "pizza", tod="night"))
+    assert fits("遠いからこそ、騒げる。", _at("deck", tod="dusk"))

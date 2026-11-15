@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+
+import numpy as np
 import os
 import random
 import sys
@@ -208,6 +210,64 @@ VIEW_WORDS = ("尾根", "景色", "見渡", "遠くまで", "草原", "眺め")
 WINTER_WORDS = ("冬", "氷点下", "寒い", "こたつ", "ぬくもり", "あたたか")
 NIGHT_WORDS = ("星", "照明", "灯り", "暗い", "外灯", "夜空", "夜のフィールド", "夜の")
 AUTUMN_WORDS = ("紅葉",)
+# What a line says the picture shows, by the library's tags (studio.library RANCH_VOCAB). 13 Nov review: a tent in front
+# of the lodge under "no buildings outside the window", a lit lounge under "not a single light on the field at night",
+# zucchini under "the stars are sharp", a kite on a car park under "the next tent is not too close".
+NO_BUILDING_WORDS = ("建物は", "建物が見え", "建物はな", "建物もな")
+OUTDOOR_NIGHT_WORDS = ("夜のフィールド", "外灯", "照明は", "照明が", "夜空", "星")
+SKY_NIGHT_WORDS = ("星", "夜空", "外灯", "照明は", "照明が")  # every shot under them dusk or night (lookup-1114: a day road under the stars)
+INDOOR_WORDS = ("ラウンジ", "こたつ", "室内")
+KITCHEN_WORDS = ("キッチン",)
+TENT_WORDS = ("テント",)
+VIEW_TAGS = {"mountains", "field", "sky", "sunset", "aerial", "forest", "snow"}
+INSIDE_TAGS = {"interior", "kitchen", "shop", "desk"}
+# Words that name a thing, and the tags of a picture that shows it (office-1114: "the car park, 5 cars a night" over a kitchen).
+OUTSIDE_TAGS = VIEW_TAGS | {"tent", "car", "parking", "road", "deck"}
+BUILT_MARGIN = 0.03  # CLIP: "a house or a building" over "open nature with no buildings" by this much (14 Nov, 12 real clips)
+
+
+def built(emb) -> bool | None:
+    """Does a clip (its CLIP embedding) show a building? Tags miss a house at the end of a road (nightfire-1114)."""
+    if emb is None:
+        return None
+    from studio.library import text_embedding
+
+    return float(emb @ text_embedding("a photo of a house or a building") - emb @ text_embedding("a photo of open nature, fields and mountains with no buildings")) > BUILT_MARGIN
+
+
+NEAR_BUILDING_TAGS = {"building", "deck", "parking", "shop", "interior", "kitchen", "desk", "car"}  # cars stand in the car park by the lodge
+# An aerial with no landscape tag is the site itself: the lodge, the deck, the car park (pov-1114-5: "no buildings
+# outside the window" over a drone shot of the lodge the library tagged only "aerial").
+OPEN_COUNTRY_TAGS = {"mountains", "forest", "sky", "snow", "sunset"}
+NEIGHBOUR_TENT_WORDS = ("となりのテント", "テントが近", "テントと")
+WINTER_NIGHT_WORDS = ("冬の夜", "夜は氷点下", "夜は、氷点下")
+
+SHOWS = [(("駐車場",), {"parking", "car"}), (("デッキ",), {"deck", "fire", "grill"}),
+         (("車中泊", "車で来", "車で寝", "車とテント"), {"car", "parking"}),  # office-1114-3: "come by car" over a lawnmower
+         (("張る", "張れる", "広げられる", "広げる", "好きな場所", "区画がない", "区画のない"), {"tent", "field", "aerial", "mountains"})]  # pitching (autumn-1114-2: over a kitchen)
+
+
+# A fire line starts on a fire, or a grill outdoors: the library calls a pan on the kitchen hob a grill too
+# (loud-1114-3: "eat around the fire" over pasta boiling on the hob).
+FIRE_WORDS = ("焚き火", "火を")
+# A line about working here starts at a desk or in a room (connect-1114-3: "work in the mountains" over a platter of
+# snacks; focus-1114-5: "work shallow" over potatoes being sliced). "Working among the autumn leaves" is outdoors.
+WORK_WORDS = ("山で働く", "ここで働く", "仕事は浅く", "デスク", "進むか")  # office-1115: "how far you get" over a meal  # pov-1114-5: "POV: your desk today" over a van's dashboard
+# Making it yourselves starts on the food or the fire (loud-1114-4: "so you make it by hand" over an empty road).
+MAKE_WORDS = ("手で作る", "自分たちで作る", "自分で作")
+MAKE_TAGS = {"food", "kitchen", "grill", "pizza", "fire"}
+WORK_TAGS = {"desk", "interior"}
+# 15 Nov review round:
+# "one open grassland" is not the lodge or its car park (carstay-1114-4: over a drone shot of the building);
+OPEN_FIELD_WORDS = ("ひとつの草原", "区画のない")
+# the fibre line is the room you work in, never the stove beside it (office-1114-4: a wood stove the library tagged desk);
+FIBRE_WORDS = ("光回線", "Mbps")
+# an altitude line is the mountain, not lunch (altitude-1114-2 climbed its 1,444 m counter over a plate; seasons-1114-4
+# opened on the kitchen);
+ALTITUDE_WORDS = ("標高",)
+FOOD_TAGS = {"food", "kitchen", "pizza"}
+# being loud is the fire and the evening, not the car park (loud-1114 opened "far away, so you can be loud" on a parked car).
+LOUD_WORDS = ("騒げ", "騒い")
 
 
 def picture_fits(ja: str, shots: list[dict]) -> bool:
@@ -226,8 +286,53 @@ def picture_fits(ja: str, shots: list[dict]) -> bool:
     dark = sum(1 for x in known if x.get("tod") in ("night", "dusk"))
     if any(w in text for w in NIGHT_WORDS) and dark * 2 < len(known):  # most of what it plays over is dusk or night
         return False
+    if any(w in text for w in SKY_NIGHT_WORDS) and dark < len(known):  # stars or "no lights": no daytime shot at all
+        return False
     if any(w in text for w in AUTUMN_WORDS) and "autumn" not in seasons:
         return False
+    # By what is in the picture (only shots the library has tagged; an untagged clip never blocks a line)
+    tagged = [set(x.get("tags") or ()) for x in known if x.get("tags") is not None]
+    if not tagged:
+        return True
+    every = set().union(*tagged)
+    # "no buildings": every shot under it is open country (an aerial of the lodge measured as mountains, office-1114-2)
+    if any(w in text for w in NO_BUILDING_WORDS) and (every & NEAR_BUILDING_TAGS or any(x.get("built") for x in known)
+                                                       or any("aerial" in t and not t & OPEN_COUNTRY_TAGS for t in tagged)):
+        return False
+    if any(w in text for w in WINTER_NIGHT_WORDS) and not all(x.get("tod") in ("night", "dusk") or "snow" in (x.get("tags") or ()) or x.get("season") == "winter" for x in known):
+        return False
+    # a landscape, tent or car park line: no shot that is only indoors (nightfire-1114: the lounge under "one open field")
+    if any(w in text for w in (*VIEW_WORDS, *TENT_WORDS, "駐車場")) and any(t & INSIDE_TAGS and not t & OUTSIDE_TAGS for t in tagged):
+        return False
+    if any(w in text for w in OUTDOOR_NIGHT_WORDS) and every & INSIDE_TAGS:
+        return False
+    # the shared kitchen is a room: a grill outside is the deck (lookup-1114-4)
+    need = [(INDOOR_WORDS, {"interior", "desk"}), (KITCHEN_WORDS, {"kitchen", "food"}),
+            (NEIGHBOUR_TENT_WORDS, {"tent", "field"}), (TENT_WORDS, {"tent", "car", "field"}), (VIEW_WORDS, VIEW_TAGS), *SHOWS]
+    # the line starts on the cut of the shot it describes: that shot must show it (any shot under it was too loose:
+    # carstay-1114 put "the next tent is never too close" over a car park because a car was "a tent or a car")
+    cue = tagged[0]
+    if any(w in text for w in FIRE_WORDS) and not ("fire" in cue or "grill" in cue and "kitchen" not in cue):
+        return False
+    if any(w in text for w in WORK_WORDS) and not cue & WORK_TAGS:
+        return False
+    if any(w in text for w in MAKE_WORDS) and not cue & MAKE_TAGS:
+        return False
+    # nor the deck or a room (reasons-1115: over the concrete terrace)
+    if any(w in text for w in OPEN_FIELD_WORDS) and "デッキ" not in text and cue & {"building", "parking", "deck", "interior", "kitchen"}:
+        return False
+    if any(w in text for w in FIBRE_WORDS) and (not cue & WORK_TAGS or cue & {"fire", "grill"}):
+        return False
+    if (any(w in text for w in ALTITUDE_WORDS) and not any(w in text for w in FIBRE_WORDS)
+            and cue & (FOOD_TAGS | {"grill"}) and not cue & (OPEN_COUNTRY_TAGS | {"aerial", "field"})):  # office-1115-2: a table of bowls tagged grill
+        return False
+    first = next(x for x in known if x.get("tags") is not None)
+    if any(w in text for w in LOUD_WORDS) and not ("fire" in cue or "pizza" in cue or ("grill" in cue and "kitchen" not in cue)
+                                                   or first.get("tod") in ("night", "dusk")):
+        return False
+    for words, tags in need:
+        if any(w in text for w in words) and not cue & tags:
+            return False
     return True
 
 
@@ -244,9 +349,19 @@ def shot_facts(shots: list[dict]) -> list[dict | None]:
             except Exception:  # noqa: BLE001 - a missing file just has no facts
                 out.append(None)
                 continue
-            row = con.execute("SELECT l.season, l.tod FROM library l JOIN assets a ON a.id = l.asset_id WHERE a.path = ?", (path,)).fetchone()
-            out.append({"season": row[0], "tod": row[1]} if row else None)
+            row = con.execute("SELECT l.season, l.tod, l.top, l.emb FROM library l JOIN assets a ON a.id = l.asset_id WHERE a.path = ?", (path,)).fetchone()
+            emb = np.frombuffer(row[3], dtype="float32") if row and row[3] is not None else None
+            out.append({"season": row[0], "tod": row[1], "tags": _tags(row[2]), "built": built(emb)} if row else None)
     return out
+
+
+def _tags(top) -> set | None:
+    """The library's top tags (a JSON list) as a set; None when the clip was never tagged."""
+    try:
+        got = json.loads(top) if isinstance(top, str) else top
+    except ValueError:
+        return None
+    return set(got) if isinstance(got, list) else None
 
 
 def beat_shots(beats: list[dict], shots: list[dict], facts: list[dict | None]) -> list[list[dict | None]]:
@@ -350,8 +465,10 @@ def draw(theme_key: str, slots: list[str], rng: random.Random, n_lines: int | No
     if avoid:  # headlines already going out on this reel's networks around its dates: never again, if anything else fits
         free = [r for r in hooks if _key(r["ja"]) not in avoid and weight(r) > 0]
         hooks = free or hooks
+    hook_fits = True
     if under:  # the headline plays over the first shots: it must suit them
         fit = [r for r in hooks if picture_fits(r["ja"], under[0]) and weight(r) > 0]
+        hook_fits = bool(fit)  # none does: the caller can open on another shot (studio.assemble._open_on_hook)
         hooks = fit or hooks
     lines = [r for r in rows if r["kind"] == "line"]
     best = None
@@ -382,11 +499,13 @@ def draw(theme_key: str, slots: list[str], rng: random.Random, n_lines: int | No
             break
     if not best:  # nothing fits: the theme's own words, as before
         hook = theme["beats"][0]
-        return {"hook": (hook[1], hook[2]), "lines": [(ja, en) for _, ja, en in theme["beats"][1:]], "fresh": False, "signature": ""}
+        return {"hook": (hook[1], hook[2]), "lines": [(ja, en) for _, ja, en in theme["beats"][1:]], "fresh": False, "signature": "",
+                "hookFits": not under or picture_fits(hook[1], under[0])}
     h, chosen, sig, _ = best
     for text in [h["ja"], h["en"], *[c["ja"] for c in chosen], *[c["en"] for c in chosen]]:
         assert_copy(text)
-    return {"hook": (h["ja"], h["en"]), "lines": [(c["ja"], c["en"]) for c in chosen], "fresh": sig not in seen, "signature": sig}
+    return {"hook": (h["ja"], h["en"]), "lines": [(c["ja"], c["en"]) for c in chosen], "fresh": sig not in seen, "signature": sig,
+            "hookFits": hook_fits}
 
 
 def report() -> dict:

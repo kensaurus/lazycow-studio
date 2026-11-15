@@ -8,7 +8,7 @@ import pytest
 
 from studio import youtube
 
-OLD = "d1tMeoodsAg"  # an earlier plan's part 1, uploaded from the same folder (vlog-1)
+OLD = "Ser1es0Vid1"  # an earlier plan's part 1, uploaded from the same folder (vlog-1)
 
 
 class FakeYouTube:

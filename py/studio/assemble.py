@@ -652,6 +652,45 @@ def _beats(theme: dict, chosen: list[dict]) -> list[dict]:
 VARIETY = 0.03  # how far below the best score a clip may be and still be drawn; 0 = always the best
 
 
+def _label_fits(label: str, c: dict, emb_rows: dict) -> bool:
+    from studio.wording import built, picture_fits
+
+    return picture_fits(label, [{"season": c["cand"].get("season"), "tod": c["cand"].get("tod"), "tags": set(c["cand"].get("top") or []),
+                                 "built": built(emb_rows.get(c["cand"]["id"]))}])
+
+
+def _open_on_hook(key: str, chosen: list[dict], emb_rows: dict, kicker: str | None = None, step: int = 1) -> list[dict]:
+    """The headline, and the kicker label above it, play over the opening shot. When none of this theme's headlines
+    suits that shot (connect-1114-3 opened "work in the mountains" on a snack platter; pov-1114-5 put "POV: your desk
+    today" on a van's dashboard, 14 Nov review), open on the first other picked shot that suits both, else one that
+    suits the headline; the closing shot stays last. Nothing suits: the order stays, and Review flags the misfit."""
+    from studio.wording import built, draw as draw_words, picture_fits
+
+    def facts(c: dict) -> dict:
+        return {"season": c["cand"].get("season"), "tod": c["cand"].get("tod"), "tags": set(c["cand"].get("top") or []),
+                "built": built(emb_rows.get(c["cand"]["id"]))}
+
+    # step 2: the seasons theme shows its shots as summer/autumn pairs (side by side, or one after the other); a pair
+    # moves together, so the pairs stay pairs (15 Nov: it skipped this and opened on pasta three times running).
+    def under(j: int) -> list[dict]:
+        return [facts(c) for c in chosen[j:j + step]]
+
+    def hook_ok(j: int) -> bool:
+        return draw_words(key, [], random.Random(0), n_lines=0, tries=1, under=[under(j)]).get("hookFits", True)
+
+    def label_ok(j: int) -> bool:
+        return not kicker or picture_fits(kicker, under(j))
+
+    if hook_ok(0) and label_ok(0):
+        return chosen
+    last = len(chosen) - 1  # the closing shot stays last
+    for want in ((lambda j: hook_ok(j) and label_ok(j)), hook_ok):
+        for j in range(step, last - step + 1, step):
+            if want(j):
+                return [*chosen[j:j + step], *chosen[:j], *chosen[j + step:]]
+    return chosen
+
+
 def draw(scored: list[tuple[float, dict]], rng: random.Random, variety: float = VARIETY, k: int = 4) -> int:
     """Index of the candidate to use: the top k by score, weighted by exp((score - best) / variety).
     Near-ties vary between versions; a clearly better clip still wins almost every time."""
@@ -818,6 +857,12 @@ def assemble(theme: dict, slug: str, allow_faces: bool = False, since: str | Non
         chosen = morning_to_night(chosen)
     if len(chosen) < 4:
         raise RuntimeError(f"only {len(chosen)} usable assets for this theme")
+    if key and words != "theme" and stage["recipe"] != "timeline":  # clock order stays; pairs move as pairs
+        kick = stage["kicker"].get("ja") if isinstance(stage.get("kicker"), dict) else None
+        paired = stage["look"] == "split" or bool(theme.get("slot_season"))
+        chosen = _open_on_hook(key, chosen, emb_rows, kick, step=2 if paired else 1)
+        if kick and not _label_fits(kick, chosen[0], emb_rows):
+            stage = {**stage, "kicker": None}  # a label is true of its shot or left off (no desk to open on: no "POV: your desk today")
     last = chosen[-1]
     if last["cand"]["kind"] == "video" and (last["cand"]["duration"] or 0) >= 3.8:
         last["sec"] = 3.0  # a held shot under the end card
@@ -842,8 +887,17 @@ def assemble(theme: dict, slug: str, allow_faces: bool = False, since: str | Non
     if key and words != "theme":
         from studio.wording import draw as draw_words
 
+        from studio.wording import beat_shots
+
         cue_slots = [theme["slots"][c] if c < len(theme["slots"]) else theme["slots"][-1] for c in theme.get("cues", [])]
-        drawn = draw_words(key, cue_slots, rng, n_lines=len(theme["beats"]) - 1)
+        # Each line must suit the shots it will play over (studio.wording.picture_fits): the same timing the reel gets
+        # below, with what the library knows of each picked clip. A fresh reel never checked this (13 Nov review).
+        when = _beats({**theme, "cues": []} if stage["recipe"] == "timeline" else theme, chosen)
+        from studio.wording import built
+
+        facts = [{"season": c["cand"].get("season"), "tod": c["cand"].get("tod"), "tags": set(c["cand"].get("top") or []),
+                  "built": built(emb_rows.get(c["cand"]["id"]))} for c in chosen]
+        drawn = draw_words(key, cue_slots, rng, n_lines=len(theme["beats"]) - 1, under=beat_shots(when, [{"sec": c["sec"]} for c in chosen], facts))
         theme = {**theme, "beats": [("hook", *drawn["hook"])] + [("line", ja, en) for ja, en in drawn["lines"]]}
     # Timeline shots are re-ordered morning to night, so a slot's cue no longer marks its shot: spread the
     # lines evenly after a full-length headline instead.

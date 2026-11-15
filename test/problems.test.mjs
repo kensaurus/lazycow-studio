@@ -72,7 +72,7 @@ test("a post booked but not seen live is red, with a link to look on the network
   const posts = [{ id: 7, slug: "carstay-1108", network: "gbp", status: "missing", at: "2026-11-13T12:00+09:00", note: "not seen 6 h after its time" }];
   const [p] = findProblems({ posts, now: NOW + 10 * 3600e3 });
   assert.equal(p.id, "missed:7");
-  assert.match(p.title, /carstay-1108 was not seen on Google Maps/);
+  assert.match(p.title, /carstay-1108 may not be live on Google Maps/);
   assert.match(p.detail, /It's out/);
   assert.equal(p.also.href, "https://business.google.com/locations");
 });
@@ -104,4 +104,33 @@ test("a network whose measured posts reached nobody is amber, with where to look
   const found = findProblems({ perf, now: NOW });
   assert.deepEqual(found.map((f) => f.id), ["reach:tiktok"], "one measured post is not a pattern");
   assert.equal(found[0].also.href, "https://www.tiktok.com/tiktokstudio");
+});
+
+test("every problem a check finds says itself in Japanese too: title, detail and the fix's label", () => {
+  const posts = [
+    { id: 1, slug: "a", network: "bluesky", status: "missing", at: "2026-11-11T19:00+09:00" },
+    { id: 2, slug: "b", network: "x", status: "scheduled", at: "2026-12-05T19:00+09:00" },
+    { id: 3, slug: "c", network: "bluesky", status: "scheduled", at: "2026-12-05T19:00+09:00" },
+  ];
+  const parts = [{ n: 1, days: ["2015-04-02"], built: { seconds: 190 } }, { n: 2, days: ["2015-04-02"], built: { seconds: 600 } }];
+  const connections = { bluesky: { connected: true, until: "2026-11-20T09:00+09:00" } };
+  const perf = { networks: { tiktok: { posts: 3, median: 0, metric: "views" } } };
+  const found = findProblems({ posts, reviews: [], parts, connections, perf, now: NOW });
+  assert.deepEqual(found.map((f) => f.id.split(":")[0]).sort(), ["missed", "reach", "signin", "unapproved", "unapproved", "vlog-shape"]);
+  for (const f of found) {
+    assert.ok(f.ja?.title && f.ja?.detail && f.ja?.fix, `${f.id}: Japanese title, detail and fix`);
+    assert.match(f.ja.title + f.ja.detail, /[぀-ヿ一-鿿]/, `${f.id}: written in Japanese`);
+    if (f.also) assert.ok(f.ja.also, `${f.id}: the second link too`);
+  }
+  assert.match(found.find((f) => f.id === "signin:bluesky").ja.title, /あと7日/);
+});
+
+test("a job's failure is cleared when the same job later finishes fine; a check's problem is not an event to clear", () => {
+  const store = createStore(join(mkdtempSync(join(tmpdir(), "prob-")), "p.json"), { now: () => NOW });
+  store.record({ id: "job:helper-perf", level: "red", title: "Reading view numbers did not finish", detail: "timeout" });
+  store.checked([{ id: "signin:bluesky", level: "amber", title: "x", detail: "y" }]);
+  assert.equal(store.clear("job:helper-perf"), true);
+  assert.deepEqual(store.open().map((x) => x.id), ["signin:bluesky"]);
+  assert.equal(store.clear("signin:bluesky"), false, "a check clears itself when its cause is gone");
+  assert.equal(store.clear("job:none"), false);
 });
