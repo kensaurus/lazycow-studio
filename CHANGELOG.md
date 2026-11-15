@@ -2,6 +2,61 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.15.0 (2026-11-15)
+
+### Added
+- **Easier for someone new: a pass over every page from a first-time user's eyes.**
+  - Approve says what follows: the posting plan books the reel by itself (or, with that switch off, it waits on
+    Posting). An approved reel no longer offers Approve, and the editor says where a reel is booked.
+  - Reels are named by their headline, not their file name; card buttons have words; scores say "Score".
+  - A failed render says "This could not be finished. Press New version", with the technical line on hover.
+  - One count of problems, the same in the strip and on the button. The strip never covers the editor or a dialog.
+  - The setup guide follows the order people work in, with a Review step; a trip project gets its own steps.
+  - Plain words for swaps, loudness, the Words counts, Keys and AI, Activity log, Versions, Projects and the
+    editor's properties. Navigation without numbers. The pop-up tour is a small "just for fun" link.
+  - On a phone, opening a reel shows a simple review view (play, words, Approve).
+  - Footage has an Add footage button; a trip project opens on its long videos.
+  - The posting calendar shows each day's reels; the posting table shows only the networks in use.
+  - The studio says what it does by itself on Reels and Being made, following the Runs by itself switches.
+- **Results answer first.** Views this week against the week before, likes, comments and saves, the best post and the
+  next post; one sentence; one bar per network. Every post, the YouTube channel, Out and booked and What to try next
+  as tabs. An older upload of the same video is "replaced", a video no longer on the channel "removed"; neither is
+  counted, read again or learned from. Long videos are named by their YouTube title.
+- **Comments.** Results › Comments reads comments on YouTube, Bluesky and the Facebook Page, sorts questions, praise
+  and spam, and drafts replies only from the owner's own saved answers. Sending by itself is off until the owner
+  turns it on, and then follows strict limits.
+- **Long videos are edited in layers.** Each shot enters its own way, chosen per look (iris, wipe, clock wipe, slide,
+  whip, zoom-through, flash), and the shot before a whip or a zoom leaves with it. Over the running film: the same
+  minute from two or three cameras side by side, another camera's view in a corner, the day's photographs landing like
+  prints, a freeze-to-print snapshot when an animal is first named, a light leak over each chapter change. Never over
+  words, at most two a chapter. Each chapter's own quiet sound plays under its photographs; a whoosh only on joins that
+  move, a tick, a paper slap or a swish on the layers (`py/studio/devices.py`, `devices_build.py`).
+- **Colour presets.** Twelve procedural 3D LUTs (`python -m studio lut list`, `lut preview <file>` for a contact sheet):
+  print film, teal and amber, golden hour, cool morning, bleach bypass, faded pastel, deep greens, dry gold, night blue,
+  two black-and-whites, vivid. Every long-video look uses one; reels draw from ten new colour grades made of them.
+- **360: raw Insta360 recordings and new moves.** A one-lens-per-file recording (`_00_` + `_10_`) is stitched by the
+  studio. New camera moves: rabbit hole, planet to rabbit hole, crystal ball, barrel roll, horizon flip, fake drone,
+  look-around; and 360 transitions (whip, roll, tilt, planet to planet). Raw pairs never render as planets (their seam).
+- **Any camera's footage, and every shot checked as it is made.** Each source is brought to plain 8-bit colour before
+  the grade (`py/studio/formats.py`): 10/12-bit (DJI Osmo, iPhone, Sony), ProRes, DNxHR, 4:2:2 and 4:4:4, alpha,
+  full-range action cams, HDR (HLG, PQ), wide-gamut BT.2020, interlaced camcorder video, VP9 and AV1. Each shot is
+  read back as soon as it is rendered: one that came out black, white, short or empty while its source was fine is made
+  again the plain way, and if that fails too the build stops at once, naming the file, instead of after the long
+  render. A long video tries another moment of that clip instead of stopping. A reel names every unreadable,
+  sound-only, too-short or missing file before anything renders. New containers: `.mts` `.m2ts` (AVCHD), `.mxf`,
+  `.mkv`, `.webm`, `.avi`, `.3gp`, `.mpg`, GoPro `.360`; transport streams are sought safely (no seek index).
+
+### Fixed
+- **Renders no longer copy the whole public folder.** Remotion copied public/ into every new bundle; with long videos'
+  working files that was over 100 GB a reel and filled the drive. Renders read it through links now, and bundles left
+  by stopped renders are tidied.
+- **Long videos' music has no holes.** Each music piece's silent head and tail are trimmed before the crossfade.
+- **No two parts of a series share thumbnail words.** A video YouTube is still processing is not called a Short.
+- **Words that do not fit the picture**: more lines must start on what they say (open grassland, the fibre line,
+  altitude, being loud, how far you get); the seasons theme opens on a matching summer/autumn pair.
+- **Black shots from 10-bit footage.** ffmpeg's levels step turned 10-bit footage black, so reels with DJI Osmo clips
+  had seconds of black picture (found by the reel's own quality check, 12 of 17 reels on 13 Nov).
+
 ## 0.14.1 (2026-11-13)
 
 ### Added

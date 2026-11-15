@@ -53,22 +53,20 @@ def _run(cmd: list[str], timeout: int = 60 * 20) -> None:
         raise RuntimeError((exc.stderr or b"").decode("utf-8", "replace")[-1500:]) from exc
 
 
-TONEMAP = (
-    "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,"
-    "tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p"
-)
+from studio.formats import EIGHT_BIT, TONEMAP, deep, seek_input  # noqa: E402,F401  (kept here for callers)
+
+
+class ShotError(RuntimeError):
+    """A shot that came out wrong (black, white, short, empty) twice: the plain way did not save it either."""
 
 
 def hdr_prefix(src: Path) -> str:
-    """HLG / PQ footage (DJI HLG, phone HDR) is tone-mapped to SDR first."""
-    from studio.config import ffprobe_bin
+    """The filter that brings any source to plain 8-bit 4:2:0 BT.709 before the grade (studio.formats.head): HDR
+    tone-mapped, BT.2020 converted, interlaced deinterlaced, full range limited, 10/12-bit and 4:2:2/4:4:4 brought to
+    8-bit 4:2:0. "" for a plain 8-bit SDR source, whose render is unchanged."""
+    from studio import formats
 
-    probe = subprocess.run(
-        [str(ffprobe_bin()), "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_transfer", "-of", "csv=p=0", str(src)],
-        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
-    )
-    transfer = (probe.stdout or "").strip()
-    return TONEMAP + "," if transfer in ("arib-std-b67", "smpte2084") else ""
+    return formats.prefix(src)
 
 
 from studio.media import RAW as RAW_EXT, STILL as PHOTO_EXT  # noqa: E402
@@ -247,7 +245,7 @@ def measure(src: Path, t: float) -> Measure:
     pre = hdr_prefix(src)
     vf = ["-vf", pre.rstrip(",")] if pre else []
     try:
-        _run([str(ffmpeg_bin()), "-y", "-ss", f"{max(0.0, t):.3f}", "-i", str(src), "-frames:v", "1", *vf, "-update", "1", str(dest)], 180)
+        _run([str(ffmpeg_bin()), "-y", *seek_input(src, t), "-frames:v", "1", *vf, "-update", "1", str(dest)], 180)
         image = cv2.imread(str(dest))
     finally:
         dest.unlink(missing_ok=True)
@@ -274,10 +272,14 @@ def measure(src: Path, t: float) -> Measure:
     return Measure(w, h, lo, hi, float(gray.mean() / 255.0), cx, cy, boxes)
 
 
-def look_chain(m: Measure, natural: bool = False) -> str:
+def look_chain(m: Measure, natural: bool = False, safe: bool = False) -> str:
     """Normalise, then the house film look. Night clips keep their dark.
     natural: for a long film. Exposure is evened gently (blacks are never crushed, highlights never pushed), and the
-    colour stays what the camera saw: no S-curve, no extra saturation. A look's own grade is laid before this."""
+    colour stays what the camera saw: no S-curve, no extra saturation. A look's own grade is laid before this.
+    safe: the retry after a shot came out wrong (render_shot): the same look without its levels step."""
+    if safe:
+        full = look_chain(m, natural)
+        return full.split(",", 1)[1] if "," in full else "null"
     luma_lo = sum(m.lo) / 3
     luma_hi = sum(m.hi) / 3
     night = m.mean < 0.22
@@ -402,7 +404,7 @@ def probe_window(src: Path, start: float, length: float, photo: bool = False) ->
             pre = hdr_prefix(src)
             vf = f"fps={PROBE_FPS},scale={PROBE_PX}:{PROBE_PX}:flags=area," + (pre if pre else "") + "format=rgb24"
             proc = subprocess.run(
-                [str(ffmpeg_bin()), "-v", "error", "-ss", f"{max(0.0, start):.3f}", "-t", f"{max(0.1, length):.3f}", "-i", str(src),
+                [str(ffmpeg_bin()), "-v", "error", *seek_input(src, start, max(0.1, length)),
                  "-an", "-vf", vf, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
                 capture_output=True, timeout=600,
             )
@@ -540,7 +542,7 @@ def stab_transforms(src: Path, start: float, length: float) -> Path:
         return trf
     part = trf.with_name(trf.stem + f".{os.getpid()}.part")
     try:
-        _run([str(ffmpeg_bin()), "-y", "-ss", f"{start:.3f}", "-t", f"{length:.3f}", "-i", str(src), "-an",
+        _run([str(ffmpeg_bin()), "-y", *seek_input(src, start, length), "-an",
               "-vf", f"vidstabdetect=shakiness=6:accuracy=9:stepsize=6:result='{_ffesc(part)}'", "-f", "null", "-"], 600)
         os.replace(part, trf)
     finally:
@@ -572,7 +574,7 @@ def _input(src: Path, start: float, length: float, photo: bool) -> list[str]:
     """A still loops for the shot length; motion comes from Remotion's push-in."""
     if photo:
         return ["-loop", "1", "-framerate", "30", "-t", f"{length:.3f}", "-i", str(src)]
-    return ["-ss", f"{start:.3f}", "-t", f"{length:.3f}", "-i", str(src)]
+    return seek_input(src, start, length)
 
 
 def render_shot(
@@ -589,15 +591,64 @@ def render_shot(
     color: str = "",
     stab: Path | None = None,
     natural: bool = False,
+    lut: str | None = None,
+    lut_strength: float = 1.0,
 ) -> Path:
-    """natural: a long film's finish (look_chain natural; no vignette, no added grain).
+    """One graded shot (_make_shot), read back at once (studio.formats.problem). A shot that came out black, white,
+    short or empty while its source was fine is made again the plain way (no levels step, colour match, steadying or
+    colour preset) and checked again; wrong twice raises ShotError naming the file, seconds into the build instead
+    of after the long render. Arguments as _make_shot."""
+    from studio import formats
+
+    kw = dict(pan=pan, speed=speed, keep_audio=keep_audio, blur=blur, move=move, color=color, stab=stab, natural=natural,
+              lut=lut, lut_strength=lut_strength)
+    m = _make_shot(src, start, seconds, out, size, **kw)
+    why = formats.problem(out, seconds, m.mean if m else None)
+    if not why:
+        return out
+    print(f"SHOT {src.name} at {start:.1f} s {why}; made again the plain way", flush=True)
+    m = _make_shot(src, start, seconds, out, size, **{**kw, "color": "", "stab": None, "lut": None}, safe=True)
+    again = formats.problem(out, seconds, m.mean if m else None)
+    if again:
+        out.unlink(missing_ok=True)
+        raise ShotError(f"{src.name} at {start:.1f} s {again}, also when made the plain way. "
+                        "Swap this shot for another clip, or pick another moment of it.")
+    print(f"SHOT {src.name} at {start:.1f} s fixed: the plain way came out right", flush=True)
+    return out
+
+
+def _make_shot(
+    src: Path,
+    start: float,
+    seconds: float,
+    out: Path,
+    size: tuple[int, int],
+    pan: tuple[float, float] | None = None,
+    speed: float = 1.0,
+    keep_audio: bool = True,
+    blur: bool = False,
+    move: tuple[str, int] | None = None,
+    color: str = "",
+    stab: Path | None = None,
+    natural: bool = False,
+    lut: str | None = None,
+    lut_strength: float = 1.0,
+    safe: bool = False,
+) -> Measure:
+    """safe: the retry (render_shot): every source brought to 8-bit first and the look without its levels step.
+    Returns the source's Measure (its brightness judges the result).
+    natural: a long film's finish (look_chain natural; no vignette, no added grain).
     seconds is the output length. speed < 1 is slow motion. move = (sphere move, direction)
     for a 360 source; a 360 without one gets a calm pan.
     color: a colour-match step (color_correction()["filter"]) laid before the look grade; "" leaves the
     chain exactly as it was. stab: vidstab transforms from stab_transforms() for this window; None (the
-    default) does not stabilise. A 360 source ignores both."""
+    default) does not stabilise. A 360 source ignores both.
+    lut: a colour preset (studio.lut) laid right after the look grade, at lut_strength (0..1); None (the
+    default) leaves the chain exactly as it was. A 360 source takes it too."""
+    from studio import lut as luts
     from studio import sphere
 
+    lut_parts = [f] if lut and (f := luts.filter(lut, lut_strength)) else []
     out.parent.mkdir(parents=True, exist_ok=True)
     out_w, out_h = size
     original = src
@@ -606,8 +657,11 @@ def render_shot(
         src, start, speed, keep_audio = flat_photo(src), 0.0, 1.0, False
     m = measure(src, start + (0.0 if photo else 0.3))
     if sphere.is_equirect(m.width, m.height, original):
-        rough = src.name.startswith("stitch_") if photo else sphere.layout(src) == "dfisheye"
-        return _render_360(src, start, seconds, out, size, m, speed, keep_audio and not photo, blur, move or ("pan", 1), photo, rough=rough)
+        pair = None if photo else sphere.pair_of(original)  # one lens per file: stitched from both
+        rough = False if pair else (src.name.startswith("stitch_") if photo else sphere.layout(src) == "dfisheye")
+        _render_360(src, start, seconds, out, size, m, speed, keep_audio and not photo, blur, move or ("pan", 1), photo, rough=rough,
+                    lut_parts=lut_parts, pair=pair, safe=safe)
+        return m
     a, b = pan if pan else (m.cx, m.cx)
     cw, ch, x0, y0 = crop_for(m, out_w, out_h, a)
     _, _, x1, y1 = crop_for(m, out_w, out_h, b)
@@ -616,7 +670,7 @@ def render_shot(
     x_expr = f"{x0}+({x1}-{x0})*{t_expr}"
     y_expr = f"{y0}+({y1}-{y0})*{t_expr}"
     chain = []
-    pre = hdr_prefix(src)
+    pre = hdr_prefix(src) or (EIGHT_BIT + "," if safe else "")
     if pre:
         chain.append(pre.rstrip(","))
     # Stabilise the whole source frame before the moving crop picks its window.
@@ -629,7 +683,8 @@ def render_shot(
         f"crop={cw}:{ch}:x='{x_expr}':y='{y_expr}'",
         f"scale={out_w}:{out_h}:flags=lanczos",
         *color_parts,
-        look_chain(m, natural),
+        look_chain(m, natural, safe),
+        *lut_parts,
         *([] if natural else ["vignette=angle=PI/8:mode=forward", "noise=alls=4:allf=t+u"]),
         "fps=30",
         "format=yuv420p",
@@ -642,7 +697,7 @@ def render_shot(
         speed_parts = [f"setpts={1/speed:.4f}*PTS"] if speed != 1.0 else []
         # An RGB still graded before split/boxblur crashes ffmpeg 8 (access violation); YUV first.
         photo_parts = ["format=yuv444p"] if photo else []
-        head = ",".join(photo_parts + pre_parts + stab_parts + speed_parts + color_parts + [look_chain(m, natural)]) or "null"
+        head = ",".join(photo_parts + pre_parts + stab_parts + speed_parts + color_parts + [look_chain(m, natural, safe)] + lut_parts) or "null"
         graph = (
             f"[0:v]{head},split[a][b];"
             f"[a]scale={out_w}:{out_h}:force_original_aspect_ratio=increase,crop={out_w}:{out_h},boxblur=28:2,eq=brightness=-0.12:saturation=0.8[bg];"
@@ -667,34 +722,61 @@ def render_shot(
         cmd += ["-an"]
     cmd += ["-t", f"{seconds:.3f}", "-c:v", "libx264", "-preset", "medium", "-crf", "15", str(out)]
     _run(cmd)
-    return out
+    return m
 
 
-def _render_360(src, start, seconds, out, size, m, speed, keep_audio, blur, move, photo, rough=False) -> Path:
+def _render_360(src, start, seconds, out, size, m, speed, keep_audio, blur, move, photo, rough=False, lut_parts=(), pair=None,
+                safe=False) -> Path:
     """A 360 source reframed to a flat (or tiny-planet) shot with an eased virtual-camera move.
+    move = (name, direction) or (name, direction, head, tail): head / tail a sphere transition
+    (whip, rollx, tilt, planetx) the shot starts / ends with, or None (sphere.transitions_for).
     Faces are blurred on the sphere before reprojection, so the blur follows the move.
     rough: stitched here from dual fisheye without lens calibration, so the seams and poles
-    do not line up; the camera then stays inside one lens (a pan, no planet)."""
+    do not line up; the camera then stays inside one lens (a pan, no planet).
+    pair: the _10_ lens file of a raw pair (src is the _00_ one): the two are stitched first."""
     from studio import sphere
 
-    name, direction = move
+    name, direction, *edges = move
+    head_tr, tail_tr = (list(edges) + [None, None])[:2]
     if rough:
         name = "pan"
+        head_tr, tail_tr = (None if t in ("planetx", "tilt") else t for t in (head_tr, tail_tr))
+    elif pair is not None and name in sphere.SG_MOVES:
+        # A raw pair is stitched without lens calibration: a tiny planet or rabbit hole shows the seam as a straight
+        # line through the middle (checked 13 Nov). Flat moves rest inside a lens; planets stay for clean 360 files.
+        name = {"planet": "drone", "unroll": "reveal", "rabbit": "lookaround", "morph": "roll", "crystal": "drone"}[name]
+        head_tr, tail_tr = (None if t == "planetx" else t for t in (head_tr, tail_tr))
     script = DATA / "tmp" / "sendcmd" / f"{out.stem}_{uuid4().hex[:8]}.cmd"
     chain = []
-    pre = hdr_prefix(src)
+    pre = hdr_prefix(src) or (EIGHT_BIT + "," if safe else "")
     if pre:
         chain.append(pre.rstrip(","))
-    fisheye = not photo and sphere.layout(src) == "dfisheye"
+    fisheye = pair is None and not photo and sphere.layout(src) == "dfisheye"
     if fisheye:
         chain.append(sphere.DFISHEYE_PRE)
     if speed != 1.0:
         chain.append(f"setpts={1/speed:.4f}*PTS")
-    chain += sphere.chain(name, seconds, size, script, direction=direction, yaw0=sphere.lens_centre(direction, seconds) if rough else (m.cx - 0.5) * 360)
-    chain += [look_chain(m), "noise=alls=4:allf=t+u", "fps=30", "format=yuv420p"]
+    if rough or (pair is not None and name == "pan"):
+        yaw0 = sphere.lens_centre(direction, seconds)  # a pan stays inside one lens, off the seams
+    elif pair is not None:
+        yaw0 = sphere.seam_safe_yaw0(name, seconds, direction)  # holds and slow ends rest inside a lens
+    else:
+        yaw0 = (m.cx - 0.5) * 360
+    chain += sphere.chain(name, seconds, size, script, direction=direction, yaw0=yaw0, head=head_tr, tail=tail_tr)
+    chain += [look_chain(m, safe=safe), *(() if safe else lut_parts), "noise=alls=4:allf=t+u", "fps=30", "format=yuv420p"]
     body = ",".join(chain)
     head = [str(ffmpeg_bin()), "-y", *_input(src, start, seconds * speed, photo)]
-    if blur and m.faces:
+    if pair is not None:
+        head += _input(pair, start, seconds * speed, photo)
+        piece, lens0 = "", "0:v"
+        if blur and m.faces:  # faces found on the _00_ lens are blurred there, before the stitch
+            piece, lens0 = blur_graph(m.faces)
+            piece += ";"
+        stitch = sphere.pair_pre(sphere.pair_fov(src), (5760, 2880), inputs=(lens0, "1:v"))
+        cmd = head + ["-filter_complex", f"{piece}{stitch},{body}[v]", "-map", "[v]"]
+        if keep_audio and speed == 1.0:
+            cmd += ["-map", "0:a?"]
+    elif blur and m.faces:
         piece, last = blur_graph(m.faces)
         cmd = head + ["-filter_complex", piece + f";[{last}]{body}[v]", "-map", "[v]"]
         if keep_audio and speed == 1.0:

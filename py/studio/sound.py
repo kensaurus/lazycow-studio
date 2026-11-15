@@ -163,6 +163,12 @@ SYNTH = {
               "aevalsrc='0.25*sin(2*PI*(180*t+260*t*t))':d=1.2:s=48000,afade=t=in:d=1.15:curve=exp[s];"
               "[n][s]amix=inputs=2:normalize=0", 1.2),
     "hit": ("aevalsrc='0.8*sin(2*PI*55*t)*exp(-4.5*t)+0.25*sin(2*PI*110*t)*exp(-7*t)':d=1.6:s=48000,lowpass=f=900", 1.6),
+    # Small sounds of the long video's layers (studio.devices.ticks): a shutter-like tick on a snapshot, a paper slap
+    # as a print lands, a short swish as a split screen or an inset slides in.
+    "tick": ("anoisesrc=d=0.12:c=white:a=0.9,highpass=f=1800,lowpass=f=9000,afade=t=out:st=0.006:d=0.1:curve=exp[n];"
+             "aevalsrc='0.35*sin(2*PI*2400*t)*exp(-90*t)':d=0.12:s=48000[s];[n][s]amix=inputs=2:normalize=0", 0.12),
+    "paper": ("anoisesrc=d=0.22:c=pink:a=0.8,bandpass=f=1400:width_type=q:w=0.8,afade=t=in:d=0.01,afade=t=out:st=0.03:d=0.19:curve=exp", 0.22),
+    "swish": ("anoisesrc=d=0.4:c=pink:a=0.6,highpass=f=700,lowpass=f=7000,afade=t=in:d=0.22:curve=qsin,afade=t=out:st=0.22:d=0.18:curve=exp", 0.4),
 }
 
 

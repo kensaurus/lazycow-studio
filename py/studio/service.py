@@ -113,7 +113,7 @@ def _overview() -> dict:
             "madeBy": reel.get("made_by", "house reel" if slug in house else ""),
             "style": reel.get("style", "column"),
             "look": reel.get("look"),
-            "checks": shot_checks(reel, rows, faces_used),
+            "checks": shot_checks(reel, rows, faces_used, status),
             "bpm": reel.get("bpm"),
             "blurFaces": bool(reel.get("blurFaces")),
             # Words: other reels with exactly these words, other reels with this headline, and new words not rendered yet.
@@ -174,20 +174,48 @@ def _library_counts() -> dict:
     return _COUNTS["data"]
 
 
-def shot_checks(reel: dict, rows: dict | None = None, rendered_faces: dict | None = None) -> list[dict]:
-    """What a reviewer should look at first, per shot. Signals, not verdicts:
-    someone may be in frame, a filler shot, a weak match to its story beat, a clip
-    used in many reels already. rendered_faces: file -> faces found in the moment
-    actually used (from the render manifest), which the library's keyframes can miss."""
+WEAK_MATCH = 0.20  # the bottom ~5% of picks (1,579 shots, Nov 2026); editor.html roleText uses the same line
+OUT_STATUS = {"approved", "posted", "scheduled", "planned", "queued", "published"}  # reels the audience sees, or will
+
+
+def shot_checks(reel: dict, rows: dict | None = None, rendered_faces: dict | None = None, status: dict | None = None) -> list[dict]:
+    """Per shot, what a reviewer may want to know. Signals, not verdicts.
+    look=True only for what is worth a look before approving: a likely filler shot, or a
+    clip that matches its line poorly. The rest are notes the editor shows on the shot:
+    a face in the used moment (the card has its own consent line for that), someone
+    possibly in frame, and a clip already in 2+ other reels that are approved or out
+    (drafts and rejected reels do not count: nobody sees them).
+    rendered_faces: file -> faces found in the moment actually used (from the render
+    manifest), which the library's keyframes can miss. status: slug -> review row."""
     import re
 
     rows = rows if rows is not None else _library_rows()
     rendered_faces = rendered_faces or {}
+    status = status or {}
+    # A line that says what its shots do not show ("no buildings" over the lodge): a look on each of those shots.
+    from studio.wording import picture_fits
+
+    facts = []
+    for s in reel["shots"]:
+        r = rows.get(Path(s["src"]).name.lower())
+        facts.append({"season": r.get("season"), "tod": r.get("tod"), "tags": set(r["top"]) if isinstance(r.get("top"), list) else None} if r else None)
+    starts, t = [], 0.0
+    for s in reel["shots"]:
+        starts.append((t, t + float(s.get("sec") or 0)))
+        t += float(s.get("sec") or 0)
+    misfit: dict[int, str] = {}
+    for b in reel.get("beats") or []:
+        if b.get("kind") not in ("hook", "line") or "startSec" not in b:
+            continue
+        under = [i for i, (a, z) in enumerate(starts) if a < b["endSec"] and z > b["startSec"]]
+        if under and not picture_fits(b.get("ja", ""), [facts[i] for i in under]):
+            for i in under:
+                misfit.setdefault(i, b["ja"].replace("\n", "")[:16])
     out = []
     for i, s in enumerate(reel["shots"]):
         name = Path(s["src"]).name
         r = rows.get(name.lower())
-        flags = []
+        flags, look = [], False
         if rendered_faces.get(name.lower()):
             flags.append("a face in the used moment (consent)")
         if r:
@@ -195,13 +223,19 @@ def shot_checks(reel: dict, rows: dict | None = None, rendered_faces: dict | Non
                 flags.append("someone may be in frame")
             if r.get("junk", 0) > 0.25:
                 flags.append("may be a filler shot")
-            if len(r.get("usedIn") or []) >= 3:
-                flags.append(f"used in {len(r['usedIn'])} reels")
+                look = True
+            seen = [x for x in r.get("usedIn") or [] if x != reel.get("slug") and (status.get(x) or {}).get("status") in OUT_STATUS]
+            if len(seen) >= 2:
+                flags.append(f"also in {len(seen)} reels that are approved or out")
         m = re.search(r"match ([0-9.]+)", s.get("role", ""))
-        if m and float(m.group(1)) < 0.22:
+        if m and float(m.group(1)) < WEAK_MATCH:
             flags.append("weak match to its line")
+            look = True
+        if i in misfit:
+            flags.append(f"the words over it (「{misfit[i]}」) say something this picture does not show")
+            look = True
         if flags:
-            out.append({"i": i, "file": Path(s["src"]).name, "flags": flags})
+            out.append({"i": i, "file": Path(s["src"]).name, "flags": flags, "look": look})
     return out
 
 

@@ -19,3 +19,4 @@ data/
 !.env.example
 *.log
 secrets/
+.remotion-public/

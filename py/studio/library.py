@@ -31,6 +31,7 @@ import numpy as np
 
 from studio.aesthetic import score as aesthetic_score
 from studio.config import DATA, RANCH, SOURCE, ffmpeg_bin
+from studio.formats import seek_input
 from studio.db import connect
 
 THUMBS = DATA / "library"
@@ -330,7 +331,7 @@ def _keyframes(path: Path, asset_id: int, duration: float | None) -> list[Path]:
         elif not dest.exists():
             t = max(0.0, dur * frac) if dur else k * 1.0
             subprocess.run(
-                [str(ffmpeg_bin()), "-y", "-ss", f"{t:.2f}", "-i", str(path), "-frames:v", "1", "-vf", "scale='if(gt(iw,ih),480,-2)':'if(gt(iw,ih),-2,480)'", "-update", "1", "-q:v", "4", str(dest)],
+                [str(ffmpeg_bin()), "-y", *seek_input(path, t), "-frames:v", "1", "-vf", "scale='if(gt(iw,ih),480,-2)':'if(gt(iw,ih),-2,480)'", "-update", "1", "-q:v", "4", str(dest)],
                 capture_output=True, timeout=180,
             )
         if dest.exists():

@@ -65,7 +65,9 @@ def _windows(start: float, end: float) -> list[tuple[float, float]]:
 
 def _grab(path: str, t: float, dest: Path) -> Path | None:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    cmd = [str(ffmpeg_bin()), "-y", "-ss", f"{t:.3f}", "-i", path, "-frames:v", "1", str(dest)]
+    from studio.formats import seek_input
+
+    cmd = [str(ffmpeg_bin()), "-y", *seek_input(path, t), "-frames:v", "1", str(dest)]
     try:
         subprocess.run(cmd, check=True, capture_output=True, timeout=120)
     except (subprocess.SubprocessError, OSError):

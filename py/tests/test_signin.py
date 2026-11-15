@@ -355,8 +355,10 @@ def test_facebook_login_link_asks_for_the_page_permissions_and_business_on_local
     assert url.startswith(f"https://www.facebook.com/{facebook.VERSION}/dialog/oauth?")
     assert q["client_id"] == APP_ID and q["redirect_uri"] == "http://localhost:4317/oauth/facebook" and q["response_type"] == "code"
     # business_management too: a Page kept in a business portfolio is not listed without it;
-    # read_insights so studio.perf can read each reel's plays and watch time.
-    assert q["scope"] == "pages_show_list,pages_read_engagement,pages_manage_posts,business_management,read_insights" and len(q["state"]) > 20
+    # read_insights so studio.perf can read each reel's plays and watch time; the last two read and answer comments
+    # (Results › Comments: GET and POST /{comment-id}/comments need them).
+    assert q["scope"] == ("pages_show_list,pages_read_engagement,pages_manage_posts,business_management,read_insights,"
+                          "pages_read_user_content,pages_manage_engagement") and len(q["state"]) > 20
 
 
 BIZ_PERMS = {"data": [{"permission": p, "status": "granted"} for p in facebook.NEEDED + facebook.OPTIONAL]}
@@ -434,3 +436,34 @@ def test_facebook_cancel_and_meta_errors_are_plain_sentences_with_the_fix(store,
 
     with pytest.raises(ValueError, match="not started from the studio"):
         facebook.finish_signin({"code": "c", "state": "forged"}, PORT)
+
+
+def test_a_page_sign_in_keeps_the_app_password_and_posts_with_it_when_the_sign_in_runs_out(store, monkeypatch, tmp_path):
+    """13 Nov: a sign-in on Bluesky's page replaced the owner's app password, so the account would stop posting after two
+    weeks. Now the app password stays beside the sign-in, the studio warns about no end date, and posts with it."""
+    bluesky._save({"handle": "kensaur.us", "app_password": "abcd-efgh-ijkl-mnop", "did": DID, "account": "kensaur.us", "pds": PDS})
+    sess = _signed_in(store, monkeypatch)
+    assert sess["kind"] == "oauth" and sess["fallback"] == {"handle": "kensaur.us", "app_password": "abcd-efgh-ijkl-mnop"}
+    st = bluesky.status()
+    assert st["connected"] and st["fallback"] and "until" not in st  # nothing ends: no sign-out warning
+    _signed_in(store, monkeypatch, started=time.time() - 15 * 24 * 3600)  # a sign-in made again keeps it too
+    st = bluesky.status()
+    assert st["connected"] and st["via"] == "app password" and st["error"] is None
+    used = []
+
+    def session(handle, password):
+        used.append((handle, password))
+        raise ValueError("stop here")  # the app password path was taken; the upload itself is tested elsewhere
+
+    monkeypatch.setattr(bluesky, "_session", session)
+    reel = tmp_path / "r.mp4"
+    reel.write_bytes(b"x" * 64)
+    with pytest.raises(RuntimeError, match="app password"):
+        bluesky.post(reel, "hello")
+    assert used == [("kensaur.us", "abcd-efgh-ijkl-mnop")]
+
+
+def test_a_sign_in_for_another_account_does_not_keep_that_accounts_app_password(store, monkeypatch):
+    bluesky._save({"handle": "other.bsky.social", "app_password": "abcd-efgh-ijkl-mnop", "did": "did:plc:other", "account": "other.bsky.social"})
+    sess = _signed_in(store, monkeypatch)
+    assert "fallback" not in sess and bluesky.status()["until"]

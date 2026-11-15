@@ -320,3 +320,14 @@ test("TikTok's description is cleared with the keyboard and must start with the 
   assert.match(fn, /Control\+A/, "select all with the keyboard");
   assert.match(fn, /\.trim\(\)\.startsWith\(firstLine\)/, "the text must start with the first line, not just contain it");
 });
+
+test("a post id carried by several objects reads the richest one, not the first (TikTok read 0 plays, 10-14 Nov)", async () => {
+  const { postObjects, matchPost } = await import("../server/helper.mjs");
+  const tree = { items: [
+    { schedule: { item_id: "7706443056693710132", create_time: 1762768800, play_count: 0 } },
+    { item_id: "7706443056693710132", create_time: 1762768800, desc: "carstay", statistics: { play_count: 312, digg_count: 9, comment_count: 1 } },
+  ] };
+  const hit = matchPost(postObjects(tree), { remoteId: "7706443056693710132" });
+  assert.equal(hit.numbers.views, 312);
+  assert.equal(hit.numbers.likes, 9);
+});

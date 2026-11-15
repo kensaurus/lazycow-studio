@@ -46,7 +46,7 @@ Claude Desktop or Cursor (`claude_desktop_config.json` / `.cursor/mcp.json`):
 
 The server finds the studio by itself: `STUDIO_PORT` and `STUDIO_API_TOKEN` when set, else the `.env` in `LAZYCOW_DIR`, else the folder the setup recorded. So your agent config never holds a copy of the token.
 
-The 27 tools ("reads" change nothing; "spends" means paid AI, priced first and kept inside the studio's limits):
+The 30 tools ("reads" change nothing; "spends" means paid AI, priced first and kept inside the studio's limits):
 
 | Area | Tools |
 |:--|:--|
@@ -56,7 +56,7 @@ The 27 tools ("reads" change nothing; "spends" means paid AI, priced first and k
 | Posting | `list_posts`, `list_accounts` (reads); `plan_post`, `publish_reel`, `schedule_reel` (approved reels only) |
 | Research | `research_ideas`, `research_events`, `research_page`, `research_site_check`, `research_links` (reads the web through the studio; suggestions, never posted) |
 | AI assist | `ai_estimate`, `ai_review` (reads); `ai_run` (spends, never changes an approved reel) |
-| Results | `perf_summary`, `perf_suggest` (reads) |
+| Results | `perf_summary`, `perf_suggest`, `perf_posts`, `youtube_channel`, `list_comments` (reads) |
 
 Every tool, its inputs and examples: [docs/mcp.md](https://github.com/kensaurus/lazycow-studio/blob/main/docs/mcp.md).
 

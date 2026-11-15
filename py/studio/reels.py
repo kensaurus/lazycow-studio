@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -259,13 +260,19 @@ def _shots(reel: dict) -> tuple[list[dict], list[dict], list[dict]]:
     mezz = ROOT / "public" / "mezz" / reel["slug"]
     cache_path = mezz / "picks.json"
     cache = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path.exists() else {}
+    from studio.formats import verdict
+
+    unusable = [f"shot {i + 1} ({resolve(s['src']).name}) {why}" for i, s in enumerate(reel["shots"])
+                if not s.get("ai_clip") and (why := verdict(resolve(s["src"])))]
+    if unusable:  # said before anything renders, every file at once
+        raise RuntimeError(f"{reel['slug']}: " + "; ".join(unusable) + ". Swap these shots in the editor.")
     for i, shot in enumerate(reel["shots"]):
         src = resolve(shot["src"])
         if off_site(src):
             raise RuntimeError(f"location gate: nothing places {src} at the ranch (GPS, folder or event)")
         if is_output(src):
             raise RuntimeError(f"source gate: {src} is a finished edit, not footage")
-        key = f"{shot['src']}|{shot['sec']}|{shot.get('start')}"
+        key = f"{shot['src']}|{shot['sec']}|{shot.get('start')}|fit"  # |fit: picked with the picture idea (an older pick did not look)
         is_photo = src.suffix.lower() in PHOTO_EXT
         if key not in cache:
             if is_photo:
@@ -273,7 +280,9 @@ def _shots(reel: dict) -> tuple[list[dict], list[dict], list[dict]]:
             elif shot.get("start") is not None:
                 pick = {"start": shot["start"], "score": None, "method": "pinned"}
             else:
-                pick = best_window(src, shot["sec"], shot.get("speed", 1.0))
+                # the shot's picture idea from its role ("auto: a wooden deck … (match 0.26)"): the window shows it
+                idea = re.match(r"auto:\s*(.+?)\s*\(match", shot.get("role") or "")
+                pick = best_window(src, shot["sec"], shot.get("speed", 1.0), prompt=idea.group(1) if idea else None)
             pick["faces"] = faces_at(src, pick["start"], shot["sec"])
             cache[key] = pick
             mezz.mkdir(parents=True, exist_ok=True)
@@ -292,9 +301,10 @@ def _shots(reel: dict) -> tuple[list[dict], list[dict], list[dict]]:
             raise RuntimeError(f"{reel['slug']}: the AI clip for shot {i + 1} is missing ({enh.get('file')}); run the AI tool again or remove ai_clip from the project")
         plans.append({"i": i, "shot": shot, "src": src, "key": key, "pick": pick, "move": move, "enh": enh, "photo": is_photo})
     looks = shot_looks(reel, plans)
-    from studio.typekits import grade_filter
+    from studio.typekits import grade_filter, grade_lut
 
     grade = grade_filter(reel.get("grade"))  # the reel's grade, laid with its colour match before the house look
+    lut_name, lut_strength = grade_lut(reel.get("grade")) or (None, 1.0)  # or a colour preset (studio.lut), laid after it
     for plan, (color, trf, color_meta, stab_meta) in zip(plans, looks):
         color = ",".join(x for x in (color, grade) if x)
         i, shot, src, key, pick, move, enh, is_photo = (plan[k] for k in ("i", "shot", "src", "key", "pick", "move", "enh", "photo"))
@@ -309,15 +319,18 @@ def _shots(reel: dict) -> tuple[list[dict], list[dict], list[dict]]:
                 mark += f"|ai={enh.get('tool')}:{enh['file']}:{enh.get('start', 0.0)}:{enh.get('speed', 1.0)}"
             if color:
                 mark += f"|color={color}"
+            if lut_name:
+                mark += f"|lut={lut_name}:{lut_strength}"
             if trf:
                 mark += f"|stab={trf.name}"
             if stale or not stamp.exists() or stamp.read_text(encoding="utf-8") != mark:
                 if enh:
                     render_shot(Path(enh["file"]), float(enh.get("start", 0.0)), shot["sec"], out, size, pan=shot.get("pan"),
-                                speed=float(enh.get("speed", 1.0)), blur=bool(reel.get("blurFaces")), move=None, color=color)
+                                speed=float(enh.get("speed", 1.0)), blur=bool(reel.get("blurFaces")), move=None, color=color,
+                                lut=lut_name, lut_strength=lut_strength)
                 else:
                     render_shot(src, pick["start"], shot["sec"], out, size, pan=shot.get("pan"), speed=shot.get("speed", 1.0), blur=bool(reel.get("blurFaces")), move=move,
-                                color=color, stab=trf)
+                                color=color, stab=trf, lut=lut_name, lut_strength=lut_strength)
                 stamp.write_text(mark, encoding="utf-8")
             # A 360 shot already moves its own camera; Remotion's push-in would fight it. A living photo moves too.
             push = 0.0 if move else (0.09 if is_photo and not enh else 0.04)
@@ -785,7 +798,7 @@ def build(slug: str, reel: dict | None = None, out: Path | None = None, candidat
     stage(5, "mixing music and sound effects")
     masters, audio = _score(reel, out, total, sizes)
     report = verify_master(masters["9x16"])
-    gate = _qa(masters, audio)
+    gate = _qa(masters, audio, [{"src": m["src"], "start": m["start"], "sec": m["sec"]} for m in meta])
     if not candidate:
         stage(6, "cutting a copy for every network")
         package(slug)
@@ -800,12 +813,63 @@ def build(slug: str, reel: dict | None = None, out: Path | None = None, candidat
             "qa": {k: v["ok"] for k, v in gate.items()}}
 
 
-def _qa(masters: dict[str, Path], audio: dict | None) -> dict:
+def dark_by_nature(gate: dict, shots: list[dict], light=None) -> dict:
+    """A black run that lies wholly inside shots whose source is that dark too (a star sky, a field at night) is the
+    picture, not a fault: it becomes a warning that says so. shots: [{"src", "start", "sec"}] in timeline order.
+    light(shot) -> the source's mean brightness 0..1 at the shot (studio.shot.measure), None when it cannot be read;
+    a shot that cannot be read keeps the failure. The final check alone cannot tell a night sky from a lost picture
+    (lookup-1113, Nov 2026: a star photo, 0.03 bright, failed the reel)."""
+    import re
+
+    from studio.formats import LIT
+
+    if light is None:
+        from studio.shot import measure
+
+        def light(m):
+            try:
+                return measure(Path(m["src"]), float(m.get("start") or 0) + float(m["sec"]) / 2).mean
+            except Exception:
+                return None
+    EDGE = 0.25
+    starts, t = [], 0.0
+    for m in shots:
+        starts.append(t)
+        t += float(m["sec"])
+    seen: dict[int, float | None] = {}
+
+    def lit_of(k):
+        if k not in seen:
+            seen[k] = light(shots[k])
+        return seen[k]
+
+    def natural(a, b):
+        # a shot counts when it overlaps the run by more than EDGE: transitions move a cut a few frames off the plan
+        # (nightfire-1113: the star photo was on screen from 1.35 s, its planned start 1.5 s, the run 1.4-2.0 s)
+        over = [k for k, t0 in enumerate(starts) if min(b, t0 + float(shots[k]["sec"])) - max(a, t0) > EDGE]
+        return bool(over) and all((v := lit_of(k)) is not None and v < LIT for k in over)
+
+    for res in gate.values():
+        for c in res.get("checks", []):
+            if c.get("id") != "black" or c.get("level") != "bad":
+                continue
+            spans = [(float(a), float(b)) for a, b in re.findall(r"at ([\d.]+)-([\d.]+) s", c.get("found", ""))]
+            if spans and all(natural(a, b) for a, b in spans):
+                c["level"] = "warn"
+                c["found"] += " (its source is that dark too: a night picture, not a fault)"
+                c["fix"] = "Nothing to fix, unless you want a brighter shot there."
+        res["ok"] = not any(c.get("level") == "bad" for c in res.get("checks", []))
+    return gate
+
+
+def _qa(masters: dict[str, Path], audio: dict | None, shots: list[dict] | None = None) -> dict:
     """The quality gate (studio.verify.qa) on every aspect's master. It only flags: a "bad" check never stops or
     removes a render, and a failure of the gate itself is recorded, not raised."""
     from studio.verify import qa_all
 
     gate = qa_all(masters, music=bool((audio or {}).get("music")))
+    if shots:
+        gate = dark_by_nature(gate, shots)
     for aspect, res in gate.items():
         flagged = [f"{c['id']} {c['level']}: {c['found']}" for c in res["checks"] if c["level"] != "ok"]
         print(f"QA {aspect} {'ok' if res['ok'] else 'BAD'}" + (" | " + " | ".join(flagged) if flagged else ""), flush=True)
@@ -851,7 +915,7 @@ def remix(slug: str) -> dict:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["audio"] = {"bed": manifest.get("audio", {}).get("bed"), "wave": str(_wave(masters["9x16"], out)), **audio}
     manifest["stats"]["lufs"] = _lufs(masters["9x16"])
-    manifest["qa"] = _qa(masters, audio)
+    manifest["qa"] = _qa(masters, audio, [{"src": x["path"], "start": x.get("in") or 0, "sec": x["sec"]} for x in manifest.get("shots", []) if x.get("path")])
     manifest["channels"] = _channel_info(slug)
     manifest["outputs"] = {k: str(v) for k, v in masters.items()}
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")

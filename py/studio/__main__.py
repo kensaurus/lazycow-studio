@@ -52,6 +52,11 @@ def main() -> None:
     tag.add_argument("--like", default=None)
 
     sub.add_parser("luts")
+    lut = sub.add_parser("lut", help="colour presets (3D LUTs made here): list, or preview a picture through every one")
+    lut.add_argument("action", choices=["list", "preview"])
+    lut.add_argument("src", nargs="?", help="preview: a photo or video")
+    lut.add_argument("--out", help="preview: the contact sheet (default: <src name>-luts.jpg in data/luts)")
+    lut.add_argument("--strength", type=float, default=1.0, help="preview: 0..1")
 
     sub.add_parser("review-list")
     ok = sub.add_parser("approve")
@@ -201,6 +206,17 @@ def main() -> None:
         print(json.dumps(tag_shots(limit=args.limit, like=args.like)))
     elif args.cmd == "luts":
         print(json.dumps([str(p) for p in write_luts(ROOT / "luts")]))
+    elif args.cmd == "lut":
+        from studio import lut as luts
+
+        if args.action == "list":
+            print(json.dumps(luts.presets(), ensure_ascii=False, indent=1))
+        else:
+            if not args.src:
+                parser.error("lut preview needs a photo or video")
+            src = Path(args.src)
+            out = Path(args.out) if args.out else luts.CACHE / f"{src.stem}-luts.jpg"
+            print(json.dumps({"sheet": str(luts.preview(src, out, strength=args.strength))}))
     elif args.cmd == "review-list":
         print(json.dumps(list_drafts(), ensure_ascii=False))
     elif args.cmd == "approve":
@@ -216,6 +232,11 @@ def main() -> None:
         print(f"noted for {args.slug}; change the reel in the editor (or its project file) and build it again")
     elif args.cmd == "reels":
         from studio import reels as story_reels
+
+        if args.build or args.remix:  # a render: below the studio's own pages (studio.priority)
+            from studio.priority import background_priority
+
+            background_priority()
 
         if args.package:
             only = args.channels.split(",") if args.channels else None

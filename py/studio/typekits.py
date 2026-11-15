@@ -33,6 +33,12 @@ def grade_filter(grade: str | None) -> str:
     return next((g["filter"] for g in table()["grades"] if g["id"] == grade), "")
 
 
+def grade_lut(grade: str | None) -> tuple[str, float] | None:
+    """The colour preset (studio.lut) a grade is made of, with its strength; None for a filter grade or the house look."""
+    g = next((g for g in table()["grades"] if g["id"] == grade), None)
+    return (g["lut"], float(g.get("strength", 1.0))) if g and g.get("lut") else None
+
+
 def recent(n: int = RECENT) -> list[dict]:
     """The style fields of the n newest reels (by file time), newest first."""
     from studio.projects import DIR

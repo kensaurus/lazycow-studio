@@ -159,8 +159,10 @@ def live_posts(now: datetime | None = None) -> list[dict]:
     """Posts that are out: posted, or scheduled with their time passed. Each gets `age_h` and `out_at`."""
     now = now or _now()
     out = []
-    for p in _posts():
-        if p["network"] == "all" or p["status"] not in LIVE:
+    posts = _posts()
+    gone = retired(posts)  # a replaced or deleted upload is neither read again nor learned from
+    for p in posts:
+        if p["network"] == "all" or p["status"] not in LIVE or int(p["id"]) in gone:
             continue
         t = _when(p.get("at"))
         if not t or t > now:
@@ -1015,6 +1017,300 @@ def status() -> dict:
             "csvFields": list(ALIASES)}
 
 
+# ---------- reach: is it working? ----------
+
+REACH_DAYS = 60
+FEW, SOME = 20, 200  # views a post: under 20 is very few for a short video, 200 and up is being seen (a rough guide)
+
+
+def reach(days: int = REACH_DAYS, now: datetime | None = None) -> dict:
+    """Per network, over the posts that went out in the last `days`: how many are out and measured, views and reactions
+    (the latest reading of each post), how many got nothing, the best post, and a plain verdict:
+    working / some / few / none (nobody seen or reacted) / unmeasured. The owner, 14 Nov: "i still dont understand if the
+    posted reels did a good job or bad job" (the Results page said "0 views, 1.0x a typical post")."""
+    from studio import posting
+
+    now = now or _now()
+    latest: dict[int, dict] = {}
+    for r in readings():
+        latest[int(r["post_id"])] = r
+    nets: dict[str, dict] = {}
+    posts = posting.posts()
+    gone = retired(posts)
+    for p in posts:
+        at = _when(p.get("at"))
+        if p.get("status") != "posted" or not at or at > now or (now - at).days > days or int(p["id"]) in gone:
+            continue
+        n = nets.setdefault(p["network"], {"network": p["network"], "out": 0, "measured": 0, "views": 0, "hasViews": False,
+                                            "likes": 0, "comments": 0, "shares": 0, "saves": 0, "zero": 0, "best": None})
+        n["out"] += 1
+        r = latest.get(int(p["id"]))
+        if not r:
+            continue
+        n["measured"] += 1
+        v = r.get("views")
+        if v is not None:
+            n["hasViews"] = True
+        eng = sum(int(r.get(k) or 0) for k in ("likes", "comments", "shares", "saves"))
+        for k in ("likes", "comments", "shares", "saves"):
+            n[k] += int(r.get(k) or 0)
+        n["views"] += int(v or 0)
+        if not v and not eng:
+            n["zero"] += 1
+        score = int(v or 0) + eng
+        if score and (not n["best"] or score > n["best"]["score"]):
+            n["best"] = {"slug": p["slug"], "url": p.get("url") or "", "views": v, "reactions": eng, "score": score}
+    for n in nets.values():
+        n["reactions"] = n["likes"] + n["comments"] + n["shares"] + n["saves"]
+        m = n["measured"]
+        if not m:
+            n["verdict"] = "unmeasured"
+        elif n["hasViews"]:
+            avg = n["views"] / m
+            n["avgViews"] = round(avg, 1)
+            n["verdict"] = "none" if not n["views"] and not n["reactions"] else "few" if avg < FEW else "some" if avg < SOME else "working"
+            if n["views"]:
+                n["reactedPct"] = round(100 * n["reactions"] / n["views"], 1)
+        else:  # a network that gives no view count (Bluesky): reactions only
+            n["verdict"] = "none" if not n["reactions"] else "few" if n["reactions"] / m < 3 else "some"
+    order = {"working": 0, "some": 1, "few": 2, "none": 3, "unmeasured": 4}
+    rows = sorted(nets.values(), key=lambda x: (order[x["verdict"]], -x["views"], -x["reactions"]))
+    return {"days": days, "networks": rows, "fewViews": FEW, "someViews": SOME,
+            "totals": {"out": sum(x["out"] for x in rows), "measured": sum(x["measured"] for x in rows),
+                       "views": sum(x["views"] for x in rows), "reactions": sum(x["reactions"] for x in rows)}}
+
+
+def _channel_index() -> dict | None:
+    """From the last channel read (Results › YouTube channel, no new request): every listed video's title, how far back
+    the list reaches, and when it was read. None when there is no read, or a channel in it could not be read."""
+    from studio.config import DATA
+
+    try:
+        got = json.loads((DATA / "perf" / "channel.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    chans = got.get("channels") or []
+    if not chans or any(c.get("error") for c in chans):
+        return None
+    titles, since = {}, None
+    for c in chans:
+        items = c.get("items") or []
+        for v in items:
+            titles[v["id"]] = v.get("title") or ""
+        if len(items) >= CHANNEL_MAX:  # the list stops at the newest CHANNEL_MAX: older posts cannot be judged
+            oldest = min((_when(v.get("at")) for v in items if _when(v.get("at"))), default=None)
+            since = max(since, oldest) if since and oldest else (oldest or since)
+    return {"titles": titles, "since": since, "read": _when(got.get("at"))}
+
+
+def _upload_title(slug: str, vid: str) -> str | None:
+    """The title the studio gave a long video when it uploaded it: the channel list is read at most every few hours,
+    and a part uploaded since showed as "vlog-4" (15 Nov)."""
+    from studio.config import DATA
+
+    try:
+        up = json.loads((DATA / "renders" / "vlogs" / slug / "uploaded.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return up.get("title") if up.get("id") == vid else None
+
+
+def retired(posts: list[dict], index: dict | None = None) -> dict[int, str]:
+    """Posts that no longer count, by id: "replaced" (a newer upload of the same reel or video on the same network: the
+    trip series was built again and uploaded anew) and "removed" (a YouTube video the channel no longer lists: the old
+    episodes were deleted, 12-15 Nov). Results counted both: one series showed every episode three times."""
+    out: dict[int, str] = {}
+    newest: dict[tuple, dict] = {}
+    live = [p for p in posts if p.get("status") == "posted" and _when(p.get("at"))]
+    for p in live:
+        k = (p["slug"], p["network"])
+        if k not in newest or _when(p["at"]) > _when(newest[k]["at"]):
+            newest[k] = p
+    for p in live:
+        if newest[(p["slug"], p["network"])] is not p:
+            out[int(p["id"])] = "replaced"
+    idx = index if index is not None else _channel_index()
+    if idx and idx.get("read"):
+        for p in live:
+            vid = youtube_id(p) if p.get("network") == "youtube" else None
+            at = _when(p["at"])
+            # only a video that was already up when the channel was read, inside the stretch the list covers
+            if vid and int(p["id"]) not in out and vid not in idx["titles"] and at < idx["read"] - timedelta(minutes=30) and (not idx["since"] or at >= idx["since"]):
+                out[int(p["id"])] = "removed"
+    return out
+
+
+def table(days: int = 90, now: datetime | None = None) -> dict:
+    """Every post that went out in the last `days`, newest first, with its latest numbers: Results › Every post.
+    One row per post (a reel on five networks is five rows); `best` marks the top post of each network by views,
+    else by reactions. Owner, 14 Nov: "make sure all the above performance should be able to see on the console"."""
+    from studio import posting
+
+    now = now or _now()
+    latest: dict[int, dict] = {}
+    for r in readings():
+        latest[int(r["post_id"])] = r
+    rows = []
+    posts = posting.posts()
+    idx = _channel_index()
+    gone = retired(posts, idx or {})
+    for p in posts:
+        at = _when(p.get("at"))
+        if p.get("status") != "posted" or not at or at > now or (now - at).days > days:
+            continue
+        r = latest.get(int(p["id"])) or {}
+        vid = youtube_id(p) if p.get("network") == "youtube" else None
+        extra = r.get("extra") or {}
+        nums = {k: r.get(k) for k in ("views", "likes", "comments", "shares", "saves", "watch_time_s", "avg_view_pct", "avg_view_s", "reach")}
+        reactions = sum(int(r.get(k) or 0) for k in ("likes", "comments", "shares", "saves")) if r else None
+        rows.append({"id": int(p["id"]), "slug": p["slug"], "network": p["network"], "at": p.get("at"), "url": p.get("url") or "",
+                     **nums, "engaged": extra.get("engaged_views"), "reactions": reactions, "read": r.get("fetched_at"),
+                     "source": r.get("source"), "measured": bool(r), "video": vid,
+                     "title": ((idx or {}).get("titles", {}).get(vid) or _upload_title(p["slug"], vid)) if vid else None,
+                     **({"retired": gone[int(p["id"])]} if int(p["id"]) in gone else {})})
+    for net in {x["network"] for x in rows}:
+        mine = [x for x in rows if x["network"] == net and x["measured"] and not x.get("retired")]
+        top = max(mine, key=lambda x: (x["views"] or 0, x["reactions"] or 0), default=None)
+        if top and ((top["views"] or 0) or (top["reactions"] or 0)):
+            top["best"] = True
+    rows.sort(key=lambda x: x["at"] or "", reverse=True)
+    return {"days": days, "rows": rows, "networks": sorted({x["network"] for x in rows})}
+
+
+CHANNEL_CACHE_S = 3 * 3600   # the channel table is read at most every 3 hours ({fresh: true} asks again)
+CHANNEL_MAX = 200            # newest uploads listed per channel (4 quota units for the list, 4 for the numbers)
+SHORT_MAX_S = 180            # YouTube counts videos up to 3 minutes as Shorts
+
+
+def _iso_seconds(d: str) -> int | None:
+    m = re.fullmatch(r"P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", d or "")
+    if not m or not any(m.groups()):
+        return 0 if d in ("P0D", "PT0S") else None
+    dd, h, mi, s = (int(x or 0) for x in m.groups())
+    return dd * 86400 + h * 3600 + mi * 60 + s
+
+
+def channel(req: dict | None = None) -> dict:
+    """Every connected YouTube channel: its totals and its newest uploads (Shorts, long videos, live) with views,
+    likes and comments, and watch time and % watched from YouTube Analytics where the sign-in allows it. Videos the
+    studio posted carry their reel's name. Cached CHANNEL_CACHE_S; {fresh: true} reads again."""
+    from studio import youtube as y
+    from studio.config import DATA
+
+    req = req or {}
+    cache = DATA / "perf" / "channel.json"
+    if not req.get("fresh"):
+        try:
+            got = json.loads(cache.read_text(encoding="utf-8"))
+            if time.time() - float(got.get("_at", 0)) < CHANNEL_CACHE_S:
+                return got
+        except (OSError, ValueError):
+            pass
+    reels: dict[str, str] = {}
+    try:
+        from studio import posting
+
+        for p in posting.posts():
+            vid = youtube_id(p) if p.get("network") == "youtube" else None
+            if vid:
+                reels[vid] = p["slug"]
+    except Exception:  # noqa: BLE001 - no posting log: titles only
+        pass
+    out, keep = [], y.ACCOUNT
+    collector = YouTube()
+    try:
+        for a in y.accounts():
+            if a.get("error"):
+                continue
+            y.use(a["id"])
+            try:
+                status, j = collector._get(f"{YT_API}/channels?part=snippet,statistics,contentDetails&mine=true")
+            except PerfError as err:
+                out.append({"account": a["id"], "error": str(err)})
+                continue
+            if status != 200 or not j.get("items"):
+                out.append({"account": a["id"], "error": YouTube._error(status, j)})
+                continue
+            ch = j["items"][0]
+            st = ch.get("statistics") or {}
+            uploads = ch["contentDetails"]["relatedPlaylists"]["uploads"]
+            ids, tok = [], None
+            while len(ids) < CHANNEL_MAX:
+                q = {"part": "contentDetails", "playlistId": uploads, "maxResults": 50, **({"pageToken": tok} if tok else {})}
+                status, pj = collector._get(f"{YT_API}/playlistItems?" + urllib.parse.urlencode(q))
+                if status != 200:
+                    break
+                ids += [i["contentDetails"]["videoId"] for i in pj.get("items", [])]
+                tok = pj.get("nextPageToken")
+                if not tok:
+                    break
+            vids = []
+            for k in range(0, len(ids), 50):
+                status, vj = collector._get(f"{YT_API}/videos?" + urllib.parse.urlencode(
+                    {"part": "snippet,statistics,status,contentDetails,liveStreamingDetails", "id": ",".join(ids[k:k + 50])}))
+                if status != 200:
+                    continue
+                for v in vj.get("items", []):
+                    s, sn = v.get("statistics") or {}, v.get("snippet") or {}
+                    sec = _iso_seconds((v.get("contentDetails") or {}).get("duration") or "")
+                    live = sn.get("liveBroadcastContent") in ("live", "upcoming") or bool(v.get("liveStreamingDetails"))
+                    # just uploaded: YouTube says P0D until it has processed the file (15 Nov: a 12-minute episode listed as a Short)
+                    processing = not live and (not sec or (v.get("status") or {}).get("uploadStatus") not in (None, "processed"))
+                    kind = "live" if live else "processing" if processing else "short" if sec <= SHORT_MAX_S else "long"
+                    vids.append({"id": v["id"], "title": sn.get("title") or "", "at": sn.get("publishedAt") or "", "seconds": sec,
+                                 "kind": kind, "privacy": (v.get("status") or {}).get("privacyStatus"), "booked": (v.get("status") or {}).get("publishAt"),
+                                 "views": _int(s.get("viewCount")) or 0, "likes": _int(s.get("likeCount")), "comments": _int(s.get("commentCount")),
+                                 "slug": reels.get(v["id"]),
+                                 "url": f"https://www.youtube.com/{'shorts/' if kind == 'short' else 'watch?v='}{v['id']}"})
+            note = _channel_analytics(collector, vids, ch["snippet"].get("publishedAt")) if collector.analytics() and vids else None
+            by_kind = {}
+            for kname in ("short", "long", "live"):
+                mine = [v for v in vids if v["kind"] == kname and v["privacy"] == "public"]
+                if mine:
+                    by_kind[kname] = {"videos": len(mine), "views": sum(v["views"] for v in mine), "likes": sum(v["likes"] or 0 for v in mine),
+                                      "comments": sum(v["comments"] or 0 for v in mine), "median": sorted(v["views"] for v in mine)[len(mine) // 2]}
+            out.append({"account": a["id"], "channel": ch["snippet"].get("title"), "handle": ch["snippet"].get("customUrl"),
+                        "subscribers": _int(st.get("subscriberCount")), "views": _int(st.get("viewCount")), "videos": _int(st.get("videoCount")),
+                        "listed": len(vids), "byKind": by_kind, "items": vids, "analytics": collector.analytics(), "note": note})
+    finally:
+        y.use(keep)
+    got = {"channels": out, "at": _now().isoformat(timespec="seconds"), "_at": time.time()}
+    if out:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps(got, ensure_ascii=False), encoding="utf-8")
+    return got
+
+
+def _channel_analytics(collector: "YouTube", vids: list[dict], since: str | None) -> str | None:
+    """Watch time, average % watched and engaged views per video, in one Analytics report (the top 200 by views)."""
+    start = (since or "2005-04-23")[:10]
+    end = _now().astimezone(JST).date().isoformat()
+    metrics = ["views", "engagedViews", "estimatedMinutesWatched", "averageViewDuration", "averageViewPercentage", "shares", "subscribersGained"]
+    j: dict = {}
+    for attempt in (metrics, [m for m in metrics if m != "engagedViews"]):
+        q = {"ids": "channel==MINE", "startDate": start, "endDate": end, "metrics": ",".join(attempt), "dimensions": "video",
+             "sort": "-views", "maxResults": 200}
+        status, j = collector._get(f"{YT_ANALYTICS}?{urllib.parse.urlencode(q)}")
+        if status == 200:
+            break
+        if status == 400 and "engagedViews" in attempt:
+            continue
+        if status == 403:
+            return "YouTube Analytics refused: enable the YouTube Analytics API for the studio's Google app, then Connect YouTube again."
+        return "YouTube Analytics did not answer: watch time is left out."
+    names = [h.get("name") for h in j.get("columnHeaders", [])]
+    by = {row[0]: dict(zip(names, row)) for row in (j.get("rows") or [])}
+    for v in vids:
+        r = by.get(v["id"])
+        if not r:
+            continue
+        minutes = _float(r.get("estimatedMinutesWatched"))
+        v.update({"watchMin": round(minutes) if minutes is not None else None, "avgPct": _float(r.get("averageViewPercentage")),
+                  "avgS": _float(r.get("averageViewDuration")), "engaged": _int(r.get("engagedViews")), "shares": _int(r.get("shares")),
+                  "subs": _int(r.get("subscribersGained"))})
+    return None
+
+
 # ---------- CLI ----------
 
 def run(action: str, req: dict) -> object:
@@ -1036,6 +1332,12 @@ def run(action: str, req: dict) -> object:
         return import_csv(req)
     if action == "status":
         return status()
+    if action == "table":
+        return table(int(req.get("days") or 90))
+    if action == "channel":
+        return channel(req)
+    if action == "reach":
+        return reach()
     if action in ("predictions", "scores"):
         from studio import predict
         from studio.service import _overview

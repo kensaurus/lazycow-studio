@@ -29,7 +29,10 @@ RADIUS_KM = SPEC["ranch"]["radiusKm"]
 # The one list of formats. Ingest takes camera files; graphics (.png, .webp) are only used
 # when a user adds them by hand, so they are not swept up from Drive.
 RAW = {".dng", ".arw", ".cr2", ".cr3", ".nef", ".raf", ".orf", ".rw2"}
-VIDEO = {".mp4", ".mov", ".m4v", ".insv"}
+# Video: phones and action cams (.mp4 .mov .m4v), 360 (.insv Insta360, .360 GoPro Max), camcorders (.mts .m2ts
+# AVCHD, .mxf pro), other containers (.mkv .webm .avi .3gp .mpg .mpeg). The renderer reads them all through
+# studio.formats; camera proxies (.lrv .lrf) are left out on purpose.
+VIDEO = {".mp4", ".mov", ".m4v", ".insv", ".360", ".mts", ".m2ts", ".mxf", ".mkv", ".webm", ".avi", ".3gp", ".mpg", ".mpeg"}
 PHOTO = {".jpg", ".jpeg", ".heic", ".heif", ".avif", ".tif", ".tiff", ".insp"} | RAW
 STILL = PHOTO | {".png", ".webp"}
 SRT_ROW = re.compile(

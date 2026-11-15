@@ -3213,6 +3213,86 @@ paths:
                   method: { type: string }
         default: { $ref: "#/components/responses/CodedError" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/perf/reach:
+    get:
+      tags: [Results]
+      operationId: perfReach
+      summary: Is it working - per network over the last 60 days, posts out and measured, views, reactions, posts that got nothing, the best post and a plain verdict (working, some, few, none, unmeasured).
+      responses:
+        "200": { description: "{days, networks: [{network, out, measured, views, reactions, likes, comments, shares, saves, zero, avgViews, reactedPct, best, verdict}], totals}" }
+  /api/perf/table:
+    get:
+      tags: [Results]
+      operationId: perfTable
+      summary: Every post that went out in the last days (default 90), newest first, with its latest numbers; the best post of each network is marked.
+      parameters:
+        - { name: days, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 365, default: 90 } }
+      responses:
+        "200": { description: "{days, networks, rows: [{id, slug, network, at, url, views, likes, comments, shares, saves, watch_time_s, avg_view_pct, avg_view_s, reach, engaged, reactions, read, source, measured, best}]}" }
+  /api/perf/channel:
+    get:
+      tags: [Results]
+      operationId: perfChannel
+      summary: Every connected YouTube channel - totals, Shorts / long videos / live summed, and the newest 200 uploads with views, engaged views, likes, comments, watch minutes and % watched (YouTube Analytics). Cached 3 hours.
+      parameters:
+        - { name: fresh, in: query, required: false, description: "1 reads YouTube again (about 10 quota units).", schema: { type: string, enum: ["1"] } }
+      responses:
+        "200": { description: "{at, channels: [{account, channel, handle, subscribers, views, videos, listed, byKind, analytics, note, items: [{id, title, at, seconds, kind, privacy, booked, views, likes, comments, engaged, watchMin, avgPct, slug, url}]}]}" }
+  /api/comments:
+    get:
+      tags: [Results]
+      operationId: listComments
+      summary: Comments on the project's YouTube videos, Bluesky posts and Facebook Page posts, each with its kind (question, praise, spam, reaction, other), topics, state (open, answered, skipped, quiet) and a reply drafted only from the owner's saved answers.
+      responses:
+        "200": { description: "{items, counts: {open, answered, skipped, quiet, questions}, networks, checked, settings: {auto, cap, sentToday, wait}, answers: {topics, link}, topics, unsupported}" }
+  /api/comments/check:
+    post:
+      tags: [Results]
+      operationId: checkComments
+      summary: Read every network's new comments now; when the owner turned on answers by themselves, plain questions get the owner's saved answers (at most the daily cap). The studio also does this every hour.
+      responses:
+        "200": { description: "The comments view, plus new (count) and autoSent ([{id, network, text}])." }
+  /api/comments/reply:
+    post:
+      tags: [Results]
+      operationId: replyComment
+      summary: Send one reply to one comment on its network (YouTube comments.insert, a Bluesky reply post, a Facebook comment reply). Once per comment.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [id, text], properties: { id: { type: string }, text: { type: string, maxLength: 1000 } } } } }
+      responses:
+        "200": { description: "{ok, item}" }
+        "409": { description: Already answered, or the network needs one more permission (Accounts). }
+  /api/comments/skip:
+    post:
+      tags: [Results]
+      operationId: skipComment
+      summary: Leave a comment unanswered (on, default) or put it back on the list (on false).
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [id], properties: { id: { type: string }, "on": { type: boolean } } } } }
+      responses:
+        "200": { description: "{ok, item}" }
+  /api/comments/answers:
+    post:
+      tags: [Results]
+      operationId: saveCommentAnswers
+      summary: Save the owner's answers per topic (price, booking, access, work, car, facilities, pets, groups, night, season) in Japanese and English, and the booking link. Numbers are checked against the approved facts; only saved answers go out by themselves.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, properties: { topics: { type: object, additionalProperties: { type: object, properties: { ja: { type: string }, en: { type: string } } } }, link: { type: string } } } } }
+      responses:
+        "200": { description: "{topics, link}" }
+  /api/comments/settings:
+    post:
+      tags: [Results]
+      operationId: commentSettings
+      summary: Turn answers by themselves on or off (auto) and set how many may go out in a day (cap, 1-30).
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, properties: { auto: { type: boolean }, cap: { type: integer, minimum: 1, maximum: 30 } } } } }
+      responses:
+        "200": { description: The comments view. }
   /api/perf/scores:
     get:
       tags: [Results]
@@ -3459,6 +3539,20 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
 
   # ---------------------------------------------------------------- Projects
+  /api/summary:
+    get:
+      tags: [Projects]
+      operationId: getSummary
+      summary: This studio's project in a few numbers - what is rendering and how far, reels to review, the next post, long-video parts, problems.
+      responses:
+        "200": { description: "{id, name, color, url, queue: {running: {slug, pct, label, eta}, queued, left}, reels: {total, review, approved, rejected}, posts: {booked, next, postedWeek}, vlogs: {parts, built, uploaded, building}, problems: {red, amber, top}}" }
+  /api/projects/summary:
+    get:
+      tags: [Projects]
+      operationId: getProjectsSummary
+      summary: Every project at once - the summary of each studio running on this computer, and the projects no studio has open (open false).
+      responses:
+        "200": { description: "{at, here, list: [summary or {id, name, color, open: false}]}" }
   /api/workspaces:
     get:
       tags: [Projects]
@@ -3502,7 +3596,7 @@ paths:
     post:
       tags: [Projects]
       operationId: editProject
-      summary: Rename a project or change its colour.
+      summary: Rename a project, change its colour, or say everyone in its footage agreed to be filmed.
       parameters: [{ $ref: "#/components/parameters/Origin" }]
       requestBody:
         required: true
@@ -3515,6 +3609,9 @@ paths:
                 id: { type: string }
                 name: { type: string, maxLength: 40 }
                 color: { type: string }
+                consentAll:
+                  type: boolean
+                  description: Everyone in this project's footage agreed to be filmed. The studio stops asking on each reel; approving still records consent per reel.
       responses:
         "200": { $ref: "#/components/responses/Workspaces" }
         "403": { $ref: "#/components/responses/Forbidden" }

@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from studio import quality, vlog
+from studio import quality, sphere, vlog
 
 RATE = 16000
 
@@ -91,7 +91,7 @@ def test_music_covers_the_whole_film_from_paid_pieces_and_free_tracks(monkeypatc
     monkeypatch.setattr(vlog, "_free_music", lambda need: [{"file": str(free), "title": "Folk", "creator": "A", "license": "CC0",
                                                              "attribution": "\"Folk\" by A is marked with CC0 1.0."}])
     ran = {}
-    monkeypatch.setattr(vlog.subprocess, "run", lambda cmd, **k: ran.setdefault("cmd", cmd))
+    monkeypatch.setattr(vlog.subprocess, "run", lambda cmd, **k: ran.__setitem__("cmd", cmd))  # the last call: the bed itself
     bed = vlog.music_beds("vlog-9", 600.0)
     assert bed == folder / "bed.wav"
     pieces = json.loads((folder / "bed.json").read_text(encoding="utf-8"))["pieces"]
@@ -215,6 +215,48 @@ def test_360_moments_join_their_own_day_once_each_and_raw_files_wait_for_a_stitc
     assert vlog.with_360(video, lib) == 2
     added = [s for s in video["chapters"][0]["shots"] if s.get("is360")]
     assert [s["path"] for s in added] == ["C:/f/hot-air.mp4", "C:/f/IMG_9_PureShot.jpg"]
-    assert added[0]["move"] == ["unroll", 1] and added[1]["move"] == ["planet", 1]
+    # The film's first 360 moment opens from a tiny planet; a photo never carries a whip or roll in or out.
+    assert added[0]["move"][:2] == ["unroll", 1] and added[1]["move"][2:] == [None, None]
+    assert added[1]["move"][0] in sphere.MOVES and added[0]["move"][2] in (None, "whip") and added[0]["move"][3] in (None, "whip", "rollx")
     assert video["chapters"][0]["shots"][0]["path"] == "C:/f/a0.jpg", "never the very first shot of a chapter"
     assert not vlog.sphere_ok(lib["C:/f/VID_1.insv"])
+
+
+def test_two_chapters_of_one_day_share_its_360_moments_without_repeats(monkeypatch):
+    """14 Nov: a series part with two Day 2 chapters crashed (list.remove: both chapters had picked the same files)."""
+    monkeypatch.setattr(vlog, "_quality_no", lambda it: None)
+    lib = {p: {"path": p, "kind": "video", "is360": True, "captured": "2025-05-15T05:00:00", "duration": d}
+           for p, d in [("C:/f/a.mp4", 90.0), ("C:/f/b.mp4", 60.0), ("C:/f/c.mp4", 30.0)]}
+    shots = lambda: [{"path": f"C:/f/s{k}.jpg", "kind": "photo", "sec": 3.0} for k in range(6)]  # noqa: E731
+    video = {"chapters": [{"day": "2025-05-15", "shots": shots()}, {"day": "2025-05-15", "shots": shots()}]}
+    added = vlog.with_360(video, lib)
+    paths = [s["path"] for c in video["chapters"] for s in c["shots"] if s.get("is360")]
+    assert added == len(paths) == 3 and len(set(paths)) == 3
+
+
+def test_a_music_piece_s_silent_tail_never_leaves_a_hole_in_the_bed(monkeypatch, tmp_path):
+    """A trip episode (15 Nov): a piece ended 10 s early in silence; the 6 s crossfade left 3.5 s of dead air."""
+    monkeypatch.setattr(vlog, "OUT", tmp_path)
+    from studio import ai
+
+    monkeypatch.setattr(ai, "status", lambda *a, **k: {"ready": False})
+    folder = tmp_path / "vlog-9" / "music"
+    folder.mkdir(parents=True)
+    a, b = folder / "vlog_vlog-9_0_aaaa.wav", folder / "vlog_vlog-9_1_bbbb.wav"
+    for f in (a, b):
+        f.write_bytes(b"x")
+    monkeypatch.setattr(vlog, "_audio_sec", lambda p: 180.0)
+    monkeypatch.setattr(vlog, "_free_music", lambda need: [])
+
+    class Done:
+        def __init__(self, stderr):
+            self.stderr = stderr
+
+    detect = {str(a): "silence_start: 169.2\nsilence_end: 180 | silence_duration: 10.8\n",  # a silent tail
+              str(b): "silence_start: 0\nsilence_end: 1.5 | silence_duration: 1.5\nsilence_start: 175.0\n"}  # head, and a tail to the end
+    ran = []
+    monkeypatch.setattr(vlog.subprocess, "run", lambda cmd, **k: ran.append(cmd) or Done(detect.get(str(cmd[4]), "")))
+    assert vlog._sounding(a) == (0.0, 169.2) and vlog._sounding(b) == (1.5, 175.0)
+    vlog.music_beds("vlog-9", 300.0)
+    graph = ran[-1][ran[-1].index("-filter_complex") + 1]
+    assert "atrim=0.000:169.200" in graph and "atrim=1.500:175.000" in graph

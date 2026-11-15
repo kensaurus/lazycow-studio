@@ -46,8 +46,10 @@ REDIRECT = "http://127.0.0.1:4317/oauth/youtube"  # the default; a Desktop clien
 # yt-analytics.readonly: watch time, % viewed, shares and subscribers per Short for studio.perf (a token from
 # before it was added keeps working; press Connect YouTube again to allow it).
 # openid + email: only to show which Google account is connected (the email in the id_token), nothing else.
+# youtube.force-ssl: reading the comments on the channel's videos and answering them (studio.comments); YouTube
+# allows comment calls only with it. A token from before it was added keeps working for everything else.
 SCOPES = ("openid email https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube"
-          " https://www.googleapis.com/auth/yt-analytics.readonly")
+          " https://www.googleapis.com/auth/yt-analytics.readonly https://www.googleapis.com/auth/youtube.force-ssl")
 
 
 def redirect_uri(port: int | str | None = None) -> str:

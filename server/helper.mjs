@@ -503,6 +503,14 @@ export const SCHEDULERS = ["x", "tiktok", "gbp", "line-oa", "linkedin"];
 export const MAX_DAYS_AHEAD = { x: 365, tiktok: 10, gbp: 180, "line-oa": 180, linkedin: 90 };
 /** A post time must carry its zone, so "19:00" never means the wrong 19:00. */
 export const AT_RX = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::\d{2})?(Z|[+-]\d{2}:\d{2})$/;
+/** A booked time as its audience reads it, from its own offset: "2026-11-22 19:00 JST". The network's own scheduler is
+    typed in this computer's clock, which can differ (this PC runs on Singapore time): messages give both. */
+export function audienceTime(at) {
+  const m = AT_RX.exec(String(at));
+  if (!m) return String(at);
+  const off = m[6] === "Z" ? "+00:00" : m[6];
+  return `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]} ${off === "+09:00" ? "JST" : `UTC${off}`}`;
+}
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const MONTH = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -779,7 +787,7 @@ async function scheduleX(page, { file, text, at, timeZone, rehearse, step }) {
   const proofUrl = "https://x.com/compose/post/unsent/scheduled";
   await page.goto(proofUrl, { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
   const seen = firstLine ? await until(() => shows(page, firstLine.slice(0, 12)), 15000) : false;
-  return { state: "scheduled", message: `X: scheduled for ${want.replace("Will send on ", "")} (this computer's time).`, proof: { url: proofUrl, shown: want, seen } };
+  return { state: "scheduled", message: `X: scheduled for ${want.replace("Will send on ", "")} on this computer's clock (${audienceTime(at)} for your audience).`, proof: { url: proofUrl, shown: want, seen } };
 }
 
 /* ---------- TikTok: https://www.tiktok.com/tiktokstudio/upload (Japanese UI) ---------- */
@@ -886,7 +894,7 @@ async function scheduleTikTok(page, { file, text, at, timeZone, rehearse, step }
   }, 3 * 60e3, 1500);
   step("checking TikTok took it", 7);
   if (!done) return fail("TikTok: 投稿予約する was pressed but TikTok did not move on to its content list, so it may not have been scheduled. Check the helper window before trying again.");
-  return { state: "scheduled", message: `TikTok: scheduled for ${want.date} ${want.time} (this computer's time).`, proof: { url: "https://www.tiktok.com/tiktokstudio/content", shown: `${want.date} ${want.time}`, seen: true } };
+  return { state: "scheduled", message: `TikTok: scheduled for ${want.date} ${want.time} on this computer's clock (${audienceTime(at)} for your audience).`, proof: { url: "https://www.tiktok.com/tiktokstudio/content", shown: `${want.date} ${want.time}`, seen: true } };
 }
 
 /* ---------- Google Maps (Business Profile): business.google.com/posts/l/<location id> ---------- */
@@ -1045,7 +1053,7 @@ async function scheduleLine(page, { home, file, text, at, timeZone, rehearse, st
   if (shownDate !== date || shownTime !== time || !scheduled || !bodyOk || !videoOk) {
     return fail(`LINE shows ${scheduled ? "a scheduled send" : "send now"} ${shownDate} ${shownTime}${bodyOk ? "" : ", a different text"}${videoOk ? "" : ", no video"}, not ${date} ${time}, so nothing was sent. The window stays open.`);
   }
-  if (rehearse) return { state: "rehearsed", message: `LINE: ready to send to all friends at ${date} ${time} (this computer's time). Rehearsal: 配信 was not pressed.`, proof: { shown: `${date} ${time}` } };
+  if (rehearse) return { state: "rehearsed", message: `LINE: ready to send to all friends at ${date} ${time} on this computer's clock (${audienceTime(at)} for your audience). Rehearsal: 配信 was not pressed.`, proof: { shown: `${date} ${time}` } };
   step("pressing 配信", 6);
   // Never send now by mistake: the scheduled-send option must still be on, with the checked time, right before the press.
   const stillScheduled = await page.locator('input[type="radio"]').nth(1).isChecked().catch(() => false)
@@ -1078,7 +1086,7 @@ async function scheduleLine(page, { home, file, text, at, timeZone, rehearse, st
   await sleep(3000);
   const listText = await pageText(page);
   const seen = /予約/.test(listText) && listText.includes(time);
-  return { state: "scheduled", message: `LINE: scheduled to all friends for ${date} ${time} (this computer's time)${seen ? "; the message list shows it" : ""}.`, proof: { url: page.url(), shown: `${date} ${time}`, seen } };
+  return { state: "scheduled", message: `LINE: scheduled to all friends for ${date} ${time} on this computer's clock (${audienceTime(at)} for your audience)${seen ? "; the message list shows it" : ""}.`, proof: { url: page.url(), shown: `${date} ${time}`, seen } };
 }
 /* After a scheduling run the helper closes the page it opened (nothing is left open in your Chrome); a failed or
    rehearsed run first saves a picture of it to STUDIO_HOME/helper-shots/<network>-<state>.png. */
@@ -1194,14 +1202,14 @@ async function scheduleLinkedIn(page, { file, text, at, extra, timeZone, rehears
     // Leave nothing behind: close the box and discard it (a kept draft would block the next run).
     await liDialog(page).getByRole("button", { name: /^(Dismiss|閉じる)$/ }).first().click().catch(() => {});
     await page.getByRole("button", { name: /^(Discard|破棄)$/ }).first().click({ timeout: 5000 }).catch(() => {});
-    return { state: "rehearsed", message: `LinkedIn: ready to schedule on the company page for ${want} (this computer's time). Rehearsal: Schedule was not pressed.`, proof: { shown: want } };
+    return { state: "rehearsed", message: `LinkedIn: ready to schedule on the company page for ${want} on this computer's clock (${audienceTime(at)} for your audience). Rehearsal: Schedule was not pressed.`, proof: { shown: want } };
   }
   step("pressing Schedule", 6);
   await btn.click();
   const gone = await until(async () => !(await liDialog(page).isVisible().catch(() => false)), 90000);
   if (!gone) return fail("LinkedIn: Schedule was pressed but the post box is still open, so it may not have been scheduled. Check the window before trying again.");
   step("checking", 7);
-  return { state: "scheduled", message: `LinkedIn: scheduled on the company page for ${want} (this computer's time).`, proof: { url: page.url(), shown: want } };
+  return { state: "scheduled", message: `LinkedIn: scheduled on the company page for ${want} on this computer's clock (${audienceTime(at)} for your audience).`, proof: { url: page.url(), shown: want } };
 }
 const SCHEDULE_URL = { x: "https://x.com/compose/post", tiktok: "https://www.tiktok.com/tiktokstudio/upload", "line-oa": "https://manager.line.biz/", linkedin: "https://www.linkedin.com/feed/" };
 
@@ -1444,7 +1452,13 @@ export function postObjects(tree, limit = 2000) {
 /** The candidate that is this log entry: the same id; else posted within 20 minutes of its time (the closest,
     and among equals the one whose text starts like ours); else the only one whose text starts like ours. */
 export function matchPost(cands, { at, text, remoteId }) {
-  if (remoteId) { const hit = cands.find((c) => c.id && c.id === String(remoteId)); if (hit) return hit; }
+  // Several objects can carry one post's id (the video, its schedule or review record): the richest wins, never the
+  // first met (TikTok read 0 plays for 5 public videos, 10-14 Nov, as the per-post page already guarded against).
+  if (remoteId) {
+    const rich = (c) => [Object.keys(c.numbers).length, Object.values(c.numbers).reduce((a, v) => a + (Number(v) || 0), 0)];
+    const same = cands.filter((c) => c.id && c.id === String(remoteId)).sort((a, b) => { const [x1, y1] = rich(a), [x2, y2] = rich(b); return x2 - x1 || y2 - y1; });
+    if (same.length) return same[0];
+  }
   const head = String(text || "").split("\n").map((l) => l.trim()).find(Boolean)?.slice(0, 12) || "";
   const t = at ? Date.parse(at) : NaN;
   const texty = (c) => head && String(c.text || "").includes(head);

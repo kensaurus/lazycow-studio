@@ -316,7 +316,7 @@ def discover(path: str) -> dict:
 
 def diff() -> dict:
     """New files on every source since the last ingest (by path), without opening any file."""
-    from studio.ingest import KEEP
+    from studio.ingest import KEEP, lens_extra
 
     known = _catalogued()
     by_source, fresh = [], []
@@ -327,7 +327,7 @@ def diff() -> dict:
         n = files = 0
         for p, kind, _st, output in _walk(Path(s["path"])):
             # Only what the ingest takes: a logo .png would otherwise read as "new" forever.
-            if output or kind is None or p.suffix.lower() not in KEEP:
+            if output or kind is None or p.suffix.lower() not in KEEP or lens_extra(p):
                 continue
             files += 1
             if os.path.normcase(str(p)) not in known:

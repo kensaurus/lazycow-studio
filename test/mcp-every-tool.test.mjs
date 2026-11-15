@@ -3,7 +3,7 @@
  * PURPOSE: Every MCP tool works end to end, and every studio route the MCP server calls is a real, documented route.
  * OVERVIEW: (1) A static contract: each "/api/..." path in server/mcp.mjs is a path in docs/openapi.yaml (which
  *           test/openapi-routes.test.mjs ties to server/review.mjs). (2) A fake studio answers every route the tools use;
- *           each of the 27 tools is called once with valid arguments, through the packaged copy too (npx lazycow mcp),
+ *           each of the 30 tools is called once with valid arguments, through the packaged copy too (npx lazycow mcp),
  *           and must answer without an error, with text, and through the routes it is documented to use.
  * USAGE: npm test
  */
@@ -71,6 +71,10 @@ function fakeStudio() {
     "GET /api/ai/review": () => ({ slug: "fire-1107", review: { hook: { score: 7 }, summary: "Good.", fixes: [] } }),
     "POST /api/ai/review": () => ({ slug: "fire-1107", hook: { score: 7 }, summary: "Good.", fixes: [], usd: 0.01 }),
     "GET /api/perf/summary": () => ({ ready: false, measured: 3, needed: 15, sentences: ["Early hints only."] }),
+    "GET /api/perf/table": () => ({ days: 30, networks: ["youtube"], rows: [{ slug: "fire-1107", network: "youtube", at: "2026-11-10T19:00+09:00", views: 10, likes: 1, comments: 0, measured: true, best: true }] }),
+    "GET /api/perf/channel": () => ({ channels: [{ channel: "Test", subscribers: 1, views: 10, byKind: { short: { videos: 1, views: 10, median: 10 } }, items: [] }] }),
+    "GET /api/comments": () => ({ counts: { open: 1, questions: 1 }, networks: { youtube: { ok: true, count: 1 } }, items: [{ id: "youtube:1", network: "youtube", author: "A", text: "Is there Wi-Fi?", kind: "question", topics: ["work"], state: "open", draft: { text: "Fibre, 100 Mbps." } }] }),
+    "POST /api/comments/check": () => ({ counts: { open: 1, questions: 1 }, networks: { youtube: { ok: true, count: 1 } }, items: [{ id: "youtube:1", network: "youtube", author: "A", text: "Is there Wi-Fi?", kind: "question", topics: ["work"], state: "open", draft: { text: "Fibre, 100 Mbps." } }] }),
     "GET /api/perf/suggest": () => ({ ready: false, measured: 3, needed: 15, note: "Exploring.", suggestions: [{ mode: "explore", look: "punch", recipe: "r", style: "s", length: "short", hour: 19 }] }),
   };
   const server = createServer((req, res) => {
@@ -138,6 +142,9 @@ const CASES = {
   research_events: [{ days: 30 }, "POST /api/research/events"],
   research_links: [{}, "POST /api/research/links"],
   ai_estimate: [{ slug: "fire-1107", tools: ["sharpen"] }, "POST /api/ai/estimate"],
+  perf_posts: [{ days: 30 }, "GET /api/perf/table"],
+  youtube_channel: [{}, "GET /api/perf/channel"],
+  list_comments: [{ state: "open" }, "GET /api/comments"],
   ai_review: [{ slug: "fire-1107", last_only: true }, "GET /api/ai/review"],
   ai_run: [{ slug: "fire-1107", tools: ["sharpen"], into: "fire-1107-ai" }, "POST /api/ai/run"],
   perf_summary: [{ network: "tiktok" }, "GET /api/perf/summary"],

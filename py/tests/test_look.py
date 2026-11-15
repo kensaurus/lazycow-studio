@@ -219,3 +219,4 @@ def test_shot_looks_never_fails_on_vidstab(monkeypatch):
     monkeypatch.setattr(shot, "stab_transforms", boom)
     (_, trf, _, stab), = reels.shot_looks({"slug": "t"}, _plans(1))
     assert trf is None and not stab["on"] and "vidstab failed" in stab["reason"]
+
