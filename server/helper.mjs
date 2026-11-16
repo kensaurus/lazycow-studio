@@ -1649,6 +1649,13 @@ async function readGbp(page, items) {
   return out;
 }
 
+/** A TikTok reading's own video address. TikTok is read off TikTok Studio's content list, so the posting log kept the
+    list's address and Results had no link to open (16 Nov). The reading carries the video's id, and
+    tiktok.com/@/video/<id> opens it under the right account (checked 16 Nov). Pure, for tests. */
+export function tiktokVideoUrl(r) {
+  return r?.network === "tiktok" && /^\d{15,25}$/.test(String(r.remote_id || "")) ? `https://www.tiktok.com/@/video/${r.remote_id}` : null;
+}
+
 const PERF_LIST = {
   tiktok: () => "https://www.tiktok.com/tiktokstudio/content",
   linkedin: (it) => (/linkedin\.com\/company\/\d+\/admin/.test(it.url || "") ? it.url : null),

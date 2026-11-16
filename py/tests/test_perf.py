@@ -70,47 +70,47 @@ def yt_ready(monkeypatch, analytics=True):
 
 def test_youtube_reads_statistics_in_one_batch_and_analytics_only_after_two_days(world, monkeypatch):
     yt_ready(monkeypatch)
-    old = post(1, "youtube", remote_id="jKq4gp5a7S0", hours_ago=80)
-    new = post(2, "youtube", slug="loud-1107", url="https://youtube.com/shorts/WEdE6u1qGn4", hours_ago=10)
+    old = post(1, "youtube", remote_id="Xm3kQ9vT2aL", hours_ago=80)
+    new = post(2, "youtube", slug="loud-1107", url="https://youtube.com/shorts/Rp7wN4yH8cZ", hours_ago=10)
     fake = Fake([
-        ("GET", "/videos?", [(200, {"items": [{"id": "jKq4gp5a7S0", "statistics": {"viewCount": "812", "likeCount": "40", "commentCount": "3", "favoriteCount": "0"}},
-                                              {"id": "WEdE6u1qGn4", "statistics": {"viewCount": "95", "likeCount": "5", "commentCount": "0"}}]})]),
+        ("GET", "/videos?", [(200, {"items": [{"id": "Xm3kQ9vT2aL", "statistics": {"viewCount": "812", "likeCount": "40", "commentCount": "3", "favoriteCount": "0"}},
+                                              {"id": "Rp7wN4yH8cZ", "statistics": {"viewCount": "95", "likeCount": "5", "commentCount": "0"}}]})]),
         ("GET", "youtubeanalytics", [(200, {"columnHeaders": [{"name": n} for n in ("engagedViews", "views", "estimatedMinutesWatched", "averageViewDuration",
                                                                                      "averageViewPercentage", "likes", "comments", "shares", "subscribersGained")],
                                             "rows": [[400, 800, 120.5, 9.1, 61.3, 40, 3, 7, 2]]})]),
     ])
     monkeypatch.setattr(perf, "_http", fake)
     got, notes = perf.COLLECTORS["youtube"].fetch([{**old, "age_h": 80}, {**new, "age_h": 10}])
-    assert len(fake.find("/videos?")) == 1 and "jKq4gp5a7S0%2CWEdE6u1qGn4" in fake.find("/videos?")[0]["url"]
+    assert len(fake.find("/videos?")) == 1 and "Xm3kQ9vT2aL%2CRp7wN4yH8cZ" in fake.find("/videos?")[0]["url"]
     assert len(fake.find("youtubeanalytics")) == 1, "a 10 h old Short does not ask Analytics yet"
-    assert "video%3D%3DjKq4gp5a7S0" in fake.find("youtubeanalytics")[0]["url"]
+    assert "video%3D%3DXm3kQ9vT2aL" in fake.find("youtubeanalytics")[0]["url"]
     a = next(g for g in got if g["post"]["id"] == 1)
     assert a["numbers"] == {"views": 812, "likes": 40, "comments": 3, "watch_time_s": 7230.0, "avg_view_pct": 61.3, "avg_view_s": 9.1, "shares": 7, "followers_gained": 2}
     assert a["extra"] == {"engaged_views": 400, "analytics_views": 800}
     b = next(g for g in got if g["post"]["id"] == 2)
-    assert b["numbers"] == {"views": 95, "likes": 5, "comments": 0} and b["remote_id"] == "WEdE6u1qGn4"
+    assert b["numbers"] == {"views": 95, "likes": 5, "comments": 0} and b["remote_id"] == "Rp7wN4yH8cZ"
     assert not notes
     assert all(c["headers"]["authorization"] == f"Bearer {TOKEN}" for c in fake.calls)
 
 
 def test_youtube_without_the_analytics_scope_says_what_to_press(world, monkeypatch):
     yt_ready(monkeypatch, analytics=False)
-    monkeypatch.setattr(perf, "_http", Fake([("GET", "/videos?", [(200, {"items": [{"id": "jKq4gp5a7S0", "statistics": {"viewCount": "5"}}]})])]))
-    got, notes = perf.COLLECTORS["youtube"].fetch([{**post(1, "youtube", remote_id="jKq4gp5a7S0"), "age_h": 80}])
+    monkeypatch.setattr(perf, "_http", Fake([("GET", "/videos?", [(200, {"items": [{"id": "Xm3kQ9vT2aL", "statistics": {"viewCount": "5"}}]})])]))
+    got, notes = perf.COLLECTORS["youtube"].fetch([{**post(1, "youtube", remote_id="Xm3kQ9vT2aL"), "age_h": 80}])
     assert got[0]["numbers"] == {"views": 5}
     assert any("Connect YouTube again" in n and "Analytics" in n for n in notes)
 
 
 def test_youtube_analytics_retries_without_engaged_views_and_explains_a_disabled_api(world, monkeypatch):
     yt_ready(monkeypatch)
-    stats = ("GET", "/videos?", [(200, {"items": [{"id": "jKq4gp5a7S0", "statistics": {"viewCount": "5"}}]})])
+    stats = ("GET", "/videos?", [(200, {"items": [{"id": "Xm3kQ9vT2aL", "statistics": {"viewCount": "5"}}]})])
     fake = Fake([stats, ("GET", "youtubeanalytics", [(400, {"error": {"message": "Unknown identifier (engagedViews)"}}),
                                                      (200, {"columnHeaders": [{"name": "views"}, {"name": "shares"}], "rows": [[5, 1]]})])])
     monkeypatch.setattr(perf, "_http", fake)
-    got, _ = perf.COLLECTORS["youtube"].fetch([{**post(1, "youtube", remote_id="jKq4gp5a7S0"), "age_h": 80}])
+    got, _ = perf.COLLECTORS["youtube"].fetch([{**post(1, "youtube", remote_id="Xm3kQ9vT2aL"), "age_h": 80}])
     assert "engagedViews" not in fake.find("youtubeanalytics")[1]["url"] and got[0]["numbers"]["shares"] == 1
     monkeypatch.setattr(perf, "_http", Fake([stats, ("GET", "youtubeanalytics", [(403, {"error": {"message": "API not enabled"}})])]))
-    _, notes = perf.COLLECTORS["youtube"].fetch([{**post(1, "youtube", remote_id="jKq4gp5a7S0"), "age_h": 80}])
+    _, notes = perf.COLLECTORS["youtube"].fetch([{**post(1, "youtube", remote_id="Xm3kQ9vT2aL"), "age_h": 80}])
     assert any("enable \"YouTube Analytics API\"" in n for n in notes)
 
 
@@ -152,8 +152,8 @@ def test_bluesky_turns_a_link_into_an_at_uri_and_counts_reposts_and_quotes_as_sh
 
 
 def test_ids_come_from_links_when_remote_id_is_missing():
-    assert perf.youtube_id({"url": "https://youtube.com/shorts/jKq4gp5a7S0"}) == "jKq4gp5a7S0"
-    assert perf.youtube_id({"url": "https://www.youtube.com/watch?v=jKq4gp5a7S0&t=1"}) == "jKq4gp5a7S0"
+    assert perf.youtube_id({"url": "https://youtube.com/shorts/Xm3kQ9vT2aL"}) == "Xm3kQ9vT2aL"
+    assert perf.youtube_id({"url": "https://www.youtube.com/watch?v=Xm3kQ9vT2aL&t=1"}) == "Xm3kQ9vT2aL"
     assert perf.facebook_id({"url": "https://www.facebook.com/reel/1787316039049482"}) == "1787316039049482"
     assert perf.facebook_id({"url": None}) is None
 
@@ -163,7 +163,7 @@ def test_ids_come_from_links_when_remote_id_is_missing():
 def test_collect_reads_due_posts_once_per_checkpoint_and_lists_the_rest(world, monkeypatch):
     world += [post(1, "bluesky", url="https://bsky.app/profile/did:plc:abc/post/r1", hours_ago=30),
               post(2, "tiktok", hours_ago=30, status="scheduled"),
-              post(3, "youtube", remote_id="jKq4gp5a7S0", hours_ago=-5, status="scheduled"),  # goes out later
+              post(3, "youtube", remote_id="Xm3kQ9vT2aL", hours_ago=-5, status="scheduled"),  # goes out later
               post(4, "x", hours_ago=0.5)]                                                    # under an hour
     bsky = ("GET", "getPosts", [(200, {"posts": [{"uri": "at://did:plc:abc/app.bsky.feed.post/r1", "likeCount": 2, "repostCount": 0, "replyCount": 0, "quoteCount": 0}]})])
     fake = Fake([bsky])
@@ -182,7 +182,7 @@ def test_collect_reads_due_posts_once_per_checkpoint_and_lists_the_rest(world, m
 
 def test_collect_keeps_going_when_one_network_fails(world, monkeypatch):
     yt_ready(monkeypatch, analytics=False)
-    world += [post(1, "bluesky", url="https://bsky.app/profile/did:plc:abc/post/r1"), post(2, "youtube", remote_id="jKq4gp5a7S0")]
+    world += [post(1, "bluesky", url="https://bsky.app/profile/did:plc:abc/post/r1"), post(2, "youtube", remote_id="Xm3kQ9vT2aL")]
     monkeypatch.setattr(perf, "_http", Fake([
         ("GET", "/videos?", [(403, {"error": {"message": "quota exceeded", "errors": [{"reason": "quotaExceeded"}]}})]),
         ("GET", "getPosts", [(200, {"posts": [{"uri": "at://did:plc:abc/app.bsky.feed.post/r1", "likeCount": 1}]})])]))
@@ -311,12 +311,31 @@ def test_comparable_uses_the_reading_nearest_72h_and_divides_by_the_network_medi
     rows.append({"post_id": 4, "age_h": 3, "views": 7, "fetched_at": "a", "source": "api", "extra": {}})
     d = learn.comparable(posts=posts, rows=rows)
     assert [u["value"] for u in d["units"]] == [100, 300, 900] and d["tooNew"] == 1
-    assert d["networks"]["youtube"] == {"metric": "views", "median": 300, "posts": 3}
+    assert d["networks"]["youtube"] == {"metric": "views", "median": 300, "posts": 3, "silent": False}
     assert d["byPost"][3]["ratio"] == pytest.approx(901 / 301, rel=1e-3) and "3.0x the median views on YouTube" in d["byPost"][3]["sentence"]
     # Engaged views win once most YouTube readings carry them.
     for r in rows:
         r["extra"] = {"engaged_views": (r["views"] or 0) // 2}
     assert learn.comparable(posts=posts, rows=rows)["networks"]["youtube"]["metric"] == "engaged_views"
+
+
+def test_a_network_that_showed_every_post_to_nobody_is_left_out_of_the_model(world, monkeypatch):
+    """16 Nov: 17 of 26 "measured" posts were TikTok, Facebook and Bluesky zeros. They each scored exactly the median,
+    said nothing about any choice, and still counted towards "ready"."""
+    monkeypatch.setattr("studio.projects.load", lambda slug: {"slug": slug, "theme": "autumn", "look": "punch", "shots": [{"sec": 2}] * 7})
+    posts, rows = [], []
+    for i, (net, views) in enumerate([("youtube", 100), ("youtube", 300), ("youtube", 900),
+                                       ("tiktok", 0), ("tiktok", 0), ("tiktok", 0), ("x", 0), ("x", 5), ("x", 0)], start=1):
+        posts.append({**post(i, net, slug=f"autumn-{i}"), "out_at": "x"})
+        rows.append({"post_id": i, "age_h": 72, "views": views, "fetched_at": "a", "source": "api", "extra": {}})
+    d = learn.comparable(posts=posts, rows=rows)
+    assert d["networks"]["tiktok"]["silent"] is True and d["networks"]["tiktok"]["posts"] == 3
+    assert d["networks"]["x"]["silent"] is False, "one post with views: the network is showing them"
+    assert {u["network"] for u in d["units"]} == {"youtube", "x"} and len(d["units"]) == 6
+    s = learn.summary(data=d)
+    assert s["measured"] == 6 and s["silent"] == ["tiktok"] and "Not counted: TikTok" in s["headline"]
+    assert "Left out: TikTok" in s["method"]
+    assert "not showing them to anyone" in learn.summary("tiktok", data=d)["headline"]
 
 
 def test_features_of_a_reel():
@@ -511,3 +530,26 @@ def test_reach_says_per_network_whether_anyone_saw_the_posts(monkeypatch):
     assert by["bluesky"]["verdict"] == "none"  # no view count there: no reactions is nobody
     assert by["gbp"]["verdict"] == "unmeasured"
     assert [n["network"] for n in r["networks"]][0] == "youtube" and r["totals"]["out"] == 6
+    assert not any(n["stalled"] for n in r["networks"]), "one zero post three days out is too little to call"
+
+
+def test_reach_calls_a_network_stalled_when_several_posts_days_out_all_have_nothing(monkeypatch):
+    """16 Nov: TikTok 15 posts at 0 views and Facebook 6 reels at 0 plays sat in one grey line under a green +1307%."""
+    from datetime import datetime, timedelta, timezone
+
+    from studio import perf, posting
+
+    now = datetime(2026, 11, 16, 12, tzinfo=timezone.utc)
+    day = lambda d: (now - timedelta(days=d)).isoformat()  # noqa: E731
+    posts = [{"id": i, "slug": f"s{i}", "network": net, "status": "posted", "at": day(d)}
+             for i, (net, d) in enumerate([("tiktok", 6), ("tiktok", 4), ("tiktok", 1), ("bluesky", 5), ("bluesky", 3), ("bluesky", 2),
+                                           ("facebook", 1.5), ("facebook", 1), ("facebook", 0.5), ("youtube", 3)], start=1)]
+    reads = [{"post_id": i, "views": 0, "likes": 0} for i in (1, 2, 3, 7, 8, 9)]
+    reads += [{"post_id": i, "views": None, "likes": 0} for i in (4, 5, 6)] + [{"post_id": 10, "views": 500}]
+    monkeypatch.setattr(posting, "posts", lambda: posts)
+    monkeypatch.setattr(perf, "readings", lambda: reads)
+    by = {n["network"]: n for n in perf.reach(now=now)["networks"]}
+    assert by["tiktok"]["stalled"] and by["tiktok"]["oldestH"] == 144 and by["tiktok"]["since"] == day(6)
+    assert by["bluesky"]["stalled"] and not by["bluesky"]["hasViews"], "no reactions on a network without views counts too"
+    assert not by["facebook"]["stalled"], "the oldest is 36 h out: too early to say"
+    assert not by["youtube"]["stalled"]

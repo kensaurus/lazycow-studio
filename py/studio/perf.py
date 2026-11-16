@@ -1021,6 +1021,9 @@ def status() -> dict:
 
 REACH_DAYS = 60
 FEW, SOME = 20, 200  # views a post: under 20 is very few for a short video, 200 and up is being seen (a rough guide)
+# A network is "stalled" (not showing the posts at all) when at least this many measured posts, the oldest at least
+# this many hours out, all have no views and no reactions. A new post can sit at 0 for its first hours; days cannot.
+STALL_POSTS, STALL_H = 3, 48
 
 
 def reach(days: int = REACH_DAYS, now: datetime | None = None) -> dict:
@@ -1042,12 +1045,16 @@ def reach(days: int = REACH_DAYS, now: datetime | None = None) -> dict:
         if p.get("status") != "posted" or not at or at > now or (now - at).days > days or int(p["id"]) in gone:
             continue
         n = nets.setdefault(p["network"], {"network": p["network"], "out": 0, "measured": 0, "views": 0, "hasViews": False,
-                                            "likes": 0, "comments": 0, "shares": 0, "saves": 0, "zero": 0, "best": None})
+                                            "likes": 0, "comments": 0, "shares": 0, "saves": 0, "zero": 0, "best": None,
+                                            "oldestH": 0.0, "since": None})
         n["out"] += 1
         r = latest.get(int(p["id"]))
         if not r:
             continue
         n["measured"] += 1
+        n["oldestH"] = max(n["oldestH"], round((now - at).total_seconds() / 3600, 1))
+        if not n["since"] or at < _when(n["since"]):
+            n["since"] = p["at"]
         v = r.get("views")
         if v is not None:
             n["hasViews"] = True
@@ -1073,6 +1080,10 @@ def reach(days: int = REACH_DAYS, now: datetime | None = None) -> dict:
                 n["reactedPct"] = round(100 * n["reactions"] / n["views"], 1)
         else:  # a network that gives no view count (Bluesky): reactions only
             n["verdict"] = "none" if not n["reactions"] else "few" if n["reactions"] / m < 3 else "some"
+        # Stalled: several posts, days old, and every one still at nothing. That is the network not showing them (an
+        # account limit, a new account with no followers, a setting), not a weak reel, and better reels will not fix it.
+        # 16 Nov: TikTok 15 posts at 0 views, Facebook 6 reels at 0 plays, while YouTube had 130-1,265 views a Short.
+        n["stalled"] = n["verdict"] == "none" and m >= STALL_POSTS and n["oldestH"] >= STALL_H
     order = {"working": 0, "some": 1, "few": 2, "none": 3, "unmeasured": 4}
     rows = sorted(nets.values(), key=lambda x: (order[x["verdict"]], -x["views"], -x["reactions"]))
     return {"days": days, "networks": rows, "fewViews": FEW, "someViews": SOME,

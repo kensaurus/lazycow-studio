@@ -314,7 +314,8 @@ def picture_fits(ja: str, shots: list[dict]) -> bool:
     cue = tagged[0]
     if any(w in text for w in FIRE_WORDS) and not ("fire" in cue or "grill" in cue and "kitchen" not in cue):
         return False
-    if any(w in text for w in WORK_WORDS) and not cue & WORK_TAGS:
+    # a desk, or a room that is not the kitchen (reasons-1115-4: "work in the mountains" over a man cooking indoors)
+    if any(w in text for w in WORK_WORDS) and not ("desk" in cue or ("interior" in cue and not cue & {"kitchen", "food", "grill"})):
         return False
     if any(w in text for w in MAKE_WORDS) and not cue & MAKE_TAGS:
         return False

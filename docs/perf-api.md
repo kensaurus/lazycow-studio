@@ -57,7 +57,7 @@ number compared is:
 `Reading`: one stored row.
 
 ```json
-{ "id": 2, "post_id": 1, "network": "youtube", "slug": "loud-1107", "remote_id": "jKq4gp5a7S0",
+{ "id": 2, "post_id": 1, "network": "youtube", "slug": "loud-1107", "remote_id": "Xm3kQ9vT2aL",
   "fetched_at": "2026-11-09T09:04:02+08:00", "age_h": 14.07, "checkpoint": "1h",
   "...Numbers": "...", "extra": { "engaged_views": 400 }, "source": "api" }
 ```
@@ -114,7 +114,7 @@ One reel: its features and every post of it, with readings.
                 "weekday": "unknown", "hour": "unknown" },
   "posts": [
     { "post_id": 1, "network": "youtube", "status": "scheduled", "at": "2026-11-08T19:00",
-      "url": "https://youtube.com/shorts/jKq4gp5a7S0", "live": true, "age_h": 14.1,
+      "url": "https://youtube.com/shorts/Xm3kQ9vT2aL", "live": true, "age_h": 14.1,
       "latest": { "fetched_at": "...", "checkpoint": "1h", "source": "api", "...Numbers": "..." },
       "readings": [ "Reading", "..." ],
       "vsMedian": null,
@@ -133,7 +133,7 @@ What worked and what did not. Leave out `network` to pool all networks; with it,
 
 ```json
 { "ready": false, "measured": 4, "needed": 15, "tooNew": 2, "network": null,
-  "networks": { "youtube": { "name": "YouTube", "metric": "views", "median": 300, "posts": 4 } },
+  "networks": { "youtube": { "name": "YouTube", "metric": "views", "median": 300, "posts": 4, "silent": false } },
   "headline": "Not enough data yet: 4 of 15 measured posts. Read these as early hints, not findings.",
   "worked": [ "Effect", "..." ],
   "didnt":  [ "Effect", "..." ],
@@ -146,6 +146,16 @@ What worked and what did not. Leave out `network` to pool all networks; with it,
 - Each list in `features` is sorted by `mult`, highest first.
 - `sentences` is ready to show as-is.
 - With no measured posts, `headline` says so and `worked`, `didnt` and `features` are empty.
+- A network is `silent` when it has at least 3 measured posts and every one is at 0: it showed them to nobody, so its
+  posts are left out of the model and of `measured`. Then `silent` lists those networks and `headline` and `method`
+  say so. With `network=<a silent network>`, `headline` says there is nothing to learn there yet.
+
+## `GET /api/perf/reach[?days=60]`
+
+Per network, over posts that went out in the last `days`: `out`, `measured`, `views`, `reactions`, `zero`, `best`
+and `verdict` (`working`, `some`, `few`, `none` or `unmeasured`). `oldestH` is the age in hours of the oldest
+measured post and `since` its time. `stalled` is true when the verdict is `none`, at least 3 posts are measured and
+the oldest is at least 48 h out: the network is not showing the posts, and Results says so first.
 
 ## `GET /api/perf/suggest[?network=&n=3&explore=0.3&seed=]`
 

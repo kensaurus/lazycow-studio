@@ -555,8 +555,10 @@ def _post_text(reel: dict, channel: str) -> str:
     if channel == "tiktok":
         # A TikTok business account shows no bio link until it is registered or verified: send people to search.
         # TikTok is search-led: plain search words in the caption, 3-5 tags (shared/playbooks.json "tiktok").
-        return (f"{post['ja']}\n\n{post['en']}\n\n{post['price_ja']}\n「嬬恋牧場」で検索。\n"
-                f"{SEARCH_WORDS_JA}\n\n{' '.join(reel['tags'][:5])}\n")
+        # About 150 characters, as the playbook says (idealChars): the reel's own lines, the search words, the tags.
+        # No English block and no price list: 16 Nov, every TikTok post at 0 views carried ~400 characters that read
+        # like an advert (JA + EN + prices). Prices stay on the site, Instagram, Facebook and Google Maps.
+        return f"{post['ja']}\n「嬬恋牧場」で検索。\n{SEARCH_WORDS_JA}\n\n{' '.join(reel['tags'][:5])}\n"
     if channel == "threads":
         # Threads ranks by replies: the text is the hook and ends on a question; the link goes in the first reply.
         # One topic tag per post is what Threads reads (shared/playbooks.json "threads").

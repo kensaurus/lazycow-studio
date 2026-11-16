@@ -2,6 +2,40 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.16.0 (2026-11-16)
+
+### Changed
+- **Results says when a network is showing your posts to nobody.** A network with 3 or more posts out, the oldest at
+  least 2 days old, and every one still at nothing (no views, no reactions) is "not being shown". Results opens with
+  a red panel naming those networks, what to check on each (TikTok account check, the Facebook Page's status, Bluesky
+  followers) and a link to open it, instead of one grey line. `GET /api/perf/reach` gives `stalled`, `oldestH` and
+  `since` per network.
+- **What worked leaves out networks that showed every post to nobody.** Their zeros said nothing about any choice and
+  pulled every estimate towards 1x; they still counted towards the 15 posts needed. `GET /api/perf/summary` lists them
+  in `silent` and says so in its headline and method.
+- **Views this week gives no percentage against a week with fewer than 3 posts that had views** ("+1307%" against one).
+
+- **The setup guide is a 1997 InstallShield window.** Silver bevels and a navy title bar, every step listed down the
+  left with its state (done, here, still to do), a block progress bar ("6 of 8 ready"), and `< Back` / `Next >` /
+  `Cancel`, in English and Japanese. Same steps as before.
+- **Reels has a Studio Monitor** beside "Waiting for you": a 90s system-monitor window with the reels at each stage
+  (block bars, each a filter), the work running now with its progress, the next three posts and a status-bar row
+  (footage clips, reels to review, posts booked). It updates with the job board.
+- **One 1997 look across the app.** Messages are Windows 98 message boxes, "Loading…" is a Please-wait window with a
+  running block bar, Help › About is an About box, and Being made's work board is a Task Manager with block progress
+  bars. Motion stops for people who ask for less motion.
+- **Results uses the width.** On a wide screen the per-network bars and the "not being shown" panel sit side by side.
+- **The Windows installer draws a progress bar** under every step and a full one at the end.
+
+- **TikTok captions are short and Japanese** (about 125 characters): the reel's lines, 「嬬恋牧場」で検索, the search
+  words and the tags, as the playbook's own 150-character ideal says. The English block and price list are gone there.
+- **The TikTok channel note says to check the account region** (tiktok.com/setting); the old "profile editing is
+  restricted" warning is gone (Account check showed no issues on 16 Nov).
+
+### Fixed
+- A TikTok post read off TikTok Studio's list now gets its own video link (`tiktok.com/@/video/<id>`), so Results
+  can open it.
+
 ## 0.15.0 (2026-11-15)
 
 ### Added

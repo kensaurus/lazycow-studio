@@ -73,6 +73,15 @@ def test_tiktok_sends_people_to_search_not_a_bio_link():
     assert "プロフィールのリンク" not in text and "検索" in text
 
 
+def test_tiktok_caption_is_short_japanese_with_no_price_list():
+    """16 Nov: every TikTok post sat at 0 views with ~400-character captions (JA + EN + prices) that read like ads;
+    the playbook's own ideal is about 150 characters."""
+    text = _post_text(REEL, "tiktok")
+    assert REEL["posts"]["price_ja"] not in text and REEL["posts"]["en"] not in text
+    assert text.startswith(REEL["posts"]["ja"].split("\n")[0])
+    assert len(text) <= 220, len(text)
+
+
 def test_new_networks_have_their_own_text():
     assert "utm_source=gbp" in _post_text(REEL, "gbp")
     assert "utm_source=line-voom" in _post_text(REEL, "line-voom")

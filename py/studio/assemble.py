@@ -681,13 +681,19 @@ def _open_on_hook(key: str, chosen: list[dict], emb_rows: dict, kicker: str | No
     def label_ok(j: int) -> bool:
         return not kicker or picture_fits(kicker, under(j))
 
-    if hook_ok(0) and label_ok(0):
-        return chosen
     last = len(chosen) - 1  # the closing shot stays last
-    for want in ((lambda j: hook_ok(j) and label_ok(j)), hook_ok):
-        for j in range(step, last - step + 1, step):
-            if want(j):
-                return [*chosen[j:j + step], *chosen[:j], *chosen[j + step:]]
+    if not (hook_ok(0) and label_ok(0)):
+        for want in ((lambda j: hook_ok(j) and label_ok(j)), hook_ok):
+            j = next((j for j in range(step, last - step + 1, step) if want(j)), None)
+            if j is not None:
+                chosen = [*chosen[j:j + step], *chosen[:j], *chosen[j + step:]]
+                break
+    # The headline is still on screen over the second shot: that one suits it too, or a later one that does takes its
+    # place (15 Nov: "pitch wherever you like" ran on over an indoor dining table at two seconds, in reel after reel).
+    if step == 1 and len(chosen) > 3 and hook_ok(0) and not hook_ok(1):
+        j = next((j for j in range(2, last) if hook_ok(j)), None)
+        if j is not None:
+            chosen = [chosen[0], chosen[j], *chosen[1:j], *chosen[j + 1:]]
     return chosen
 
 

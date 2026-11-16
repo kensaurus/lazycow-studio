@@ -43,6 +43,7 @@ TAU_INTERCEPT = 1.0
 NOISE_SD = 0.8          # prior guess of how much a post varies for no reason we can see (log scale)
 NOISE_WEIGHT = 4        # how many posts' worth that guess counts for
 MEDIAN_OF_LAST = 30     # a network's median is taken over its newest measured posts
+SILENT_MIN = 3          # this many measured posts, all at nothing: the network is left out of the model
 
 LENGTHS = ("under 12 s", "12-16 s", "16-22 s", "22-35 s", "35-60 s", "over 60 s")
 CLIPS = ("1-6", "7-9", "10-12", "13+")
@@ -180,6 +181,11 @@ def comparable(now: datetime | None = None, posts: list[dict] | None = None, row
         mine = sorted((u for u in units if u["network"] == net), key=lambda u: str(u["at"]))[-MEDIAN_OF_LAST:]
         info["median"] = statistics.median([u["value"] for u in mine]) if mine else None
         info["posts"] = sum(u["network"] == net for u in units)
+        # Silent: every measured post there got nothing. The network showed them to nobody, so their numbers say
+        # nothing about which choices work; kept in, each scores exactly the median and pulls every effect towards 1x
+        # (16 Nov: 17 of 26 "measured" posts were TikTok, Facebook and Bluesky zeros). Left out of the model.
+        info["silent"] = info["posts"] >= SILENT_MIN and not any(u["value"] for u in units if u["network"] == net)
+    units = [u for u in units if not networks[u["network"]]["silent"]]
     for u in units:
         med = networks[u["network"]]["median"] or 0.0
         u["median"] = med
@@ -377,6 +383,16 @@ def summary(network: str | None = None, data: dict | None = None) -> dict:
                        "(YouTube's engaged views when Analytics is allowed, else views, else reach, else likes + comments + "
                        "shares + saves). A Bayesian model shares what one network "
                        "learns with the others and keeps every estimate's uncertainty; ranges are 80 % intervals.")}
+    silent = [n for n, i in data["networks"].items() if i.get("silent")]
+    if silent:
+        names = ", ".join(NET_NAMES.get(n, n) for n in silent)
+        base["silent"] = silent
+        base["method"] += (f" Left out: {names}, where every measured post got nothing. Those networks showed the posts to "
+                           "nobody, so they cannot say which choices work.")
+    if network and network in silent:
+        return {**base, "headline": f"Every measured post on {NET_NAMES.get(network, network)} got nothing: it is not showing "
+                                    "them to anyone yet, so there is nothing to learn from there.",
+                "worked": [], "didnt": [], "features": {}, "sentences": []}
     if network and network not in data["networks"]:
         return {**base, "headline": f"No measured posts on {NET_NAMES.get(network, network)} yet.", "worked": [], "didnt": [], "features": {}, "sentences": []}
     if not units:
@@ -395,6 +411,8 @@ def summary(network: str | None = None, data: dict | None = None) -> dict:
     didnt = sorted((r for r in flat if r["pBetter"] <= 0.25), key=lambda r: r["pBetter"])[:6]
     head = (f"{measured} measured post{'s' if measured != 1 else ''}." if ready else
             f"Not enough data yet: {measured} of {MIN_POSTS} measured posts. Read these as early hints, not findings.")
+    if silent:
+        head += f" Not counted: {', '.join(NET_NAMES.get(n, n) for n in silent)} (nobody was shown those posts)."
     if not worked and not didnt:
         head += " Nothing stands out yet: every choice is still within the noise."
     sentences = [head] + [r["sentence"] for r in worked] + [r["sentence"] for r in didnt]
@@ -449,7 +467,7 @@ def suggest(network: str | None = None, n=3, explore=None, seed=None, data: dict
     units = data["units"]
     ready = len(units) >= MIN_POSTS
     model = fit(units)
-    net = network if network in data["networks"] else None
+    net = network if network in data["networks"] and not data["networks"][network].get("silent") else None
     metric = _metric_for(data, net)
     rng = np.random.default_rng(seed)
     out = []
@@ -495,7 +513,7 @@ def vary_draw(theme_style: str, rng, night: bool = False, looks: list | None = N
     if nrng.random() < EXPLORE:
         return None
     model = fit(data["units"])
-    net = network if network in data["networks"] else None
+    net = network if network in data["networks"] and not data["networks"][network].get("silent") else None
     beta = model.sample(nrng)
     styles = [s for s in TEXT_STYLES if s != theme_style]
     allowed = [lv for lv in (looks if looks is not None else LOOKS) if lv and (night or lv != "ember")] + ["plain"]

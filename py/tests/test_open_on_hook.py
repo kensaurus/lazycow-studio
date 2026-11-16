@@ -53,3 +53,9 @@ def test_a_summer_autumn_pair_moves_together(monkeypatch):
     out = assemble._open_on_hook("seasons", chosen, {}, step=2)
     assert [c["cand"]["id"] for c in out] == [3, 4, 1, 2, 5]
 
+
+def test_the_second_shot_under_the_headline_suits_it_too(monkeypatch):
+    monkeypatch.setattr(wording, "draw", lambda key, lines, rng, **k: {"hookFits": "food" not in k["under"][0][0]["tags"]})
+    chosen = [_c(1, {"field"}), _c(2, {"food"}), _c(3, {"food"}), _c(4, {"aerial"}), _c(5, {"tent"})]
+    assert [c["cand"]["id"] for c in assemble._open_on_hook("altitude", chosen, {})] == [1, 4, 2, 3, 5]
+
