@@ -281,6 +281,9 @@ def test_fifteen_november_review_lines_start_on_what_they_say():
     assert fits("区画のない、ひとつの草原。", _at("aerial", "mountains"))
     assert not fits("区画のない、ひとつの草原。", _at("deck", "mountains"))
     assert not fits("山にこもって、どこまで進むか。", _at("food", "kitchen"))
+    assert not fits("山で働く。冬でも、夜通しでも。", _at("interior", "kitchen"))
+    assert fits("山で働く。冬でも、夜通しでも。", _at("interior"))
+    assert fits("山で働く。冬でも、夜通しでも。", _at("desk", "interior", "food"))
     # the fibre line: a desk or a room, never the stove
     assert not fits("標高1,444m、100Mbpsの光回線。", _at("desk", "fire", "grill", season="autumn"))
     assert fits("標高1,444m、100Mbpsの光回線。", _at("desk", "interior"))

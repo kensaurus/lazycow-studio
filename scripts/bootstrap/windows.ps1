@@ -29,7 +29,17 @@ try {
 } catch { }
 
 function Say([string]$text, [string]$color = "White") { Write-Host $text -ForegroundColor $color; Add-Content -Path $Log -Value $text }
-function Step([int]$n, [string]$what) { Say ""; Say ("[{0}/{1}] {2}" -f $n, $Steps, $what) "Yellow" }
+# The 1997 progress bar: 50 cells of '#', the rest '.', and the percent. ASCII only (the console may not be UTF-8).
+function Bar([int]$done) {
+  $w = 50; $fill = [int][Math]::Floor($w * $done / $Steps)
+  Say ("  [" + ("#" * $fill) + ("." * ($w - $fill)) + "] " + ("{0,3}%" -f [int](100 * $done / $Steps))) "Cyan"
+}
+function Step([int]$n, [string]$what) {
+  Say ""
+  Say ("  ==[ Step {0} of {1} ]{2}" -f $n, $Steps, ("=" * 46)) "DarkCyan"
+  Say ("   " + $what) "Yellow"
+  Bar ($n - 1)
+}
 function Ok([string]$what) { Say ("      OK  " + $what) "Green" }
 function Fail([string]$what, [string]$fix) {
   Say ""
@@ -219,6 +229,7 @@ Ok "Lazycow Studio on your desktop and in the Start menu"
 Set-Content -Path (Join-Path $LC "installed.json") -Value (@{ root = $Root; data = $Data; node = $V.node.version; uv = $V.uv.version; at = (Get-Date -Format s) } | ConvertTo-Json)
 
 Say ""
+Bar $Steps
 Say "  +------------------------------------------------------------------+" "Green"
 Say "  |   SETUP COMPLETE.                                                |" "Green"
 Say "  |   No serial number. No CD key. No crack. It is free. Really.     |" "Green"

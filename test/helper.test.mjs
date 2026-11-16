@@ -311,6 +311,15 @@ test("a Google Maps post counts as out when its first line is on the listing's F
   assert.equal(ownerPostSeen("Autumn at 1,444 m — the deck", "autumn at 1444m: the deck!"), true, "spaces, punctuation and case do not matter");
 });
 
+test("a TikTok reading's video id becomes the post's own link, not TikTok Studio's list (16 Nov)", async () => {
+  const { tiktokVideoUrl } = await import("../server/helper.mjs");
+  assert.equal(tiktokVideoUrl({ network: "tiktok", remote_id: "7706443056693710132" }), "https://www.tiktok.com/@/video/7706443056693710132");
+  assert.equal(tiktokVideoUrl({ network: "tiktok", remote_id: 7706443056693710 }), "https://www.tiktok.com/@/video/7706443056693710");
+  assert.equal(tiktokVideoUrl({ network: "tiktok", remote_id: null }), null, "no id: no link");
+  assert.equal(tiktokVideoUrl({ network: "tiktok", remote_id: "abc/../x" }), null, "only digits");
+  assert.equal(tiktokVideoUrl({ network: "x", remote_id: "7706443056693710132" }), null, "TikTok only");
+});
+
 test("TikTok's description is cleared with the keyboard and must start with the first line (file name left in front, 13 Nov)", async () => {
   const { readFileSync } = await import("node:fs");
   const src = readFileSync(new URL("../server/helper.mjs", import.meta.url), "utf8");

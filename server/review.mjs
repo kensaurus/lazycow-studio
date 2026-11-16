@@ -32,7 +32,7 @@ import { createInterface } from "node:readline";
 import { gzipSync } from "node:zlib";
 import { homedir } from "node:os";
 import { createHash, randomBytes } from "node:crypto";
-import { withLimit } from "./helper.mjs";
+import { withLimit, tiktokVideoUrl } from "./helper.mjs";
 import { setLinkWanted, autoReconnect, beginConnect, browserState, cancelConnect, closeHelper, configureHelper, extensionConnected, setExtensionToken, headlineOf, helperStatus, inLane, openSignin, PERF_NETWORKS, readPerf, planWeek, postFor, prepare as helperPrepare, schedule as helperSchedule, scheduleRefusal, SCHEDULERS, unschedule as helperUnschedule, UNSCHEDULERS } from "./helper.mjs";
 import { buildId, folderBytes, freeDiskBytes, judgeSystem, LIMITS, medianSeconds, etaSeconds, probeEncoders, systemFacts } from "./health.mjs";
 import { openDrop, closeDrop, dropState, DROP_TYPES, saveUpload } from "./dropbox.mjs";
@@ -1599,7 +1599,9 @@ function startPerfBrowser({ networks = [], why = "asked" } = {}) {
           ...(r.page ? { page: r.page } : {}), ...(r.remote_id ? { remote_id: String(r.remote_id) } : {}) });
         stored.push({ post_id: r.post_id, network: r.network, slug: r.slug, checkpoint: s.stored.checkpoint, ...r.numbers });
         // The log learns the post's own link once (it often holds a profile or a scheduled-list address).
-        if (r.page && SPECIFIC_POST.test(r.page) && !SPECIFIC_POST.test(r.url || "")) await ask({ cmd: "posts", action: "link", id: r.post_id, url: r.page }).catch(() => {});
+        // TikTok is read off its content list: the reading's video id gives the post's own address instead.
+        const own = r.page && SPECIFIC_POST.test(r.page) ? r.page : tiktokVideoUrl(r);
+        if (own && !SPECIFIC_POST.test(r.url || "")) await ask({ cmd: "posts", action: "link", id: r.post_id, url: own }).catch(() => {});
       } catch (e) { left.push({ post_id: r.post_id, network: r.network, slug: r.slug, state: "failed", message: String(e.message || e).split(/\r?\n/)[0] }); }
     }
     // A post that shows no counts yet (state "missing": too new, or the site has not counted it) is not a failure: it

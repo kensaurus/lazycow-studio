@@ -424,6 +424,9 @@ def retag(force: bool = False) -> dict:
     t = (text.numpy() if hasattr(text, "numpy") else np.asarray(text)).astype("float32")
     labels = list(VOCAB.keys())
     done = 0
+    from studio.tagcheck import apply as fix_tags, fixes
+
+    fx = fixes()  # tags a person or the picture check corrected stay corrected
     with connect() as con:
         _migrate(con)
         for r in [dict(r) for r in con.execute("SELECT asset_id, emb, expo FROM library WHERE emb IS NOT NULL")]:
@@ -431,7 +434,7 @@ def retag(force: bool = False) -> dict:
             p = np.exp(logits - logits.max())
             p /= p.sum()
             scored = sorted(((labels[i], float(p[i])) for i in range(len(labels))), key=lambda x: -x[1])
-            top = [label for label, score in scored[:5] if score >= 0.06][:4] or [scored[0][0]]
+            top = fix_tags(r["asset_id"], [label for label, score in scored[:5] if score >= 0.06][:4] or [scored[0][0]], fx)
             dark = (r["expo"] or 1) < 0.22 or "night" in top
             con.execute("UPDATE library SET tags = ?, top = ?, tod = ? WHERE asset_id = ?",
                         (json.dumps(scored[:8]), json.dumps(top), "night" if dark else "dusk" if "sunset" in top else "day", r["asset_id"]))
@@ -464,7 +467,9 @@ def scan(force: bool = False, limit: int | None = None, workers: int = 8) -> dic
                     con.execute("INSERT OR REPLACE INTO library (asset_id, tags, scanned_at) VALUES (?, ?, ?)", (row["id"], json.dumps({"error": result["error"]}), datetime.now().isoformat(timespec="seconds")))
                 continue
             emb, scored, person, junk = _clip(result["frames"])
-            top = [label for label, score in scored[:5] if score >= 0.06][:4] or [scored[0][0]]
+            from studio.tagcheck import apply as fix_tags
+
+            top = fix_tags(row["id"], [label for label, score in scored[:5] if score >= 0.06][:4] or [scored[0][0]])
             event, event_date = event_of(Path(row["path"]))
             when = row["captured_at"] or event_date
             month = int(when[5:7]) if when and len(when) >= 7 else None
