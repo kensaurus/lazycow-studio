@@ -4,7 +4,7 @@ PURPOSE: How much usable footage is left, which camera it came from, how often c
          film next with which camera. Read only, except `backfill_cameras`, which fills assets.camera from each
          file's own metadata (EXIF Make/Model for photos, the container's make/model tags for video).
 DEPENDENCIES: studio.db, studio.library (the tagged rows and their usage), studio.assemble (themes), studio.media.
-USAGE: python -m studio footage health | cameras [--limit N]
+USAGE: python -m studio footage health | cameras [--limit N]  (places() is read by the service: GET /api/footage/places)
 """
 from __future__ import annotations
 
@@ -171,3 +171,49 @@ def _health(now: datetime | None = None) -> dict:
         "cameras": cameras, "unknownCameras": sum(1 for r in ranch if cams.get(r["path"]) is None),  # never read ('' = read, none recorded)
         "shoot": shoot, "themes": len(themes), "asOf": now.isoformat(),
     }
+
+
+# ---------- Where the footage was filmed (Footage › Health's map; GET /api/footage/places) ----------
+PLACE_GRID = 0.001  # degrees: about 110 m north-south and 90 m east-west at the ranch; no position is finer than this
+
+
+def cluster_places(rows: list[dict], home: dict | None) -> dict:
+    """Footage with a GPS position, grouped on a ~100 m grid. Each row is {id, lat, lon, kind, used}; a cluster gives
+    its grid point (never a file's own position), how many files, videos and unused files it holds, whether it is
+    inside the home place, and the library ids it holds (for the page's filter). A 0,0 fix is a phone placeholder."""
+    from studio.media import haversine_km
+
+    def snap(x: float) -> float:
+        return round(round(x / PLACE_GRID) * PLACE_GRID, 3)
+
+    groups: dict[tuple[float, float], dict] = {}
+    for r in rows:
+        lat, lon = r.get("lat"), r.get("lon")
+        if lat is None or lon is None or (abs(lat) < 0.01 and abs(lon) < 0.01):
+            continue
+        k = (snap(lat), snap(lon))
+        g = groups.setdefault(k, {"lat": k[0], "lon": k[1], "clips": 0, "videos": 0, "unused": 0, "ids": []})
+        g["clips"] += 1
+        g["videos"] += r.get("kind") == "video"
+        g["unused"] += not r.get("used")
+        g["ids"].append(r["id"])
+    out = sorted(groups.values(), key=lambda g: -g["clips"])
+    for g in out:
+        g["km"] = round(haversine_km(g["lat"], g["lon"], (home["lat"], home["lon"])), 1) if home else None
+        g["home"] = bool(home) and g["km"] <= home["radiusKm"]
+    placed = sum(g["clips"] for g in out)
+    return {"home": {"lat": home["lat"], "lon": home["lon"], "radiusKm": home["radiusKm"]} if home else None,
+            "clusters": out, "placed": placed, "unplaced": len(rows) - placed, "gridM": 100}
+
+
+def places() -> dict:
+    """Every library file (not vetoed) with its GPS position, clustered for the map. Read only."""
+    from studio.brand import home_place
+    from studio.library import items
+
+    rows = [r for r in items("", {}, limit=100000) if not r.get("vetoed")]
+    with connect() as con:
+        pos = {r["id"]: (r["lat"], r["lon"]) for r in con.execute("SELECT id, lat, lon FROM assets WHERE lat IS NOT NULL AND lon IS NOT NULL")}
+    flat = [{"id": r["id"], "lat": pos.get(r["id"], (None, None))[0], "lon": pos.get(r["id"], (None, None))[1], "kind": r["kind"],
+             "used": bool(r.get("usedIn") or r.get("inVlogs"))} for r in rows]
+    return cluster_places(flat, home_place())

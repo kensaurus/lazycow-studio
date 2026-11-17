@@ -5,9 +5,12 @@ PURPOSE: The AI provider registry (shared/ai-providers.json): which services the
 OVERVIEW: load() reads and validates the file once (cached by mtime). The capability list is closed (CAPABILITIES):
           voice, music, sfx, upscale, slowmo, img2video, bg-cut, llm, vision. Text-to-video can never be registered
           (house rule: the studio never invents scenes). labelRequired belongs to the capability, never the provider.
-          A model without a commercial licence is refused, and a model marked risk "unofficial" (kie.ai's Suno) can be
-          picked by hand but is never a default. Every keyEnv matches KEY_ENV_RX (or is one of LEGACY_KEY_ENVS), so a
-          key saved from Settings can only ever land in a *_KEY / *_TOKEN line of .env.
+          A model without a commercial licence is refused, and a model marked risk "unofficial" (kie.ai's Suno, PiAPI's
+          account-pool Kling) can be picked by hand but is never a default. Every keyEnv matches KEY_ENV_RX (or is one
+          of LEGACY_KEY_ENVS), so a key saved from Settings can only ever land in a *_KEY / *_TOKEN line of .env.
+          Every provider names the official docs its entry was checked against (`docs`) and the day (`asOf`); every
+          img2video model takes the real still (a prompt-only mode would be text-to-video); a model may speak another
+          protocol than its provider's chat (`protocol`, e.g. OpenRouter's video and speech).
 DEPENDENCIES: Python stdlib.
 USAGE: from studio.providers import registry; registry.load(); registry.default_model("music") -> ("fal", "fal-ai/…")
 NOTES: The shape of the file is described in docs/ai-api.md ("The provider registry").
@@ -26,6 +29,11 @@ PROTOCOLS = ("fal_queue", "async_task", "sync_http", "openai_chat")
 # Never a capability, whatever a provider calls it: a model that makes a scene from words is not wanted here.
 FORBIDDEN = re.compile(r"text[-_ ]?to[-_ ]?video|t2v|txt2vid|text2video", re.I)
 KEY_ENV_RX = re.compile(r"^[A-Z][A-Z0-9_]{2,40}_(KEY|TOKEN)$")
+RISKS = ("unofficial",)
+UPLOAD_KINDS = ("fal_storage", "multipart", "data_uri", "base64", "json_base64", "presigned")
+DATE_RX = re.compile(r"^20\d\d-[01]\d-[0-3]\d$")
+# Where a model's request goes: a name here that says text-to-video is refused like the model's own name.
+PATH_FIELDS = ("path", "submitPath", "task")
 # Names that predate the rule and must keep their place in people's .env files (the reviewer's OpenRouter key is
 # parked under this name so the old paid tagging, which reads OPENROUTER_API_KEY, stays off).
 LEGACY_KEY_ENVS = {"OPENROUTER_API_KEY_PARKED"}
@@ -83,13 +91,38 @@ def validate(data: dict) -> list[str]:
                 out.append(f"provider {pid}: keyEnv {env!r} must match {KEY_ENV_RX.pattern}")
         if "labelRequired" in p:
             out.append(f"provider {pid}: labelRequired belongs to the capability, not the provider")
+        # Every provider says where its contract was read and when (docs: the official pages; asOf: the day).
+        docs = p.get("docs")
+        if not isinstance(docs, list) or not docs or not all(isinstance(u, str) and u.startswith("https://") for u in docs):
+            out.append(f"provider {pid}: docs must list the official https pages its entry was checked against")
+        if not DATE_RX.match(str(p.get("asOf") or "")):
+            out.append(f"provider {pid}: asOf must be the day its entry was checked (YYYY-MM-DD)")
+        if (p.get("upload") or {}).get("kind") not in (None, *UPLOAD_KINDS):
+            out.append(f"provider {pid}: upload kind {(p.get('upload') or {}).get('kind')!r} is not one of {', '.join(UPLOAD_KINDS)}")
         for mid, m in (p.get("models") or {}).items():
             where = f"{pid} {mid}"
             cap = m.get("capability")
             if cap not in caps:
                 out.append(f"{where}: capability {cap} is not registered")
-            if any(FORBIDDEN.search(str(x or "")) for x in (cap, mid, m.get("id"), m.get("task"))):
+            if any(FORBIDDEN.search(str(x or "")) for x in (cap, mid, m.get("id"), *(m.get(f) for f in PATH_FIELDS), m.get("input"))):
                 out.append(f"{where}: text-to-video is never registered")
+            if m.get("protocol") is not None and m.get("protocol") not in PROTOCOLS:
+                out.append(f"{where}: protocol {m.get('protocol')} is not one of {', '.join(PROTOCOLS)}")
+            if m.get("risk") is not None and m.get("risk") not in RISKS:
+                out.append(f"{where}: risk must be one of {', '.join(RISKS)} or absent")
+            # A mode that needs only a prompt must not be reachable: every image-to-video model takes the real still.
+            if cap == "img2video" and "image" not in (m.get("files") or {}).values():
+                out.append(f"{where}: an img2video model must take the still (files: {{…: \"image\"}}); a prompt-only mode is text-to-video")
+            if m.get("asOf") is not None and not DATE_RX.match(str(m["asOf"])):
+                out.append(f"{where}: asOf must be YYYY-MM-DD")
+            # Placeholders are lowercase ({image_url}); "{promptImage}" would be sent as it is, never filled.
+            odd = [x for x in re.findall(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::[a-z]+)?\}", json.dumps([m.get("input"), m.get("path"), m.get("task")]))
+                   if not re.fullmatch(r"[a-z_][a-z0-9_]*", x)]
+            if odd:
+                out.append(f"{where}: placeholders must be lowercase ({', '.join(sorted(set(odd)))})")
+            for name in (m.get("files") or {}):
+                if not re.fullmatch(r"[a-z_][a-z0-9_]*", name):
+                    out.append(f"{where}: file field {name} must be a lowercase placeholder name")
             if "labelRequired" in m:
                 out.append(f"{where}: labelRequired belongs to the capability, not the model")
             if str(m.get("licence") or "").lower() not in COMMERCIAL:
@@ -101,6 +134,8 @@ def validate(data: dict) -> list[str]:
             price = m.get("price")
             if price is not None and not (isinstance(price.get("usd"), (int, float)) and price.get("unit") and price.get("asOf") and price.get("source")):
                 out.append(f"{where}: a list price needs usd, unit, source and asOf")
+            if price and price.get("validUntil") is not None and not DATE_RX.match(str(price["validUntil"])):
+                out.append(f"{where}: price validUntil must be YYYY-MM-DD")
     for cap, who in defaults.items():
         if len(who) > 1:
             out.append(f"capability {cap} has {len(who)} defaults ({', '.join(who)}); one only")

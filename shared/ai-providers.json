@@ -1,7 +1,16 @@
 {
-  "_about": "The AI provider registry (py/studio/providers/registry.py, docs/ai-api.md). Capabilities are a closed list; text-to-video is never registered. labelRequired belongs to the capability. Every model needs a commercial licence; risk 'unofficial' is never a default. Prices are list prices with their source and date; a live price API wins where the provider has one.",
+  "_about": "The AI provider registry (py/studio/providers/registry.py, docs/ai-api.md). Capabilities are a closed list; text-to-video is never registered, and every img2video model takes the real still. labelRequired belongs to the capability. Every model needs a commercial licence; risk 'unofficial' is never a default. Every provider names the official docs its entry was checked against (docs) and the day (asOf). Prices are list prices with their source and date; a live price API wins where the provider has one. A model may speak another protocol than its provider's chat (protocol). _rejected lists what was looked at and left out, with the reason.",
   "version": 1,
-  "asOf": "2026-11-17",
+  "asOf": "2026-11-18",
+  "_rejected": {
+    "minimax music": "MiniMax closed its paid Music Generation API to new users on 2026-08-20 (platform.minimax.io/docs/guides/music-generation, read 2026-11-18).",
+    "gemini video (Veo)": "Veo 3.1 Preview in the Gemini API was shut down on 2026-10-22, and Gemini Omni Flash video is not on the OpenAI-compatible endpoint (ai.google.dev/gemini-api/docs/video and /openai, read 2026-11-18). Image-conditioned Omni Flash and Veo are reachable through OpenRouter's /videos, but were not added: their licence passes through OpenRouter unverified here.",
+    "piapi music (Suno, Udio)": "PiAPI sunset its Suno API (piapi.ai/docs/sunsetting-suno) and its Udio song API runs on its own pool of consumer accounts (piapi.ai/docs/overview, Pay-as-you-go): no commercial licence for the music.",
+    "together vision on video": "Together's video understanding runs only on a dedicated endpoint (docs.together.ai/docs/inference/vision/inputs); its serverless vision model answers the picture questions (still frames) only.",
+    "stability image-to-video": "Stability's API lists image, 3D and audio services only, no video (docs.stability.ai/llms.txt, read 2026-11-18).",
+    "luma price": "Luma bills Ray 3.2 in credits (100 per 5 s at 720p) and the dollar value of a credit depends on the account's plan (docs.agents.lumalabs.ai/guides/pricing): no list price, so enter yours in Settings › AI before it runs.",
+    "openrouter tts voices": "OpenRouter's speech models take only their preset voices (e.g. ElevenLabs v3: sarah, alice …; MiniMax Speech 2.8 lists English voices only), so only ElevenLabs v3 is registered there for Japanese lines."
+  },
   "staleDays": 90,
   "capabilities": {
     "voice": {"labelRequired": true, "deadline": 600, "output": "mp3, mono, 44.1 kHz", "what": "a voice reads the reel's approved words"},
@@ -32,6 +41,8 @@
       "keyEnv": "FAL_KEY",
       "keyHint": "fal.ai/dashboard/keys",
       "dashboard": "https://fal.ai/dashboard/billing",
+      "docs": ["https://docs.fal.ai/model-apis/model-endpoints/queue", "https://docs.fal.ai/platform-apis/v1/models/pricing"],
+      "asOf": "2026-11-17",
       "base": "https://queue.fal.run",
       "auth": {"header": "Authorization", "scheme": "Key "},
       "check": {"method": "GET", "url": "https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai/rife/video"},
@@ -129,8 +140,18 @@
       "keyPrefix": "sk-or-",
       "keyHint": "openrouter.ai/settings/keys (they start with sk-or-)",
       "dashboard": "https://openrouter.ai/settings/credits",
+      "docs": ["https://openrouter.ai/docs/api/reference/overview", "https://openrouter.ai/docs/cookbook/video-generation/image-to-video",
+               "https://openrouter.ai/docs/api/api-reference/video-generation/submit-a-video-generation-request",
+               "https://openrouter.ai/docs/api/api-reference/tts/create-speech", "https://openrouter.ai/api/v1/videos/models"],
+      "asOf": "2026-11-18",
+      "terms": "OpenRouter passes each model's own provider terms through (openrouter.ai/terms).",
       "base": "https://openrouter.ai/api/v1",
       "auth": {"header": "Authorization", "scheme": "Bearer "},
+      "chat": {"jsonMode": true, "extra": {"reasoning": {"effort": "low"}}},
+      "upload": {"kind": "data_uri", "maxBytes": 20000000},
+      "task": {"submit": {"method": "POST", "path": "/videos", "body": "{input}"}, "id": "id", "poll": "/videos/{id}", "status": "status",
+               "done": ["completed"], "failed": ["failed", "cancelled", "expired"], "output": "unsigned_urls.0", "outputAuth": true,
+               "error": "error", "cost": "usage.cost", "costUnit": "usd"},
       "check": {"method": "GET", "url": "https://openrouter.ai/api/v1/key"},
       "balance": {"url": "https://openrouter.ai/api/v1/key", "used": "data.usage", "limit": "data.limit", "left": "data.limit_remaining", "currencyIs": "USD",
                   "orElse": {"url": "https://openrouter.ai/api/v1/credits", "require": "data.total_credits", "limit": "data.total_credits",
@@ -141,6 +162,22 @@
         "google/gemini-3.8-flash": {
           "capability": "vision", "default": true, "label": "Gemini 3.8 Flash (watches video with sound)", "licence": "commercial", "video": true,
           "price": {"usd": 0.000000825, "unit": "prompt tokens", "completion": 0.000004125, "source": "OpenRouter models API", "asOf": "2026-11-09"}
+        },
+        "kwaivgi/kling-v3.0-std": {
+          "capability": "img2video", "protocol": "async_task", "label": "Kling 3.0 Standard image-to-video (through OpenRouter, 720p, no sound)", "licence": "commercial",
+          "note": "First frame = the real still (frame_images first_frame); OpenRouter reports what it charged (usage.cost).",
+          "price": {"usd": 0.084, "unit": "seconds", "source": "openrouter.ai/api/v1/videos/models (image_to_video_duration_seconds_720p)", "asOf": "2026-11-18"},
+          "files": {"image_url": "image"},
+          "input": {"model": "{model}", "prompt": "{prompt}", "duration": "{seconds:int}", "resolution": "720p", "aspect_ratio": "9:16", "generate_audio": false,
+                    "frame_images": [{"type": "image_url", "image_url": {"url": "{image_url}"}, "frame_type": "first_frame"}]}
+        },
+        "elevenlabs/eleven-v3": {
+          "capability": "voice", "protocol": "sync_http", "label": "ElevenLabs v3 (through OpenRouter; preset voices)", "licence": "commercial",
+          "note": "OpenRouter's speech API takes ElevenLabs' preset voices only (sarah, alice, lily, …); v3 reads Japanese text in them.",
+          "price": {"usd": 0.08, "unit": "1000 characters", "source": "openrouter.ai/elevenlabs/eleven-v3 ($80 per M characters)", "asOf": "2026-11-18"},
+          "voiceDefault": "sarah", "maxChars": 5000,
+          "path": "/audio/speech", "accept": "audio/mpeg",
+          "input": {"model": "{model}", "input": "{text}", "voice": "{voice}", "response_format": "mp3"}
         }
       }
     },
@@ -151,12 +188,39 @@
       "keyEnv": "TOGETHER_API_KEY",
       "keyHint": "api.together.ai/settings/api-keys",
       "dashboard": "https://api.together.ai/settings/billing",
+      "docs": ["https://docs.together.ai/reference/chat-completions-1", "https://docs.together.ai/docs/inference/vision/overview",
+               "https://docs.together.ai/reference/create-videos", "https://docs.together.ai/docs/inference/videos/reference-and-keyframes",
+               "https://docs.together.ai/docs/serverless-models", "https://www.together.ai/models/wan-27-i2v"],
+      "asOf": "2026-11-18",
       "base": "https://api.together.xyz/v1",
       "auth": {"header": "Authorization", "scheme": "Bearer "},
+      "chat": {"jsonMode": false},
+      "upload": {"kind": "base64", "maxBytes": 20000000},
+      "task": {"submit": {"method": "POST", "path": "https://api.together.ai/v2/videos", "body": "{input}"}, "id": "id",
+               "poll": "https://api.together.ai/v2/videos/{id}", "status": "status", "done": ["completed"], "failed": ["failed"],
+               "output": "outputs.video_url", "error": "error.message"},
       "check": {"method": "GET", "url": "https://api.together.xyz/v1/models"},
       "balance": {"note": "Together does not report a balance through its API. The dashboard shows it."},
       "freeModels": ["llm"],
-      "models": {}
+      "models": {
+        "openai/gpt-oss-120b": {
+          "capability": "llm", "label": "GPT-OSS 120B (writing help)", "licence": "apache-2.0",
+          "price": {"usd": 0.00000015, "unit": "prompt tokens", "completion": 0.0000006, "source": "docs.together.ai/docs/serverless-models ($0.15 / $0.60 per M tokens)", "asOf": "2026-11-18"}
+        },
+        "moonshotai/Kimi-K3": {
+          "capability": "vision", "label": "Kimi K3 (looks at still frames; no video)", "licence": "commercial",
+          "note": "Serverless Together vision reads pictures, not video: the reviewer keeps watching on OpenRouter; picture questions (vlog names, captions, frame reviews) come here.",
+          "price": {"usd": 0.000003, "unit": "prompt tokens", "completion": 0.000015, "source": "docs.together.ai/docs/serverless-models ($3.00 / $15.00 per M tokens)", "asOf": "2026-11-18"}
+        },
+        "Wan-AI/wan2.7-i2v": {
+          "capability": "img2video", "protocol": "async_task", "label": "Wan 2.7 image-to-video (on Together, 720p)", "licence": "commercial",
+          "note": "together.ai/models/wan-27-i2v lists $0.10 a video; its launch post (2026-04-03) said $0.10 a second. The per-second reading is kept, so the limits are never under-reserved.",
+          "price": {"usd": 0.1, "unit": "seconds", "source": "together.ai/models/wan-27-i2v and together.ai/pricing (the higher of the two readings)", "asOf": "2026-11-18"},
+          "files": {"input_image": "image"},
+          "input": {"model": "{model}", "prompt": "{prompt}", "negative_prompt": "{negative_prompt}", "resolution": "720P", "ratio": "9:16", "seconds": "{seconds:str}",
+                    "media": {"frame_images": [{"input_image": "{input_image}", "frame": "first"}]}}
+        }
+      }
     },
     "elevenlabs": {
       "name": "ElevenLabs",
@@ -165,6 +229,9 @@
       "keyHint": "elevenlabs.io/app/settings/api-keys",
       "dashboard": "https://elevenlabs.io/app/subscription",
       "terms": "Commercial use of the output needs a paid ElevenLabs plan (the free plan has no commercial licence).",
+      "docs": ["https://elevenlabs.io/docs/api-reference/text-to-speech/convert", "https://elevenlabs.io/docs/api-reference/music/compose",
+               "https://elevenlabs.io/pricing/api"],
+      "asOf": "2026-11-18",
       "base": "https://api.elevenlabs.io",
       "auth": {"header": "xi-api-key", "scheme": ""},
       "check": {"method": "GET", "url": "/v1/models"},
@@ -197,6 +264,14 @@
           "price": {"usd": 0.12, "unit": "minutes", "source": "elevenlabs.io/pricing/api", "asOf": "2026-11-17"},
           "path": "/v1/sound-generation?output_format=mp3_44100_128", "accept": "audio/mpeg",
           "input": {"text": "{prompt}", "model_id": "{model}", "duration_seconds": "{seconds:float}", "prompt_influence": 0.3}
+        },
+        "music_v2_5": {
+          "capability": "music", "label": "Eleven Music v2.5 (instrumental, direct)", "licence": "commercial", "credit": "Eleven Music", "maker": "ElevenLabs",
+          "page": "https://elevenlabs.io/docs/api-reference/music/compose", "maxSeconds": 600,
+          "note": "force_instrumental guarantees no vocals; commercial use on Starter plans and up (elevenlabs.io/pricing/api).",
+          "price": {"usd": 0.15, "unit": "minutes", "source": "elevenlabs.io/pricing/api ($0.15 per minute)", "asOf": "2026-11-18"},
+          "path": "/v1/music?output_format=mp3_44100_128", "accept": "audio/mpeg",
+          "input": {"prompt": "{prompt}", "music_length_ms": "{ms:int}", "model_id": "{model}", "force_instrumental": true}
         }
       }
     },
@@ -206,6 +281,8 @@
       "keyEnv": "STABILITY_API_KEY",
       "keyHint": "platform.stability.ai/account/keys",
       "dashboard": "https://platform.stability.ai/account/credits",
+      "docs": ["https://docs.stability.ai/api-reference/stable-audio-2/text-to-audio", "https://docs.stability.ai/pricing"],
+      "asOf": "2026-11-17",
       "base": "https://api.stability.ai",
       "auth": {"header": "Authorization", "scheme": "Bearer "},
       "check": {"method": "GET", "url": "/v1/user/account"},
@@ -235,6 +312,8 @@
       "keyEnv": "REPLICATE_API_TOKEN",
       "keyHint": "replicate.com/account/api-tokens (they start with r8_)",
       "dashboard": "https://replicate.com/account/billing",
+      "docs": ["https://replicate.com/docs/reference/http"],
+      "asOf": "2026-11-17",
       "base": "https://api.replicate.com/v1",
       "auth": {"header": "Authorization", "scheme": "Bearer "},
       "check": {"method": "GET", "url": "/account"},
@@ -282,6 +361,8 @@
       "keyEnv": "KIE_API_KEY",
       "keyHint": "kie.ai/api-key",
       "dashboard": "https://kie.ai/billing",
+      "docs": ["https://docs.kie.ai/market/quickstart"],
+      "asOf": "2026-11-17",
       "base": "https://api.kie.ai",
       "auth": {"header": "Authorization", "scheme": "Bearer "},
       "creditUsd": 0.005,
@@ -326,12 +407,220 @@
         }
       }
     },
+    "runway": {
+      "name": "Runway",
+      "protocol": "async_task",
+      "keyEnv": "RUNWAY_API_KEY",
+      "keyHint": "dev.runwayml.com › your project › API keys",
+      "dashboard": "https://dev.runwayml.com/",
+      "docs": ["https://docs.dev.runwayml.com/api/", "https://docs.dev.runwayml.com/guides/pricing/", "https://dev.runway.com/learn/commercial-use"],
+      "asOf": "2026-11-18",
+      "terms": "Runway does not claim your outputs and does not restrict their commercial use (dev.runway.com/learn/commercial-use).",
+      "base": "https://api.dev.runwayml.com",
+      "auth": {"header": "Authorization", "scheme": "Bearer "},
+      "headers": {"X-Runway-Version": "2024-11-06"},
+      "check": {"method": "GET", "url": "/v1/organization"},
+      "balance": {"url": "/v1/organization", "require": "creditBalance", "left": "creditBalance", "unit": "credits"},
+      "creditUsd": 0.01,
+      "upload": {"kind": "data_uri", "maxBytes": 5242880},
+      "task": {"submit": {"method": "POST", "path": "/v1/image_to_video", "body": "{input}"}, "id": "id", "poll": "/v1/tasks/{id}", "status": "status",
+               "done": ["SUCCEEDED"], "failed": ["FAILED", "CANCELLED"], "output": "output.0", "error": "failure"},
+      "models": {
+        "gen4_turbo": {
+          "capability": "img2video", "label": "Runway Gen-4 Turbo image-to-video (9:16)", "licence": "commercial",
+          "price": {"usd": 0.05, "unit": "seconds", "source": "docs.dev.runwayml.com/guides/pricing (5 credits a second, $0.01 a credit)", "asOf": "2026-11-18"},
+          "files": {"prompt_image": "image"},
+          "input": {"model": "{model}", "promptImage": "{prompt_image}", "promptText": "{prompt}", "ratio": "720:1280", "duration": "{seconds:int}"}
+        },
+        "gen4.5": {
+          "capability": "img2video", "label": "Runway Gen-4.5 image-to-video (9:16)", "licence": "commercial",
+          "price": {"usd": 0.12, "unit": "seconds", "source": "docs.dev.runwayml.com/guides/pricing (12 credits a second, $0.01 a credit)", "asOf": "2026-11-18"},
+          "files": {"prompt_image": "image"},
+          "input": {"model": "{model}", "promptImage": "{prompt_image}", "promptText": "{prompt}", "ratio": "720:1280", "duration": "{seconds:int}"}
+        }
+      }
+    },
+    "minimax": {
+      "name": "MiniMax",
+      "protocol": "async_task",
+      "keyEnv": "MINIMAX_API_KEY",
+      "keyHint": "platform.minimax.io › Account Management › API Keys (pay-as-you-go)",
+      "dashboard": "https://platform.minimax.io/user-center/payment/balance",
+      "docs": ["https://platform.minimax.io/docs/api-reference/video-generation-v2-create", "https://platform.minimax.io/docs/api-reference/video-generation-v2-query",
+               "https://platform.minimax.io/docs/api-reference/speech-t2a-http", "https://platform.minimax.io/docs/pricing/overview",
+               "https://platform.minimax.io/docs/guides/music-generation", "https://platform.minimax.io/protocol/terms-of-service"],
+      "asOf": "2026-11-18",
+      "terms": "You keep the rights to what MiniMax makes (Terms of Service §3); MiniMax may use inputs and outputs to improve its services.",
+      "base": "https://api.minimax.io",
+      "auth": {"header": "Authorization", "scheme": "Bearer "},
+      "check": {"method": "GET", "url": "/v1/models"},
+      "balance": {"note": "MiniMax does not report a balance through its API. The dashboard shows it."},
+      "upload": {"kind": "data_uri", "maxBytes": 40000000},
+      "task": {"submit": {"method": "POST", "path": "/v2/video_generation", "body": "{input}"}, "id": "task_id", "poll": "/v2/query/video_generation/{id}",
+               "status": "task.status", "done": ["succeeded"], "failed": ["failed", "cancelled"], "output": "task.content.url", "error": "task.error.message"},
+      "models": {
+        "MiniMax-H3": {
+          "capability": "img2video", "label": "MiniMax H3 image-to-video (768P, first frame)", "licence": "commercial",
+          "price": {"usd": 0.08, "unit": "seconds", "source": "platform.minimax.io/docs/pricing/overview ($0.08 a second at 768P; an input image past the free quota $0.04)", "asOf": "2026-11-18"},
+          "files": {"image_url": "image"},
+          "input": {"model": "{model}", "resolution": "768P", "duration": "{seconds:int}",
+                    "content": [{"type": "text", "text": "{prompt}"}, {"type": "image_url", "image_url": {"url": "{image_url}"}, "role": "first_frame"}]}
+        },
+        "MiniMax-H3-Highspeed": {
+          "capability": "img2video", "label": "MiniMax H3 Highspeed image-to-video (768P, first frame)", "licence": "commercial",
+          "price": {"usd": 0.06, "unit": "seconds", "source": "platform.minimax.io/docs/pricing/overview ($0.06 a second at 768P)", "asOf": "2026-11-18"},
+          "files": {"image_url": "image"},
+          "input": {"model": "{model}", "resolution": "768P", "duration": "{seconds:int}",
+                    "content": [{"type": "text", "text": "{prompt}"}, {"type": "image_url", "image_url": {"url": "{image_url}"}, "role": "first_frame"}]}
+        },
+        "speech-2.8-hd": {
+          "capability": "voice", "protocol": "sync_http", "label": "MiniMax Speech 2.8 HD (direct; Japanese)", "licence": "commercial", "voiceDefault": "Japanese_CalmLady",
+          "maxChars": 10000,
+          "price": {"usd": 0.1, "unit": "1000 characters", "source": "platform.minimax.io/docs/pricing/overview ($100 per M characters)", "asOf": "2026-11-18"},
+          "path": "/v1/t2a_v2", "accept": "application/json", "result": "data.audio", "quantityField": "extra_info.usage_characters",
+          "bodyCode": "base_resp.status_code", "okCodes": [0], "bodyMessage": "base_resp.status_msg",
+          "input": {"model": "{model}", "text": "{text}", "stream": false, "language_boost": "Japanese", "output_format": "url",
+                    "voice_setting": {"voice_id": "{voice}", "speed": 1.1, "vol": 1.0, "pitch": 0},
+                    "audio_setting": {"sample_rate": 44100, "bitrate": 128000, "format": "mp3", "channel": 1}},
+          "conforms": true
+        },
+        "speech-2.8-turbo": {
+          "capability": "voice", "protocol": "sync_http", "label": "MiniMax Speech 2.8 Turbo (direct; Japanese)", "licence": "commercial", "voiceDefault": "Japanese_CalmLady",
+          "maxChars": 10000,
+          "price": {"usd": 0.06, "unit": "1000 characters", "source": "platform.minimax.io/docs/pricing/overview ($60 per M characters)", "asOf": "2026-11-18"},
+          "path": "/v1/t2a_v2", "accept": "application/json", "result": "data.audio", "quantityField": "extra_info.usage_characters",
+          "bodyCode": "base_resp.status_code", "okCodes": [0], "bodyMessage": "base_resp.status_msg",
+          "input": {"model": "{model}", "text": "{text}", "stream": false, "language_boost": "Japanese", "output_format": "url",
+                    "voice_setting": {"voice_id": "{voice}", "speed": 1.1, "vol": 1.0, "pitch": 0},
+                    "audio_setting": {"sample_rate": 44100, "bitrate": 128000, "format": "mp3", "channel": 1}},
+          "conforms": true
+        }
+      }
+    },
+    "higgsfield": {
+      "name": "Higgsfield",
+      "protocol": "async_task",
+      "keyEnv": "HIGGSFIELD_API_KEY",
+      "keyHint": "console.higgsfield.ai › API keys: paste '<key id>:<key secret>' as one value",
+      "dashboard": "https://console.higgsfield.ai",
+      "docs": ["https://docs.higgsfield.ai/docs/concepts/requests", "https://docs.higgsfield.ai/docs/concepts/file-uploads",
+               "https://docs.higgsfield.ai/docs/openapi.json", "https://higgsfield.ai/higgsfield-api",
+               "https://higgsfield.ai/creator-hub/help-center/account/who-owns-my-generations-and-can-i-use-them-commercially"],
+      "asOf": "2026-11-18",
+      "terms": "Higgsfield does not claim your outputs or restrict their commercial use (Terms of Use §4.4). Failed and moderated requests are not charged.",
+      "base": "https://api.higgsfield.ai",
+      "auth": {"header": "Authorization", "scheme": "Key "},
+      "check": {"method": "GET", "url": "/requests/00000000-0000-4000-8000-000000000000/status", "ok": [404]},
+      "balance": {"note": "Higgsfield does not report a balance through its API. The console shows it."},
+      "upload": {"kind": "presigned", "url": "/files/generate-upload-url", "body": {"content_type": "{content_type}"},
+                 "uploadUrl": "upload_url", "uploadHeaders": "upload_headers", "method": "PUT", "result": "public_url"},
+      "task": {"submit": {"method": "POST", "path": "/{model}", "body": "{input}"}, "id": "request_id", "pollUrl": "status_url",
+               "poll": "/requests/{id}/status", "status": "status", "done": ["completed"], "failed": ["failed", "nsfw", "canceled"],
+               "output": "video.url", "error": "error"},
+      "models": {
+        "kling-video/v2.5-turbo/standard/image-to-video": {
+          "capability": "img2video", "label": "Kling 2.5 Turbo Standard image-to-video (through Higgsfield)", "licence": "commercial",
+          "note": "higgsfield.ai/higgsfield-api lists Kling 2.5 from $0.0315 a second; the request's own estimate (POST /estimate/…) is authoritative.",
+          "price": {"usd": 0.0315, "unit": "seconds", "source": "higgsfield.ai/higgsfield-api (Kling 2.5, from $0.0315 a second)", "asOf": "2026-11-18"},
+          "files": {"image_url": "image"},
+          "input": {"prompt": "{prompt}", "image_url": "{image_url}", "negative_prompt": "{negative_prompt}", "duration": "{seconds:int}", "cfg_scale": 0.5}
+        }
+      }
+    },
+    "gemini": {
+      "name": "Google Gemini",
+      "protocol": "openai_chat",
+      "keyEnv": "GEMINI_API_KEY",
+      "keyHint": "aistudio.google.com/apikey (a key on a billing-enabled project)",
+      "dashboard": "https://aistudio.google.com/usage",
+      "docs": ["https://ai.google.dev/gemini-api/docs/openai", "https://ai.google.dev/gemini-api/docs/pricing", "https://ai.google.dev/gemini-api/docs/video"],
+      "asOf": "2026-11-18",
+      "terms": "Use a paid (billing-enabled) key: on the free tier Google may use prompts and answers to improve its products (ai.google.dev/gemini-api/docs/pricing).",
+      "base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "auth": {"header": "Authorization", "scheme": "Bearer "},
+      "chat": {"jsonMode": false, "extra": {"reasoning_effort": "low"}},
+      "check": {"method": "GET", "url": "/models"},
+      "balance": {"note": "Gemini does not report a balance through its API. AI Studio shows usage."},
+      "freeModels": ["llm", "vision"],
+      "models": {
+        "gemini-3.8-flash": {
+          "capability": "llm", "label": "Gemini 3.8 Flash (writing help, direct)", "licence": "commercial",
+          "note": "$0.75 / $3.75 per M tokens through 2026-12-31, then $1.50 / $7.50.",
+          "price": {"usd": 0.00000075, "unit": "prompt tokens", "completion": 0.00000375, "source": "ai.google.dev/gemini-api/docs/pricing", "asOf": "2026-11-18", "validUntil": "2026-12-31"}
+        },
+        "gemini-3.8-flash:vision": {
+          "id": "gemini-3.8-flash", "capability": "vision", "label": "Gemini 3.8 Flash (looks at still frames, direct)", "licence": "commercial",
+          "note": "Pictures through the OpenAI-compatible endpoint; the reviewer keeps watching video on OpenRouter.",
+          "price": {"usd": 0.00000075, "unit": "prompt tokens", "completion": 0.00000375, "source": "ai.google.dev/gemini-api/docs/pricing", "asOf": "2026-11-18", "validUntil": "2026-12-31"}
+        }
+      }
+    },
+    "piapi": {
+      "name": "PiAPI",
+      "protocol": "async_task",
+      "keyEnv": "PIAPI_API_KEY",
+      "keyHint": "piapi.ai/workspace › API key",
+      "dashboard": "https://app.piapi.ai",
+      "docs": ["https://piapi.ai/docs/kling-api/create-task", "https://piapi.ai/docs/kling-api/get-task", "https://piapi.ai/docs/overview",
+               "https://piapi.ai/docs/tools/file-upload", "https://piapi.ai/docs/sunsetting-suno"],
+      "asOf": "2026-11-18",
+      "terms": "PiAPI's pay-as-you-go jobs run on its own pool of consumer accounts (piapi.ai/docs/overview), not an official API contract with the model's maker: unofficial.",
+      "base": "https://api.piapi.ai",
+      "auth": {"header": "x-api-key", "scheme": ""},
+      "check": {"method": "GET", "url": "/account/info"},
+      "balance": {"note": "PiAPI's account info does not document its balance fields. The workspace shows it."},
+      "upload": {"kind": "json_base64", "url": "https://upload.theapi.app/api/ephemeral_resource", "result": "data.url",
+                 "bodyCode": "code", "okCodes": [200], "bodyMessage": "message"},
+      "task": {"submit": {"method": "POST", "path": "/api/v1/task", "body": {"model": "kling", "task_type": "video_generation", "input": "{input}"}},
+               "bodyCode": "code", "okCodes": [200], "bodyMessage": "message",
+               "id": "data.task_id", "poll": "/api/v1/task/{id}", "status": "data.status", "done": ["completed"], "failed": ["failed"],
+               "output": "data.output.video", "error": "data.error.message"},
+      "models": {
+        "kling-2.5-std": {
+          "capability": "img2video", "label": "Kling 2.5 Standard image-to-video (through PiAPI; unofficial)", "licence": "commercial", "risk": "unofficial",
+          "note": "PiAPI runs Kling on its own pool of Kling accounts, not an official Kling API contract. Never a default; pick it only knowingly.",
+          "price": {"usd": 0.2, "unit": "videos", "source": "piapi.ai/docs/kling-api/create-task ($0.20 for 5 s, std)", "asOf": "2026-11-18"},
+          "files": {"image_url": "image"},
+          "input": {"prompt": "{prompt}", "negative_prompt": "{negative_prompt}", "image_url": "{image_url}", "duration": 5, "aspect_ratio": "9:16",
+                    "mode": "std", "version": "2.5"}
+        }
+      }
+    },
+    "luma": {
+      "name": "Luma AI",
+      "protocol": "async_task",
+      "keyEnv": "LUMA_AGENTS_API_KEY",
+      "keyHint": "platform.lumalabs.ai › API keys (they start with luma-api-)",
+      "dashboard": "https://platform.lumalabs.ai",
+      "docs": ["https://docs.agents.lumalabs.ai/guides/videos/generation", "https://docs.agents.lumalabs.ai/guides/pricing",
+               "https://docs.agents.lumalabs.ai/guides/usage", "https://lumalabs.ai/legal/api-terms-of-use"],
+      "asOf": "2026-11-18",
+      "terms": "Luma's API Terms let you use the output; it must be disclosed as AI-generated (the studio's AI label does) and not resold as a standalone product.",
+      "base": "https://agents.lumalabs.ai",
+      "auth": {"header": "Authorization", "scheme": "Bearer "},
+      "check": {"method": "GET", "url": "/v1/credits"},
+      "balance": {"url": "/v1/credits", "require": "balance_credits", "left": "balance_credits", "unit": "credits"},
+      "upload": {"kind": "base64", "maxBytes": 50000000},
+      "task": {"submit": {"method": "POST", "path": "/v1/generations", "body": "{input}"}, "id": "id", "poll": "/v1/generations/{id}", "status": "state",
+               "done": ["completed"], "failed": ["failed"], "output": "output.0.url", "error": "failure_reason"},
+      "models": {
+        "ray-3.2": {
+          "capability": "img2video", "label": "Luma Ray 3.2 image-to-video (720p, start frame)", "licence": "commercial",
+          "note": "100 credits per 5 s at 720p; a credit's dollar value depends on your Luma plan, so enter what you pay before it runs.",
+          "files": {"image_data": "image"},
+          "input": {"model": "{model}", "type": "video", "prompt": "{prompt}", "aspect_ratio": "9:16",
+                    "video": {"resolution": "720p", "duration": "5s", "start_frame": {"data": "{image_data}", "media_type": "image/jpeg"}}}
+        }
+      }
+    },
     "own": {
       "name": "your own model server",
       "protocol": "openai_chat",
       "keyEnv": "STUDIO_LLM_API_KEY",
       "keyOptional": true,
       "keyHint": "only if your server asks for one",
+      "docs": ["https://docs.ollama.com/api/openai-compatibility"],
+      "asOf": "2026-11-17",
       "settings": "llm",
       "freeModels": ["llm", "vision"],
       "free": true,

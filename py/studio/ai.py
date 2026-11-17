@@ -27,7 +27,8 @@ DEPENDENCIES: Python stdlib, ffmpeg (studio build), cv2 (photo resize), studio.c
           Price chain: the provider's price API (fal, OpenRouter), else the registry's list price (warned after 90 days),
           else a price you entered (`save-price`), else the call is refused (code no_price): the limits need a number.
 USAGE: python -m studio.ai <status|estimate|run|review|last-review|check-key|save-key|save-caps|credits|save-llm|
-       llm-presets|providers|select|save-price|voices>
+       llm-presets|providers|select|save-price|voices|workflow|workflow-apply|workflow-undo|spend-month>
+       (the last four are studio.workflow's: the Workflow page, its templates, Undo, and this month's spend)
        (request JSON on stdin) prints one line: RESULT {"ok": true, "data": {...}}
                                              or RESULT {"ok": false, "error": "...", "code": "...", "status": 4xx|5xx}
        `run` also prints STAGE n/N and PROGRESS lines for the studio's job view.
@@ -205,7 +206,7 @@ def _usd(x: float) -> str:
 def over_caps(slug: str, usd: float, used: dict | None = None) -> str | None:
     """The plain sentence that refuses `usd` more for `slug`, or None when it fits every cap."""
     c, s = caps(), used or spent(slug)
-    if s["reel"] + usd > c["reel"] + 1e-9:
+    if slug and s["reel"] + usd > c["reel"] + 1e-9:  # a call for no reel (research, word ideas) has no per-reel limit
         return (f"That would spend {_usd(usd)} on {slug}, which already used {_usd(s['reel'])} of its {_usd(c['reel'])} AI limit. "
                 "Pick fewer tools, or raise the per-reel limit in Settings › AI.")
     if s["total"] + usd > c["total"] + 1e-9:
@@ -217,16 +218,18 @@ def over_caps(slug: str, usd: float, used: dict | None = None) -> str | None:
     return None
 
 
-def charge(provider: str, model: str, tool: str, slug: str, estimate: float, call, note: str = ""):
+def charge(provider: str, model: str, tool: str, slug: str | None, estimate: float, call, note: str = "", purpose: str | None = None):
     """Run one paid call inside the caps. `call()` returns (result, actual_usd or None).
     The estimate is reserved first (so two calls at once cannot both squeeze under a cap), then replaced
     by the actual cost, or by the estimate when the provider does not report one. A call that failed
-    before the provider billed it is recorded at $0."""
+    before the provider billed it is recorded at $0. slug None: a call for no reel (research's writing help),
+    held to the daily budget and the AI total but not to a reel's limit; `purpose` then names its ledger row
+    ("research", "words-suggest") instead of ai-<tool>."""
     from studio.db import connect
 
     with connect() as con:
         con.execute("BEGIN IMMEDIATE")
-        s = {"reel": con.execute("SELECT COALESCE(SUM(usd), 0) FROM spend WHERE purpose LIKE ? AND slug = ?", (PURPOSE + "%", slug)).fetchone()[0],
+        s = {"reel": con.execute("SELECT COALESCE(SUM(usd), 0) FROM spend WHERE purpose LIKE ? AND slug = ?", (PURPOSE + "%", slug)).fetchone()[0] if slug else 0.0,
              "total": con.execute("SELECT COALESCE(SUM(usd), 0) FROM spend WHERE purpose LIKE ?", (PURPOSE + "%",)).fetchone()[0],
              "today": con.execute("SELECT COALESCE(SUM(usd), 0) FROM spend WHERE ts LIKE ?", (date.today().isoformat() + "%",)).fetchone()[0]}
         why = over_caps(slug, estimate, s)
@@ -234,7 +237,7 @@ def charge(provider: str, model: str, tool: str, slug: str, estimate: float, cal
             con.rollback()
             raise AiError(why, "cap", 402)
         cur = con.execute("INSERT INTO spend (ts, model, purpose, usd, tokens_in, tokens_out, note, provider, slug) VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?)",
-                          (datetime.now().isoformat(timespec="seconds"), model, PURPOSE + tool, float(estimate), "pending " + note, provider, slug))
+                          (datetime.now().isoformat(timespec="seconds"), model, purpose or PURPOSE + tool, float(estimate), "pending " + note, provider, slug))
         row = cur.lastrowid
     try:
         result, actual = call()
@@ -339,9 +342,9 @@ def model_prices(model: str) -> dict:
             keep = {}
             for m in _json(raw).get("data") or []:
                 mods = (m.get("architecture") or {}).get("input_modalities") or []
-                if "video" in mods:
-                    p = m.get("pricing") or {}
-                    keep[m["id"]] = {"prompt": float(p.get("prompt") or 0), "completion": float(p.get("completion") or 0), "video": True}
+                p = m.get("pricing") or {}
+                if m.get("id") and isinstance(p, dict):  # every model: a writing model asked for by name is priced here too
+                    keep[m["id"]] = {"prompt": float(p.get("prompt") or 0), "completion": float(p.get("completion") or 0), "video": "video" in mods}
             _write(f, {"at": time.time(), "models": keep})
             if model in keep:
                 return keep[model]
@@ -383,7 +386,12 @@ def list_price(provider: str, model: str) -> dict | None:
         age = 9999
     stale = age > int(registry.load().get("staleDays") or 90)
     out = {"unit_price": float(p["usd"]), "unit": p["unit"], "source": f"{p['source']} {p['asOf']}", "asOf": p["asOf"], "stale": stale}
-    if stale:
+    if p.get("validUntil") and date.today().isoformat() > str(p["validUntil"]):
+        # A list price the provider said would change on a known day (Gemini's Flash doubles on 2027-01-01).
+        out["stale"] = True
+        out["warning"] = (f"{PROVIDER_NAMES.get(provider, provider)}'s list price for {model} held until {p['validUntil']}. "
+                          "Check today's price, or enter it in Settings › AI.")
+    elif stale:
         out["warning"] = (f"{PROVIDER_NAMES.get(provider, provider)}'s list price for {model} was read on {p['asOf']}, over "
                           f"{registry.load().get('staleDays') or 90} days ago. Check it, or enter today's price in Settings › AI.")
     return out
@@ -794,8 +802,8 @@ def download(url: str, dest: Path, who: str = "fal.ai") -> Path:
 
 # ---------- any provider: one model call, through its protocol adapter ----------
 
-def _upload(ctx: base.Ctx, path: Path, content_type: str) -> str:
-    proto = ctx.provider["protocol"]
+def _upload(ctx: base.Ctx, path: Path, content_type: str, proto: str | None = None) -> str:
+    proto = proto or ctx.provider["protocol"]
     if proto == "fal_queue":
         return fal_queue.upload(ctx, Path(path), content_type)
     if proto == "async_task":
@@ -812,25 +820,27 @@ def _generate(item: dict, values: dict, files: dict | None = None) -> dict:
     m = _model(pid, mid)
     cap = m.get("capability") or registry.tools()[item["tool"]]["capability"]
     ctx = _ctx(pid)
-    proto = ctx.provider["protocol"]
-    vals = {**values}
+    proto = base.protocol_of(ctx.provider, m)  # a model may speak another protocol than its provider's chat (OpenRouter video)
+    remote = m.get("id") or mid
+    vals = {"model": remote, **values}
+    if isinstance(vals.get("seconds"), (int, float)):  # some APIs take milliseconds (ElevenLabs music_length_ms)
+        vals.setdefault("ms", int(round(float(vals["seconds"]) * 1000)))
     for name, kind in (m.get("files") or {}).items():
         if not files or kind not in files:
             raise AiError(f"{m.get('label') or mid} needs a {kind}, which this step does not have.", "bad_input", 400)
         if not ctx.key:
             raise AiError(f"Add your {ctx.name} key in Settings › AI.", "no_key", 400)
-        vals[name] = _upload(ctx, *files[kind])
+        vals[name] = _upload(ctx, *files[kind], proto=proto)
     deadline = float(registry.capability(cap).get("deadline") or FAL_TIMEOUT)
-    remote = m.get("id") or mid
     if proto == "fal_queue":
         out = fal_queue.run(ctx, remote, base.finish(m.get("input") or {}, vals), deadline)
         return {"url": base.first_url(base.dig(out, m.get("output") or "")), "raw": out, "cost": None, "billed": None}
     if proto == "async_task":
         got = async_task.run(ctx, remote, m, base.finish(m.get("input") or {}, vals), deadline)
-        return {"url": base.first_url(got["output"]), "raw": got["raw"], "cost": got["cost"], "billed": None}
+        return {"url": base.first_url(got["output"]), "raw": got["raw"], "cost": got["cost"], "billed": None, "headers": got.get("headers")}
     if proto == "sync_http":
         got = sync_http.run(ctx, remote, m, vals)
-        return {"bytes": got["bytes"], "type": got["type"], "raw": {}, "cost": None, "billed": got["billed"]}
+        return {"bytes": got["bytes"], "url": got.get("url"), "type": got["type"], "raw": {}, "cost": None, "billed": got["billed"]}
     raise AiError(f"{ctx.name} answers in text ({proto}); it cannot make this step.", "bad_input", 400)
 
 
@@ -849,7 +859,10 @@ def _save_output(item: dict, gen: dict, dest: Path) -> Path:
     """The model's output on disk now (a URL is downloaded at once: some expire within the hour)."""
     if gen.get("bytes") is not None:
         return phttp.write(gen["bytes"], Path(dest))
-    return download(gen.get("url") or "", Path(dest), PROVIDER_NAMES.get(item["provider"], item["provider"]))
+    who = PROVIDER_NAMES.get(item["provider"], item["provider"])
+    if gen.get("headers"):  # a result URL that needs the key too (OpenRouter's unsigned_urls)
+        return phttp.download(gen.get("url") or "", Path(dest), who, http=_http, headers=gen["headers"])
+    return download(gen.get("url") or "", Path(dest), who)
 
 
 def _actual(item: dict, gen: dict) -> float | None:
@@ -1411,6 +1424,72 @@ def _review_model(req: dict | None = None, env: bool = True) -> str:
     return str(req.get("model") or (_env("STUDIO_AI_REVIEW_MODEL") if env else "") or picked or REVIEW_MODEL)
 
 
+def chat_price(provider: str, model: str) -> dict | None:
+    """{prompt, completion (USD per token), source} for a chat model (llm, vision): its registry list price (or the price
+    of the provider's registered model with the same id), else OpenRouter's own price list for a model asked for by name,
+    else None (the call is refused: no_price)."""
+    p = registry.provider(provider)
+    m = registry.model(provider, model)
+    if not m:
+        m = next((v for k, v in (p.get("models") or {}).items() if (v.get("id") or k) == model and (v.get("price") or {}).get("completion") is not None), None)
+    price = (m or {}).get("price") or {}
+    if isinstance(price.get("usd"), (int, float)) and isinstance(price.get("completion"), (int, float)):
+        listed = list_price(provider, model) if registry.model(provider, model) else None
+        return {"prompt": float(price["usd"]), "completion": float(price["completion"]),
+                "source": f"{price.get('source')} {price.get('asOf')}", **({"warning": listed["warning"]} if listed and listed.get("warning") else {})}
+    if p.get("priceApi") == "openrouter":
+        row = model_prices(model)
+        if row and model in ((_read(HOME / "openrouter-models.json") or {}).get("models") or {}):
+            return {"prompt": row["prompt"], "completion": row["completion"], "source": "OpenRouter models API"}
+    return None
+
+
+def chat_target(cap: str) -> dict | None:
+    """Where this project's writing (llm) or picture (vision) questions go, from its workflow block or the registry's
+    default: {provider, model, remote, url, chat (the provider's and model's `chat` options), openrouter}. None when the
+    block names your own server, no provider, or a provider that does not speak the chat protocol."""
+    b = block(cap)
+    pid, mid = b["provider"], b["model"]
+    if not pid or not mid or pid == "own":
+        return None
+    p, m = registry.provider(pid), _model(pid, mid)
+    if base.protocol_of(p, m) != "openai_chat":
+        return None
+    return {"provider": pid, "model": mid, "remote": m.get("id") or mid, "url": openai_chat.endpoint(p), "on": b["on"],
+            "source": b["source"], "chat": {**(p.get("chat") or {}), **(m.get("chat") or {})}, "openrouter": pid == "openrouter"}
+
+
+def _vision_elsewhere(t: dict, images: list[Path], system: str, prompt: str, slug: str, purpose: str, max_tokens: int) -> dict:
+    """vision_json on a chat provider other than OpenRouter (Together, Gemini), picked in this project's vision block:
+    its key, its registered price, charged like every AI call."""
+    pid, name = t["provider"], PROVIDER_NAMES.get(t["provider"], t["provider"])
+    key = key_for(pid)
+    if not key:
+        raise AiError(f"No {name} key: add one in Settings › AI, or pick another vision model.", "no_key", 400)
+    price = chat_price(pid, t["model"])
+    if price is None:
+        raise no_price(pid, t["model"])
+    content = [{"type": "text", "text": prompt}] + [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(Path(p).read_bytes()).decode("ascii")}} for p in images]
+    payload = {"model": t["remote"], "messages": [{"role": "system", "content": system}, {"role": "user", "content": content}],
+               "max_tokens": max_tokens, "temperature": 0.2, **(t["chat"].get("extra") or {})}
+    if t["chat"].get("jsonMode"):
+        payload["response_format"] = {"type": "json_object"}
+    est = round((len(images) * 1400 + len(prompt) // 3 + 600) * price["prompt"] + max_tokens * price["completion"], 4)
+
+    def call():
+        status, headers, body = openai_chat.post(_http, t["url"], payload, name, key, timeout=180)
+        if status >= 400 or body.get("error"):
+            raise _provider_error(pid, status if status >= 400 else 502, body.get("error") if isinstance(body.get("error"), dict) else body, headers)
+        actual, tin, tout = openai_chat.usage(body, price)
+        try:
+            return {"out": openai_chat.json_of(openai_chat.text_of(body)), "_tokens": (tin, tout)}, actual
+        except (KeyError, IndexError, TypeError, ValueError):
+            raise AiError("The vision model sent back no JSON.", "upstream", 502, charged=True) from None
+
+    got, _ = charge(pid, t["remote"], purpose, slug, est, call, note=f"{len(images)} pictures")
+    return got["out"]
+
+
 def vision_json(images: list[Path], system: str, prompt: str, slug: str, purpose: str = "vision", max_tokens: int = 1200) -> dict:
     """One question about a few pictures (JPEGs) to the reviewer's vision model, answered as JSON. Priced first, charged to
     the ledger as ai-<purpose> for `slug`, refused over a limit like every other AI call. With your own vision model set
@@ -1432,6 +1511,9 @@ def vision_json(images: list[Path], system: str, prompt: str, slug: str, purpose
             return openai_chat.json_of(openai_chat.text_of(body))
         except (KeyError, IndexError, TypeError, ValueError, AttributeError):
             raise AiError(f"Your model ({own['model']}) sent back no JSON.", "upstream", 502) from None
+    t = chat_target("vision")
+    if t and t["on"] and t["provider"] != "openrouter" and t["source"] == "workflow":
+        return _vision_elsewhere(t, images, system, prompt, slug, purpose, max_tokens)
     key = reviewer_key()
     if not key:
         raise AiError("No OpenRouter key: add one in Settings › Keys & AI.", "no_key", 400)
@@ -1760,7 +1842,9 @@ def check_key(req: dict) -> dict:
     ctx = _ctx(provider, key)
     chk = p.get("check") or {}
     st, h, raw = _http(chk.get("method", "GET"), ctx.url(chk["url"]), name, headers=ctx.auth(), timeout=30)
-    if st >= 400:
+    # `ok`: statuses that still mean the key was accepted (Higgsfield has no free key check: an unknown request's
+    # status answers 404 to a good key and 401 to a bad one).
+    if st >= 400 and st not in (chk.get("ok") or []):
         raise _provider_error(provider, st, _json(raw), h)
     bad = base.body_error(ctx, _json(raw), p.get("task") or {})  # kie.ai answers 200 with {"code": 401} in the body
     if bad:
@@ -2182,7 +2266,17 @@ def voices(req: dict) -> dict:
 ACTIONS = {"status": status, "estimate": estimate, "run": run, "review": review, "last-review": last_review,
            "check-key": check_key, "save-key": save_key, "save-caps": save_caps, "credits": credits,
            "save-llm": save_llm, "llm-presets": llm_presets, "providers": providers_view, "select": select, "save-price": save_price,
-           "voices": voices}
+           "voices": voices,
+           # The Workflow page (studio.workflow): the pipeline's blocks, templates with a preview, apply with a backup,
+           # undo, and this month's spend by capability and provider. Imported when asked (it imports this module).
+           "workflow": lambda req: _workflow().view(req), "workflow-apply": lambda req: _workflow().apply(req),
+           "workflow-undo": lambda req: _workflow().undo(req), "spend-month": lambda req: _workflow().spend_month(req)}
+
+
+def _workflow():
+    from studio import workflow as wf
+
+    return wf
 
 
 def call(action: str, req: dict) -> dict:

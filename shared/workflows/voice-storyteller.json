@@ -1,0 +1,20 @@
+{
+ "id": "voice-storyteller",
+ "order": 2,
+ "icon": "volume",
+ "name": {"en": "Voice-over storyteller", "ja": "ナレーションで語る"},
+ "summary": {"en": "A calm Japanese voice reads the approved words over a quiet music bed, with natural sound under silent shots. The headline sits behind the subject of the opening shot.",
+             "ja": "落ち着いた日本語の声が承認済みの言葉を読み、静かな音楽と、音のないカットには自然な環境音を重ねます。冒頭のカットでは見出しが被写体の後ろに入ります。"},
+ "who": {"en": "For reels that explain a place or a day: work, carstay, how things are done.", "ja": "場所や一日を説明するリールに。仕事、車中泊、やり方の紹介など。"},
+ "tags": ["voice", "cloud"],
+ "blocks": {
+  "voice": {"on": true, "provider": "fal", "model": "fal-ai/minimax/speech-02-hd"},
+  "music": {"on": true, "provider": "fal", "model": "fal-ai/stable-audio-25/text-to-audio"},
+  "sfx": {"on": true, "provider": "fal", "model": "fal-ai/mmaudio-v2"},
+  "bg-cut": {"on": true, "provider": "fal", "model": "fal-ai/birefnet/v2/video"},
+  "img2video": {"on": false},
+  "upscale": {"on": false},
+  "slowmo": {"on": false},
+  "vision": {"provider": "@default"}
+ }
+}

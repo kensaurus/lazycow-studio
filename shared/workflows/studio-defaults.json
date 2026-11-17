@@ -1,0 +1,15 @@
+{
+ "id": "studio-defaults",
+ "order": 6,
+ "icon": "refresh",
+ "name": {"en": "Studio defaults", "ja": "スタジオの初期設定"},
+ "summary": {"en": "Every block back to the service the studio ships with, all switched on. Prices you entered are kept.",
+             "ja": "すべてのブロックをスタジオ標準のサービスに戻し、オンにします。入力した料金はそのまま残ります。"},
+ "who": {"en": "For starting over after trying other services.", "ja": "ほかのサービスを試したあと、元に戻したいときに。"},
+ "tags": ["reset"],
+ "blocks": {
+  "voice": {"provider": "@default"}, "music": {"provider": "@default"}, "sfx": {"provider": "@default"},
+  "upscale": {"provider": "@default"}, "slowmo": {"provider": "@default"}, "img2video": {"provider": "@default"},
+  "bg-cut": {"provider": "@default"}, "vision": {"provider": "@default"}
+ }
+}

@@ -1,0 +1,20 @@
+{
+ "id": "low-cost-cloud",
+ "order": 4,
+ "icon": "wave",
+ "name": {"en": "Low-cost cloud", "ja": "低コストのクラウド"},
+ "summary": {"en": "The cheapest service per job among those you have a key for: voice, music, natural sound and slow motion stay on; sharpening, moving photos and cut-outs, the costly ones, stay off.",
+             "ja": "キーを登録したサービスの中から、作業ごとにいちばん安いものを選びます。声、音楽、環境音、スローモーションは使い、費用のかかるシャープ化、写真の動き、切り抜きは使いません。"},
+ "who": {"en": "For posting every day while keeping AI to a few cents a reel.", "ja": "毎日投稿しながら、AIの費用を1本数セントに抑えたいときに。"},
+ "tags": ["cheap", "cloud"],
+ "blocks": {
+  "voice": {"on": true, "provider": "@cheapest"},
+  "music": {"on": true, "provider": "@cheapest"},
+  "sfx": {"on": true, "provider": "@cheapest"},
+  "slowmo": {"on": true, "provider": "@cheapest"},
+  "upscale": {"on": false},
+  "img2video": {"on": false},
+  "bg-cut": {"on": false},
+  "vision": {"provider": "@default"}
+ }
+}

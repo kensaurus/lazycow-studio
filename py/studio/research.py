@@ -760,48 +760,88 @@ def _own_llm(system: str, user: str, max_tokens: int) -> dict | None:
     return out
 
 
+def _llm_route() -> tuple[str, str, dict] | None:
+    """(provider, model, chat target) for the writing jobs: this project's llm block (Settings › AI, workflow.json), else
+    OpenRouter with the studio's writing model (shared/spec.json openrouter.edlModel). None: switched off, or the block
+    names a provider that does not speak the chat protocol."""
+    from studio import ai
+
+    b = ai.block("llm")
+    if not b["on"]:
+        return None
+    if b["provider"] and b["provider"] != "own":
+        t = ai.chat_target("llm")
+        return (t["provider"], t["model"], t) if t else None
+    p = ai.registry.provider("openrouter")
+    mid = SPEC["openrouter"]["edlModel"]
+    return "openrouter", mid, {"provider": "openrouter", "model": mid, "remote": mid, "url": ai.openai_chat.endpoint(p),
+                               "chat": dict(p.get("chat") or {}), "openrouter": True, "on": True, "source": "default"}
+
+
 def _llm(system: str, user: str, purpose: str = "research", max_tokens: int = 700) -> dict | None:
-    """OpenRouter through the studio's daily USD budget (studio.edl's model), or your own model server when one is set
-    (STUDIO_LLM_BASE_URL). None when off, over budget or failing."""
+    """A writing job (post angles, word ideas) answered as JSON by the llm block's provider: OpenRouter by default, or
+    any chat provider picked in Settings › AI (Together, Gemini), priced first and charged through studio.ai.charge()
+    (the daily budget and the AI total; the ledger row keeps `purpose`). Your own model server (STUDIO_LLM_BASE_URL)
+    answers instead when it is set and the project picked nothing else, or picked it: free. None when off, without a
+    key or a price, over budget or failing (callers fall back to their templates)."""
+    from studio import ai
     from studio.config import own_llm
 
-    if own_llm():
+    b = ai.block("llm")
+    if b["on"] and own_llm() and b["provider"] in (None, "own"):
         return _own_llm(system, user, max_tokens)
-    if not _llm_key():
+    route = _llm_route()
+    if not route:
+        return None
+    pid, model, t = route
+    key = _llm_key() if pid == "openrouter" else ai.key_for(pid)
+    if not key:
         return None
     from studio.db import connect, spent_today
 
     with connect() as con:
         if spent_today(con) >= daily_budget():
             return None
-    model = SPEC["openrouter"]["edlModel"]
-    payload = {"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-               "response_format": {"type": "json_object"}, "max_tokens": max_tokens + 2000,
-               # Thinking models spend the reply budget on reasoning and cut the JSON off: keep it short.
-               "reasoning": {"effort": "low"}}
-    ck = _cache_key("openrouter", payload)
+    payload = {"model": t["remote"], "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+               "max_tokens": max_tokens + 2000,
+               # The provider's own options (registry `chat.extra`): OpenRouter's reasoning effort low, so a thinking model
+               # does not spend the reply budget on reasoning and cut the JSON off.
+               **(t["chat"].get("extra") or {})}
+    if t["chat"].get("jsonMode", pid == "openrouter"):
+        payload["response_format"] = {"type": "json_object"}
+    ck = _cache_key("openrouter" if pid == "openrouter" else f"llm-{pid}", payload)
     hit = _cache_get(ck)
     if hit is not None:
         return hit
+    price = ai.chat_price(pid, model)
+    if price is None:  # nothing in the price chain knows it: the limits need a number, so it is not asked
+        return None
+    est = round((len(system) + len(user)) / 2 * price["prompt"] + (max_tokens + 500) * price["completion"], 6)
+
+    def call():
+        try:
+            status, _, raw = _http("POST", t["url"], data=json.dumps(payload).encode("utf-8"),
+                                   headers=ai.openai_chat.headers(key, openrouter=t["openrouter"]), timeout=60)
+        except ResearchError as err:
+            raise ai.AiError(str(err), err.code, err.status, charged=err.code == "timeout") from None
+        body = _json(raw)
+        if status >= 400:
+            raise ai.AiError(f"{pid} refused the writing request ({status}).", "upstream", 502)
+        actual, tin, tout = ai.openai_chat.usage(body, price)
+        try:
+            out = ai.openai_chat.json_of(ai.openai_chat.text_of(body))
+        except (KeyError, IndexError, TypeError, ValueError, AttributeError):
+            out = None
+        return {"out": out, "_tokens": (tin, tout)}, actual
+
     try:
-        status, _, raw = _http("POST", OPENROUTER, data=json.dumps(payload).encode("utf-8"),
-                               headers={"Authorization": f"Bearer {_llm_key()}", "Content-Type": "application/json"}, timeout=60)
-    except ResearchError:
+        got, _ = ai.charge(pid, t["remote"], "research", None, est, call, note="research", purpose=purpose)
+    except ai.AiError:
         return None
-    body = _json(raw)
-    if status >= 400:
+    out = got["out"]
+    if not isinstance(out, dict):
         return None
-    usage = body.get("usage") or {}
-    tin, tout = int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0)
-    usd = tin / 1e6 * SPEC["openrouter"]["usdPerMInput"] + tout / 1e6 * SPEC["openrouter"]["usdPerMOutput"]
-    with connect() as con:
-        con.execute("INSERT INTO spend (ts, model, purpose, usd, tokens_in, tokens_out, note) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (datetime.now().isoformat(timespec="seconds"), model, purpose, usd, tin, tout, "research"))
-    try:
-        out = json.loads(body["choices"][0]["message"]["content"])
-    except (KeyError, IndexError, TypeError, ValueError):
-        return None
-    _cache_put(ck, "openrouter", out)
+    _cache_put(ck, "openrouter" if pid == "openrouter" else f"llm-{pid}", out)
     return out
 
 
