@@ -14,7 +14,7 @@ If you run the studio for a company with more than three people, buy a Remotion 
 
 ## The studio's own code
 
-The code in this repository (`server/`, `py/studio/`, `src/`, `shared/`, `test/`, `scripts/`) is © kensaurus LLC and contributors, under the [Apache License 2.0](LICENSE). The names and icon are not: see [TRADEMARKS.md](TRADEMARKS.md).
+The code in this repository (`server/`, `py/studio/`, `src/`, `shared/`, `test/`, `scripts/`) is © kensaurus LLC and contributors, under the [Apache License 2.0](../LICENSE). The names and icon are not: see [TRADEMARKS.md](TRADEMARKS.md).
 
 Remotion is a dependency you install with `npm ci`, not part of this code, so its licence applies to you as the person running it, not to this repository's licence.
 

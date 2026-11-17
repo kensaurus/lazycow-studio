@@ -23,7 +23,7 @@ Finds the studio by STUDIO_PORT / STUDIO_API_TOKEN, else LAZYCOW_DIR's .env, els
 Approving a reel stays a person's job in the studio. Agents and scripts cannot approve.
 
 Code:     https://github.com/kensaurus/lazycow-studio  (Apache-2.0, keep the NOTICE)
-Support:  https://github.com/kensaurus/lazycow-studio/blob/main/SUPPORTING.md`;
+Support:  https://github.com/kensaurus/lazycow-studio/blob/main/docs/SUPPORTING.md`;
 
 function flag(name) {
   const i = rest.indexOf(name);

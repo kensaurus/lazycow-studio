@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Thanks for reporting. Please leave out keys, tokens, account names and footage you do not want public.
-        A security problem goes to Security › Report a vulnerability instead (SECURITY.md).
+        A security problem goes to Security › Report a vulnerability instead (.github/SECURITY.md).
   - type: textarea
     id: what
     attributes:

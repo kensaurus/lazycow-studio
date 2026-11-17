@@ -16,7 +16,7 @@ test("every support link is a live-mode Stripe checkout or portal address", () =
 });
 
 test("README, SUPPORTING.md and FUNDING.yml show the same links, and nothing points at GitHub Sponsors", () => {
-  const readme = read("README.md"), page = read("SUPPORTING.md"), funding = read(".github/FUNDING.yml");
+  const readme = read("README.md"), page = read("docs/SUPPORTING.md"), funding = read(".github/FUNDING.yml");
   for (const u of links) {
     assert.ok(readme.includes(u), `README: ${u}`);
     assert.ok(page.includes(u), `SUPPORTING.md: ${u}`);
@@ -25,7 +25,7 @@ test("README, SUPPORTING.md and FUNDING.yml show the same links, and nothing poi
   assert.ok(page.includes(support.manage), "how to cancel");
   // docs/ranch-workspace.md is the maintainer's own and stays out of the public copy (scripts/public-export.json).
   const own = ["docs/ranch-workspace.md"].filter((f) => existsSync(new URL(`../${f}`, import.meta.url)));
-  for (const f of ["README.md", "SUPPORTING.md", "package.json", "server/editor.html", "server/review.mjs", "packages/lazycow/README.md", ...own]) {
+  for (const f of ["README.md", "docs/SUPPORTING.md", "package.json", "server/editor.html", "server/review.mjs", "packages/lazycow/README.md", ...own]) {
     assert.doesNotMatch(read(f), /github\.com\/sponsors\//, f);
   }
   assert.doesNotMatch(page, /寄付します|donate now/i, "a payment for a service, never called a donation");

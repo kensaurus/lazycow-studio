@@ -68,6 +68,8 @@ const ABOUT = {
   licence: "Apache-2.0 (from the public release; until then all rights reserved)",
   credit: "Based on Lazycow Studio by kensaurus", docs: ["NOTICE", "TRADEMARKS.md", "THIRD_PARTY_NOTICES.md", "CHANGELOG.md"],
 };
+// The About window asks by name; the community and legal papers live in docs/ (17 Nov: fewer files at the top).
+const DOC_PATHS = { NOTICE: "NOTICE", "TRADEMARKS.md": "docs/TRADEMARKS.md", "THIRD_PARTY_NOTICES.md": "docs/THIRD_PARTY_NOTICES.md", "CHANGELOG.md": "CHANGELOG.md" };
 const DOC_FILES = new Set(ABOUT.docs);
 /** .env fills STUDIO_* when the shell did not export them, so a clone runs with one file. */
 function envFile() {
@@ -2011,8 +2013,8 @@ const server = createServer(async (req, res) => {
     /* The credits and licence texts themselves, readable from the About window (only these files). */
     if (req.method === "GET" && url.pathname.startsWith("/docs/")) {
       const name = decodeURIComponent(url.pathname.slice(6));
-      if (!DOC_FILES.has(name) || !existsSync(join(ROOT, name))) return send(res, 404, "no", "text/plain");
-      return sendText(res, 200, readFileSync(join(ROOT, name), "utf8"), { "content-type": "text/plain; charset=utf-8", "cache-control": "no-cache" });
+      if (!DOC_FILES.has(name) || !DOC_PATHS[name] || !existsSync(join(ROOT, DOC_PATHS[name]))) return send(res, 404, "no", "text/plain");
+      return sendText(res, 200, readFileSync(join(ROOT, DOC_PATHS[name]), "utf8"), { "content-type": "text/plain; charset=utf-8", "cache-control": "no-cache" });
     }
     if (req.method === "GET" && url.pathname === "/api/health") {
       return send(res, 200, healthView());
@@ -3334,7 +3336,7 @@ process.on("unhandledRejection", (err) => console.error(`${new Date().toISOStrin
 // Registered once, so a start that retried several times still starts one helper.
 server.once("listening", () => {
   // The token is shown only in a terminal: when this output goes to server.log (a restart, autostart) it would sit in a file
-  // that backups of the data folder and the studio's own file route can read (SECURITY.md: never in a log).
+  // that backups of the data folder and the studio's own file route can read (.github/SECURITY.md: never in a log).
   const tokenPart = !API_TOKEN ? "" : process.stdout.isTTY ? `?token=${encodeURIComponent(API_TOKEN)}` : "?token=<STUDIO_API_TOKEN in .env>";
   console.log(`review http://127.0.0.1:${PORT}/${tokenPart} (build ${BUILD})`);
   // Work that runs before the port is free (a restart waiting for the old server to let go) may have started the
