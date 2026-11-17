@@ -1156,6 +1156,47 @@ paths:
                   themes: { type: integer }
                   asOf: { type: string }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/footage/places:
+    get:
+      tags: [Footage]
+      operationId: getFootagePlaces
+      summary: Where the footage was filmed, grouped on a ~100 m grid, with the home place (cached 10 minutes).
+      description: "Read only. Library files with a GPS position (EXIF, or a drone's flight log) are grouped on a 0.001 degree grid; each group gives the grid point, never a file's own position. Files without a position are only counted."
+      parameters:
+        - name: fresh
+          in: query
+          schema: { type: string, enum: ["1"] }
+          description: "1 recounts instead of using the cache."
+      responses:
+        "200":
+          description: Clustered positions (py/studio/footage.py `places`).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  home:
+                    description: The home place (the ranch) and its radius, or null when the project has none.
+                    type: object
+                    nullable: true
+                    properties: { lat: { type: number }, lon: { type: number }, radiusKm: { type: number } }
+                  clusters:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        lat: { type: number, description: Grid point, rounded to 3 decimals. }
+                        lon: { type: number, description: Grid point, rounded to 3 decimals. }
+                        clips: { type: integer }
+                        videos: { type: integer }
+                        unused: { type: integer }
+                        km: { type: number, nullable: true, description: Distance from the home place. }
+                        home: { type: boolean, description: Inside the home place's radius. }
+                        ids: { type: array, items: { type: integer }, description: The library ids in this group (the page filters by them). }
+                  placed: { type: integer }
+                  unplaced: { type: integer }
+                  gridM: { type: integer }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/footage/cameras:
     post:
       tags: [Footage]
@@ -2109,6 +2150,17 @@ paths:
         - { name: kind, in: query, required: true, schema: { type: string, enum: [master, hook] } }
       responses:
         "200": { description: The file (byte ranges supported). }
+  /api/versions/shots:
+    get:
+      tags: [Posting]
+      operationId: versionShots
+      summary: Read only. Each version of one reel as a shot strip (each shot's file, place in time, length and thumbnail; the words with their times; look, type, palette, layout and music), with its review score, the review's basis (video or frames) and the verdict, newest first. Versions › shot diff.
+      parameters:
+        - { name: slug, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: "{ slug, versions: [{ n, status, made, why, verdict, review: { hook, look, mismatches, basis, at } | null, seconds, look, grade, typeKit, palette, style, music, shots: [{ file, at, sec, from, thumb }], beats: [{ kind, ja, en, at, end }] }] }"
+        "400": { description: "{ error: slug }" }
   /api/versions/recut:
     post:
       tags: [Posting]
@@ -3190,6 +3242,135 @@ paths:
                   next: { type: string, nullable: true }
         default: { $ref: "#/components/responses/CodedError" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/workflow:
+    get:
+      tags: [AI]
+      operationId: getWorkflow
+      summary: The Workflow page (py/studio/workflow.py view). Every AI block of the pipeline as it really runs (on or off, service and model, on this computer or in the cloud, key saved or not, never the key, what one typical 15 s reel costs and how that was priced, every other service that can do it), the templates in shared/workflows/*.json with what each would change and its cost per reel before and after, whether Undo can put back an earlier workflow, and this month's spend (as /api/ai/spend). Reads only; nothing is asked of any provider.
+      responses:
+        "200":
+          description: Blocks, templates with previews, undo state and the month's spend.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  capabilities:
+                    type: object
+                    description: "{capability: block}. llm and vision follow your own model server first (writing help, a review from still frames)."
+                    additionalProperties:
+                      type: object
+                      properties:
+                        on: { type: boolean }
+                        provider: { type: string, nullable: true }
+                        providerName: { type: string, nullable: true }
+                        model: { type: string, nullable: true }
+                        modelLabel: { type: string, nullable: true }
+                        local: { type: boolean }
+                        hasKey: { type: boolean }
+                        source: { type: string, description: "default, workflow, own or key" }
+                        perReel: { type: object, properties: { usd: { type: number, nullable: true }, basis: { type: string }, unit: { type: string }, source: { type: string } } }
+                        choices: { type: array, items: { type: object, additionalProperties: true } }
+                  order: { type: array, items: { type: string } }
+                  template: { type: string, nullable: true, description: the template applied last }
+                  perReel: { type: number, description: USD for one typical reel with every block that is on }
+                  templates:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: object, properties: { en: { type: string }, ja: { type: string } } }
+                        summary: { type: object, properties: { en: { type: string }, ja: { type: string } } }
+                        diff: { type: array, items: { type: object, properties: { capability: { type: string }, before: { type: object }, after: { type: object }, usdBefore: { type: number }, usdAfter: { type: number } } } }
+                        notes: { type: array, items: { type: string } }
+                        missingKeys: { type: array, items: { type: string } }
+                        perReel: { type: number }
+                        perReelNow: { type: number }
+                  undo: { type: object, properties: { can: { type: boolean }, at: { type: string }, template: { type: string } } }
+                  ownLlm: { type: object, nullable: true }
+                  reviewBasis: { type: string, nullable: true, enum: [video, frames, null] }
+                  spend: { type: object, additionalProperties: true }
+        default: { $ref: "#/components/responses/CodedError" }
+  /api/workflow/apply:
+    post:
+      tags: [AI]
+      operationId: applyWorkflowTemplate
+      summary: Apply one template to this project's <data>/workflow.json. Refused without confirm true (code confirm, 400). The file as it was is copied to workflow.prev.json first (or noted as absent) so /api/workflow/undo can put it back; prices you entered are kept. "@cheapest" picks the lowest cost per reel among services you have a key for, "@own" your own model server (off with a note when none is set).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [template, confirm]
+              properties:
+                template: { type: string, description: an id from /api/workflow templates }
+                confirm: { type: boolean, enum: [true] }
+      responses:
+        "200":
+          description: Applied; the notes, the undo state and the new view.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  applied: { type: string }
+                  notes: { type: array, items: { type: string } }
+                  undo: { type: object, additionalProperties: true }
+                  view: { type: object, additionalProperties: true }
+        default: { $ref: "#/components/responses/CodedError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/workflow/undo:
+    post:
+      tags: [AI]
+      operationId: undoWorkflowTemplate
+      summary: Put back the workflow from before the last Apply (removing workflow.json if there was none), once. 409 (nothing) when there is nothing to undo.
+      responses:
+        "200":
+          description: Undone; the template that was undone and the new view.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  undone: { type: string, nullable: true }
+                  undo: { type: object, additionalProperties: true }
+                  view: { type: object, additionalProperties: true }
+        default: { $ref: "#/components/responses/CodedError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/ai/spend:
+    get:
+      tags: [AI]
+      operationId: getAiSpendMonth
+      summary: Paid AI this calendar month from the spend ledger (every row ai.charge() and the tagger write), by capability, by provider and both, with the AI limit and the daily budget it runs inside. Reads only.
+      parameters:
+        - { name: month, in: query, required: false, schema: { type: string, pattern: "^\\d{4}-\\d{2}$" }, description: another month (YYYY-MM) }
+      responses:
+        "200":
+          description: The month's spend.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  month: { type: string }
+                  total: { type: number }
+                  calls: { type: integer }
+                  byCapability: { type: array, items: { type: object, properties: { capability: { type: string }, usd: { type: number }, calls: { type: integer } } } }
+                  byProvider: { type: array, items: { type: object, properties: { provider: { type: string }, name: { type: string }, usd: { type: number }, calls: { type: integer } } } }
+                  rows: { type: array, items: { type: object, properties: { capability: { type: string }, provider: { type: string }, usd: { type: number }, calls: { type: integer } } } }
+                  budget:
+                    type: object
+                    properties:
+                      daily: { type: number }
+                      month: { type: number, description: the daily budget times the days of the month }
+                      dayOfMonth: { type: integer }
+                      days: { type: integer }
+                      aiCap: { type: number }
+                      aiSpent: { type: number }
+                      aiLeft: { type: number }
+        default: { $ref: "#/components/responses/CodedError" }
   /api/ai:
     get:
       tags: [AI]
@@ -3703,6 +3884,26 @@ paths:
         "200": { $ref: "#/components/responses/JobView" }
         "400": { $ref: "#/components/responses/CodedError" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/log/jobs:
+    get:
+      tags: [Results]
+      operationId: getJobSwimlane
+      summary: Read only. Every finished job of the last few days from jobs.jsonl, oldest first, for the Activity log's swimlane (one lane per kind of job, bars coloured by result).
+      parameters:
+        - { name: days, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 30, default: 1 } }
+      responses:
+        "200":
+          description: "{ now, days, rows: [{ slug, kind, status, started, ended, seconds, last, stageSec?, stage?, stages? }] } (at most 6,000 rows)"
+  /api/log/lines:
+    get:
+      tags: [Results]
+      operationId: getJobLines
+      summary: Read only. The last 80 lines of one reel's render log (renders/job-<slug>.log, written by its newest make or remix), and when it was written.
+      parameters:
+        - { name: slug, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: "{ slug, at: ISO time | null, lines: [string] } (no log yet: at null, lines empty)" }
+        "400": { description: "{ error: slug }" }
   /api/log:
     get:
       tags: [Results]

@@ -1,0 +1,20 @@
+{
+ "id": "pro-polish",
+ "order": 5,
+ "icon": "sun",
+ "name": {"en": "Pro polish", "ja": "プロの仕上げ"},
+ "summary": {"en": "Every finishing touch: Topaz sharpens soft clips, FILM makes smooth slow motion, the most expressive ElevenLabs voice reads the words, with made-to-fit music, natural sound and the headline behind the subject.",
+             "ja": "仕上げをすべて使います。Topazで甘いカットをシャープにし、FILMで滑らかなスローモーションを作り、最も表情豊かなElevenLabsの声が言葉を読みます。専用の音楽、環境音、被写体の後ろに入る見出しも付けます。"},
+ "who": {"en": "For the one reel a week you want to look its best: a launch, a season opening, an ad.", "ja": "週に1本の勝負リールに。オープン告知、季節の始まり、広告など。"},
+ "tags": ["quality", "cloud"],
+ "blocks": {
+  "upscale": {"on": true, "provider": "fal", "model": "topaz/upscale/video/precision"},
+  "slowmo": {"on": true, "provider": "fal", "model": "fal-ai/film/video"},
+  "voice": {"on": true, "provider": "fal", "model": "fal-ai/elevenlabs/tts/eleven-v3"},
+  "music": {"on": true, "provider": "fal", "model": "fal-ai/stable-audio-25/text-to-audio"},
+  "sfx": {"on": true, "provider": "fal", "model": "fal-ai/mmaudio-v2"},
+  "img2video": {"on": true, "provider": "fal", "model": "fal-ai/kling-video/v2.5-turbo/pro/image-to-video"},
+  "bg-cut": {"on": true, "provider": "fal", "model": "fal-ai/birefnet/v2/video"},
+  "vision": {"provider": "@default"}
+ }
+}

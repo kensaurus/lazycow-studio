@@ -1,0 +1,20 @@
+{
+ "id": "music-first",
+ "order": 3,
+ "icon": "music",
+ "name": {"en": "Music-first mood reels", "ja": "音楽で魅せるムードリール"},
+ "summary": {"en": "No voice. Music made for each reel's mood and tempo carries it; slow motion on the best moments and one photo with a slow camera move add breathing room.",
+             "ja": "声は入れません。リールごとの雰囲気とテンポに合わせて作った音楽が主役です。いちばん良い瞬間をスローモーションにし、写真1枚にゆっくりしたカメラの動きを付けて余韻を作ります。"},
+ "who": {"en": "For fire, autumn colour, aerials and night skies: reels people watch twice.", "ja": "焚き火、紅葉、空撮、星空など、何度も見たくなるリールに。"},
+ "tags": ["music", "cloud"],
+ "blocks": {
+  "voice": {"on": false},
+  "music": {"on": true, "provider": "fal", "model": "fal-ai/stable-audio-25/text-to-audio"},
+  "sfx": {"on": true, "provider": "fal", "model": "fal-ai/mmaudio-v2"},
+  "slowmo": {"on": true, "provider": "fal", "model": "fal-ai/rife/video"},
+  "img2video": {"on": true, "provider": "fal", "model": "fal-ai/kling-video/v2.5-turbo/pro/image-to-video"},
+  "upscale": {"on": false},
+  "bg-cut": {"on": false},
+  "vision": {"provider": "@default"}
+ }
+}

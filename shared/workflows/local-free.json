@@ -1,0 +1,16 @@
+{
+ "id": "local-free",
+ "order": 1,
+ "icon": "home",
+ "name": {"en": "Local and free", "ja": "ローカルで無料"},
+ "summary": {"en": "Everything runs on this computer. Your own model writes the lines and checks the reel from still frames; music comes from the CC0 library. Nothing is paid.",
+             "ja": "すべてこのパソコンの中で動きます。文章とリールのチェックは自分のモデルが静止画から行い、音楽はCC0ライブラリから選びます。費用はかかりません。"},
+ "who": {"en": "For trying the studio out, or for a month with no AI budget.", "ja": "まず試したいとき、AIに予算をかけない月に。"},
+ "tags": ["local", "free"],
+ "blocks": {
+  "voice": {"on": false}, "music": {"on": false}, "sfx": {"on": false},
+  "upscale": {"on": false}, "slowmo": {"on": false}, "img2video": {"on": false}, "bg-cut": {"on": false},
+  "llm": {"provider": "own", "model": "@own"},
+  "vision": {"provider": "own", "model": "@own"}
+ }
+}

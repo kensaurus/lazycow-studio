@@ -862,7 +862,8 @@ setInterval(tickAuto, 10 * 60_000);
    Same shape as research: one short Python process per call (request JSON on stdin, `RESULT {...}` on stdout).
    Every paid call inside goes through one ledger with a per-reel cap, an AI total cap and the daily budget.
    `run` is a background job (STAGE / PROGRESS lines, like a render) and can queue a render when it ends. */
-const AI_TIMEOUT = { status: 60_000, estimate: 120_000, review: 300_000, "last-review": 30_000, "check-key": 40_000, "save-key": 40_000, "save-caps": 20_000, credits: 60_000, "save-llm": 40_000, "llm-presets": 20_000, providers: 30_000, select: 40_000, "save-price": 20_000, voices: 40_000 };
+const AI_TIMEOUT = { status: 60_000, estimate: 120_000, review: 300_000, "last-review": 30_000, "check-key": 40_000, "save-key": 40_000, "save-caps": 20_000, credits: 60_000, "save-llm": 40_000, "llm-presets": 20_000, providers: 30_000, select: 40_000, "save-price": 20_000, voices: 40_000,
+  workflow: 60_000, "workflow-apply": 60_000, "workflow-undo": 60_000, "spend-month": 30_000 };
 const AI_TOOLS = ["review", "sharpen", "slowmo", "living", "foley", "behind", "music", "voice"];
 const AI_SETTINGS = ["fal_key", "openrouter_key", "together_key", "keys", "ai_reel_cap_usd", "ai_total_cap_usd", "daily_usd_budget", "llm"];
 /* The AI provider registry (shared/ai-providers.json, docs/ai-api.md): ids are checked here, names and models by py/studio/ai.py. */
@@ -1186,7 +1187,8 @@ function pump() {
     let moved = false;
     for (const line of chunk.toString().split(/\r?\n/)) {
       const stage = /^STAGE (\d+)\/(\d+) (.*)$/.exec(line);
-      if (stage) { job.stage = +stage[1]; job.stages = +stage[2]; job.done = 0; job.of = 0; job.label = stage[3]; moved = true; continue; }
+      // When each stage began (batch C: the stage strip's time in the stage, and per-stage times for the next ETA).
+      if (stage) { job.stage = +stage[1]; job.stages = +stage[2]; job.done = 0; job.of = 0; job.label = stage[3]; (job.stageAt ||= {})[job.stage] ??= Date.now(); moved = true; continue; }
       const step = /^PROGRESS (\d+)\/(\d+) (.*)$/.exec(line);
       if (step) { job.done = +step[1]; job.of = +step[2]; job.label = step[3]; moved = true; continue; }
       if (line && !/Matplotlib|colour-science|warn\(|setPreferableTarget|graph engine|HF Hub|QuickGELU|installation-guide/.test(line)) job.lines.push(line);
@@ -1763,6 +1765,7 @@ function recordJob(job) {
     slug: job.slug, kind: job.kind, status: job.status, started: new Date(job.started || job.queued).toISOString(),
     ended: new Date(job.ended || Date.now()).toISOString(), seconds: Math.round(((job.ended || Date.now()) - (job.started || job.queued)) / 1000),
     last: job.status === "error" ? (job.lines || []).slice(-1)[0] || "" : job.label || "",
+    ...(job.stageAt ? { stageSec: stageSeconds(job) } : {}), ...(job.status === "error" && job.stages ? { stage: job.stage, stages: job.stages } : {}),
   };
   history.push(row);
   if (history.length > 500) history.shift();
@@ -1805,14 +1808,37 @@ function jobEta(job) {
   const runLeft = running ? jobEta(running) ?? typical : 0;
   return Math.round(runLeft + ahead * typical + typical);
 }
+/* Batch C (the stage strip): seconds spent in each stage of a job, {stage: seconds}, from when each stage began. */
+function stageSeconds(job) {
+  const at = Object.entries(job.stageAt || {}).map(([k, t]) => [+k, t]).sort((a, b) => a[0] - b[0]), out = {};
+  at.forEach(([k, t], i) => { const end = at[i + 1]?.[1] ?? (job.status === "running" ? null : job.ended); if (end) out[k] = Math.round((end - t) / 1000); });
+  return out;
+}
+/* The median seconds of each stage of finished jobs of one kind (jobs.jsonl rows that carry stageSec), or null with
+   fewer than two such runs: the strip shows a stage's rough time left only when there is history behind it. */
+function stageTypical(kind) {
+  const rows = history.filter((r) => r.kind === kind && r.status === "done" && r.stageSec);
+  if (rows.length < 2) return null;
+  const out = {};
+  for (const k of new Set(rows.flatMap((r) => Object.keys(r.stageSec)))) {
+    const xs = rows.map((r) => r.stageSec[k]).filter(Number.isFinite).sort((a, b) => a - b);
+    if (xs.length >= 2) out[k] = xs[xs.length >> 1];
+  }
+  return out;
+}
 function jobView(job) {
   if (!job) return { status: "none" };
   const pos = job.status === "queued" ? queue.indexOf(job) + 1 : 0;
   const from = job.started || job.queued;
+  // A failed job's cause in plain words [en, ja] (jobCause reads the renderer's log once; kept on the job).
+  if (job.status === "error" && job.causeOf === undefined) job.causeOf = jobCause(job.lines || [], String((job.lines || []).slice(-1)[0] || ""));
   return { slug: job.slug, kind: job.kind, status: job.status, position: pos, stage: job.stage, stages: job.stages,
     done: job.done || 0, of: job.of || 0, pct: jobPct(job), label: job.label, result: job.result || null,
     lines: job.lines.slice(-6), seconds: Math.round(((job.ended || Date.now()) - from) / 1000), eta: jobEta(job),
-    cancellable: ["build", "remix"].includes(job.kind) && ["queued", "running"].includes(job.status) };
+    cancellable: ["build", "remix"].includes(job.kind) && ["queued", "running"].includes(job.status),
+    ...(job.stageAt && from ? { stageAt: Object.fromEntries(Object.entries(job.stageAt).map(([k, t]) => [k, Math.max(0, Math.round((t - from) / 1000))])) } : {}),
+    ...(["build", "remix"].includes(job.kind) ? { typical: medianSeconds(history, job.kind), stageTypical: stageTypical(job.kind) } : {}),
+    ...(job.causeOf ? { cause: job.causeOf } : {}) };
 }
 
 /* ---------- proxies for preview ---------- */
@@ -2125,6 +2151,26 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "GET" && url.pathname === "/api/log") {
       return send(res, 200, await ask({ cmd: "log" }));
+    }
+    /* Batch C, read only: the job swimlane on Results › Activity log. Every finished job of the last `days` (1-30) from
+       jobs.jsonl, oldest first; and one render's own log lines (renders/job-<slug>.log, the newest run of that reel). */
+    if (req.method === "GET" && url.pathname === "/api/log/jobs") {
+      const days = Math.max(1, Math.min(30, Number(url.searchParams.get("days")) || 1)), since = Date.now() - days * 864e5;
+      let rows = [];
+      try {
+        rows = readFileSync(join(RENDERS, "jobs.jsonl"), "utf8").split(/\r?\n/).filter(Boolean)
+          .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+          .filter((r) => r && Date.parse(r.ended) >= since).slice(-6000);
+      } catch { /* no jobs yet */ }
+      return send(res, 200, { now: Date.now(), days, rows });
+    }
+    if (req.method === "GET" && url.pathname === "/api/log/lines") {
+      const slug = url.searchParams.get("slug") || "";
+      if (!isSlug(slug)) return send(res, 400, { error: "slug" });
+      try {
+        const p = join(RENDERS, `job-${slug}.log`);
+        return send(res, 200, { slug, at: new Date(statSync(p).mtimeMs).toISOString(), lines: readFileSync(p, "utf8").split(/\r?\n/).filter(Boolean).slice(-80) });
+      } catch { return send(res, 200, { slug, at: null, lines: [] }); }
     }
     if (req.method === "POST" && url.pathname === "/api/footage/scan") {
       return send(res, 200, jobView(startTask("footage", "scan", ["library", "--ingest", "--scan"])));
@@ -2702,6 +2748,26 @@ const server = createServer(async (req, res) => {
       if (!isSlug(slug) || !Number.isInteger(n) || n < 1 || n > 999 || !["master", "hook"].includes(kind)) return send(res, 400, "slug, n and kind", "text/plain");
       return sendFile(req, res, join(DATA, "versions", slug, `v${n}`, kind === "hook" ? "hook.jpg" : `${slug}_9x16.mp4`));
     }
+    /* Batch C, read only: each version of one reel as a shot strip (shots with their place in time and thumbnail, the
+       words, the look and the music), with its review score and basis, for Versions' side-by-side shot diff. */
+    if (req.method === "GET" && url.pathname === "/api/versions/shots") {
+      const slug = url.searchParams.get("slug") || "";
+      if (!isSlug(slug)) return send(res, 400, { error: "slug" });
+      const dir = join(DATA, "versions", slug), json = (p) => { try { return JSON.parse(readFileSync(p, "utf8")); } catch { return null; } };
+      let names = [];
+      try { names = readdirSync(dir).filter((d) => /^v\d+$/.test(d)); } catch { /* no versions */ }
+      const versions = names.map((d) => {
+        const meta = json(join(dir, d, "version.json")) || {}, man = json(join(dir, d, "manifest.json")) || {}, reel = json(join(dir, d, "reel.json")) || {};
+        if (!meta.n) return null;
+        return { n: meta.n, status: meta.status, made: meta.made, why: meta.why || "", verdict: meta.verdict || null,
+          review: meta.review ? { hook: meta.review.hook ?? null, look: meta.review.look ?? null, mismatches: (meta.review.mismatches || []).length, basis: meta.review.basis || "video", at: meta.review.at || null } : null,
+          seconds: man.durationSec ?? null, look: reel.look || man.look || null, grade: reel.grade || null, typeKit: reel.typeKit || null, palette: reel.palette || null, style: reel.style || man.style || null,
+          music: man.audio?.music?.title || (typeof reel.music === "string" ? reel.music : reel.music?.title) || null,
+          shots: (man.shots || []).map((s) => ({ file: s.file, at: s.timelineStart ?? null, sec: s.sec, from: s.in ?? null, thumb: s.thumb || null })),
+          beats: (man.beats || reel.beats || []).map((b) => ({ kind: b.kind, ja: b.ja, en: b.en, at: b.startSec, end: b.endSec })) };
+      }).filter(Boolean).sort((a, b) => b.n - a.n);
+      return send(res, 200, { slug, versions });
+    }
     if (req.method === "POST" && url.pathname === "/api/versions/recut") {
       const b = await body(req);
       if (jobs.get("versions")?.status === "running") return send(res, 409, { error: "Re-cuts are being made; wait for them to finish." });
@@ -2774,6 +2840,11 @@ const server = createServer(async (req, res) => {
        ?fresh=1 recounts). POST /api/footage/cameras reads each file's own camera make and model (a job). */
     if (req.method === "GET" && url.pathname === "/api/footage/health") {
       return send(res, 200, await ask({ cmd: "footage", fresh: url.searchParams.get("fresh") === "1" }));
+    }
+    /* Where the footage was filmed: files with a GPS position grouped on a ~100 m grid (no file's own position), with
+       the home place and its radius, for the Footage map. Read only; kept 10 min, ?fresh=1 recounts. */
+    if (req.method === "GET" && url.pathname === "/api/footage/places") {
+      return send(res, 200, await ask({ cmd: "footage_places", fresh: url.searchParams.get("fresh") === "1" }));
     }
     if (req.method === "POST" && url.pathname === "/api/footage/cameras") {
       return send(res, 200, jobView(startTask("cameras", "cameras", ["footage", "cameras"])));
@@ -2931,6 +3002,32 @@ const server = createServer(async (req, res) => {
         const input = { provider };
         for (const k of ["search", "next"]) { const v = url.searchParams.get(k); if (v) input[k] = v.slice(0, 200); }
         return send(res, 200, await ai("voices", input));
+      } catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
+    /* ---------- batch D: the Workflow page (py/studio/workflow.py, docs/ai-api.md) ----------
+       GET: every block of the pipeline (on/off, service, local or cloud, cost per reel) and the templates in
+       shared/workflows with a preview diff and cost. Apply writes <data>/workflow.json only with confirm: true, after a
+       backup that Undo puts back. /api/ai/spend: this month's AI spend by capability and provider from the ledger. */
+    if (req.method === "GET" && url.pathname === "/api/workflow") {
+      try { return send(res, 200, await ai("workflow")); }
+      catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
+    if (req.method === "POST" && url.pathname === "/api/workflow/apply") {
+      try {
+        const b = await body(req);
+        if (typeof b.template !== "string" || !/^[a-z0-9][a-z0-9-]{0,40}$/.test(b.template)) return send(res, 400, { error: "template: a template id from /api/workflow.", code: "bad_input" });
+        return send(res, 200, await ai("workflow-apply", { template: b.template, confirm: b.confirm === true }));
+      } catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
+    if (req.method === "POST" && url.pathname === "/api/workflow/undo") {
+      try { await body(req); return send(res, 200, await ai("workflow-undo")); }
+      catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
+    if (req.method === "GET" && url.pathname === "/api/ai/spend") {
+      try {
+        const month = url.searchParams.get("month");
+        if (month && !/^\d{4}-\d{2}$/.test(month)) return send(res, 400, { error: "month: YYYY-MM.", code: "bad_input" });
+        return send(res, 200, await ai("spend-month", month ? { month } : {}));
       } catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
     }
     if (req.method === "GET" && url.pathname === "/api/ai") {

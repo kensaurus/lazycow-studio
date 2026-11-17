@@ -9,3 +9,4 @@
 - `looks.json` also lists the 25 cut styles (`whip`, `glitch`, `letters` …) with a plain `what` line each; `mirror` is never drawn at random because it folds people in two.
 - `playbooks.json`: per-network rules (format, caption length, hashtags, links, best time, comments), from `docs/research/2026-11-09-channel-playbooks.md`. Shown on Accounts and in the post panel.
 - `profiles/`: the profile kit (`profiles.json`: name, bio and link per network) with its avatar and X header images, checked by `test/profiles.test.mjs`.
+- `workflows/`: the Workflow page's templates (one JSON each: `id`, `name`/`summary`/`who` in en and ja, `blocks` per AI capability: `{on: false}`, a registered `{provider, model}`, or `@default` / `@cheapest` / `@own`). Read and checked by `py/studio/workflow.py` (never text-to-video, registered models only) and `py/tests/test_workflow.py`.

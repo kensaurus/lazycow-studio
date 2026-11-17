@@ -339,6 +339,14 @@ def handle(req: dict) -> object:
         if req.get("fresh") or not _FOOTAGE.get("data") or _t.time() - _FOOTAGE.get("at", 0) > 600:  # ten minutes
             _FOOTAGE.update(data=footage.health(), at=_t.time())
         return _FOOTAGE["data"]
+    if cmd == "footage_places":  # where the footage was filmed, on a ~100 m grid (read only, kept ten minutes)
+        import time as _t
+
+        from studio import footage
+
+        if req.get("fresh") or not _FOOTAGE.get("places") or _t.time() - _FOOTAGE.get("placesAt", 0) > 600:
+            _FOOTAGE.update(places=footage.places(), placesAt=_t.time())
+        return _FOOTAGE["places"]
     if cmd == "themes":
         from studio.assemble import theme_list
 

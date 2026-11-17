@@ -4,6 +4,8 @@ PURPOSE: What the four protocol adapters share: the call context, filling a regi
          out of a provider's answer by a dotted path, and polling with back-off.
 OVERVIEW: Ctx carries everything an adapter may touch (the HTTP function, sleep, the key, the provider's registry entry,
           the scrubber), so an adapter never reads .env or the network on its own and tests drive it with a fake.
+          protocol_of() is a model's protocol: its own `protocol` when it names one (OpenRouter's video and speech
+          models speak async_task / sync_http although OpenRouter's chat is openai_chat), else its provider's.
           fill() turns {"duration": "{seconds:str}"} into {"duration": "5"}: a value that is exactly one placeholder keeps
           its type (int, float, str, json), a placeholder inside longer text is replaced as text, and a key whose value
           is missing (None) is left out. dig() reads "data.resultJson.~json.resultUrls.0" (~json parses a JSON string; not "@json", which reads as an e-mail address to the export scan).
@@ -43,10 +45,13 @@ class Ctx:
         return self.provider.get("name") or self.pid
 
     def auth(self) -> dict:
+        """The key's header, plus the provider's fixed headers (registry `headers`, e.g. Runway's X-Runway-Version),
+        which every call to it needs. The fixed ones are never secret."""
         a = self.provider.get("auth") or {}
+        fixed = dict(self.provider.get("headers") or {})
         if not self.key or not a.get("header"):
-            return {}
-        return {a["header"]: f"{a.get('scheme', '')}{self.key}"}
+            return fixed
+        return {**fixed, a["header"]: f"{a.get('scheme', '')}{self.key}"}
 
     def error(self, status: int, body, headers: dict | None = None) -> AiError:
         return _provider_error(self.name, status, body, headers, self.scrub)
@@ -54,6 +59,10 @@ class Ctx:
     def url(self, path: str, values: dict | None = None) -> str:
         p = fill(path, values or {})
         return p if p.startswith("https://") or p.startswith("http://") else str(self.provider.get("base", "")).rstrip("/") + p
+
+
+def protocol_of(provider: dict, model: dict | None) -> str:
+    return str((model or {}).get("protocol") or provider.get("protocol") or "")
 
 
 def _cast(v, kind):

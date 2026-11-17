@@ -2,6 +2,52 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.22.0 (2026-11-18)
+
+### Added
+- **Settings › Workflow:** the whole pipeline as a graph of blocks, from footage to results.
+  - Each block shows whether it is on, which service it uses, local or cloud, and its cost per reel. Click a block to
+    switch its service.
+  - Six templates, such as "Local and free", "Voice-over storyteller" and "Pro polish". Each shows what would change
+    and its cost per reel before you press Apply, and Undo puts the old setup back.
+- **AI blocks and cost meter:**
+  - **Settings › AI blocks:** one row per job, with its service, whether its key is set, its price, an on/off switch
+    and Change.
+  - **Cost meter:** this month's AI spend by job and service against your budget, also shown in the status bar.
+- **More AI services:**
+  - **Image-to-video:** Runway, MiniMax, Together, OpenRouter, Higgsfield, Luma and PiAPI. PiAPI is unofficial and
+    only selectable after you accept the risk.
+  - **Speech:** MiniMax and OpenRouter.
+  - **Writing and picture questions:** Gemini and Together.
+  - **Music:** ElevenLabs.
+  - Every service is checked against its own docs, which the studio links to, and research writing now uses the same
+    choices and limits.
+  - Text-to-video is still never offered.
+- **Dark mode:** Settings › Keys & AI › This studio › Colours: Auto, Light or Dark.
+- **First-week checklist** on Today: it ticks itself from what you have done.
+- **Results:**
+  - **Predicted and actual:** each post's expected range beside its real views, with an honest note on how good the
+    predictions are so far.
+  - **Weekly trend:** a line per network.
+  - **Best time to post:** a heatmap from your own numbers.
+- **Footage:**
+  - **Runway gauge:** "about N days of posts left", with a film-by date.
+  - **Place map:** where you filmed. Click a place to filter the library.
+- **Being made:** a strip of stages for each reel, with the time left once there are past runs to go by. A failed
+  stage shows its cause and Try again.
+- **Review:** "Would land on" chips show each reel's first free day per network. They book nothing.
+- **Editor:** an issues lane under the ruler. Click an issue to jump to it. The rules chip and the Properties panel
+  now always agree.
+- **Words:** a wear bar per headline, with the worn ones marked.
+- **Versions:** a "What changed" panel shows both versions as shot strips, with the changed shots lit.
+- **Hover to scrub:** move over a reel card to scrub through the reel. Nothing loads until you hover.
+- **Activity log:** a "Jobs over time" swimlane. Another project's jobs are hidden unless you ask for them.
+
+### Changed
+- **YouTube numbers** say what they count: the newest uploads, the studio's posts, or the channel's all-time total.
+- **Japanese labels:** Instagram Stories, Google Maps and a few others are now in Japanese.
+- **Click targets:** small ones are at least 24 px.
+
 ## 0.21.0 (2026-11-17)
 
 ### Added

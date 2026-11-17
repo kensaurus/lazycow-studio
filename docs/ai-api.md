@@ -107,31 +107,69 @@ The table above is the default. Which service does each job is data, not code: `
 
 | protocol | how it works | providers now |
 | --- | --- | --- |
-| `fal_queue` | submit, poll `status_url`, read `response_url` | fal.ai (Higgsfield later) |
-| `async_task` | submit a task, poll it, read the output; every path and state name comes from the registry's `task` block | Replicate, kie.ai (Runway, MiniMax, Together video, Luma, PiAPI later) |
-| `sync_http` | one request; the answer's body is the file | ElevenLabs, Stability AI |
-| `openai_chat` | `POST <base>/chat/completions` | OpenRouter, Together, your own model server |
+| `fal_queue` | submit, poll `status_url`, read `response_url` | fal.ai |
+| `async_task` | submit a task, poll it, read the output; every path and state name comes from the registry's `task` block | Replicate, kie.ai, Runway, MiniMax video, Together video, OpenRouter video, Higgsfield, PiAPI, Luma |
+| `sync_http` | one request; the answer is the file, or JSON with the file's URL (`result`) | ElevenLabs, Stability AI, MiniMax speech, OpenRouter speech |
+| `openai_chat` | `POST <base>/chat/completions` | OpenRouter, Together, Gemini (its OpenAI-compatible endpoint), your own model server |
+
+No new adapter was needed for phase 2: a model may name its own `protocol` (OpenRouter's chat is `openai_chat`, its
+`/videos` and `/audio/speech` models are `async_task` and `sync_http`), a provider may send fixed headers on every call
+(`headers`: Runway's `X-Runway-Version: 2024-11-06`), and `upload` says how a still reaches the model: `multipart`
+(Replicate, kie.ai), `data_uri` inline (Runway ≤ 5 MB, MiniMax, OpenRouter), bare `base64` (Together's
+`frame_images`, Luma's `start_frame.data`), `json_base64` (PiAPI's ephemeral upload) or `presigned` (Higgsfield: ask
+for an upload URL, PUT the bytes there with the headers it gives, never the key). States are compared without case
+(PiAPI answers `Completed`). `outputAuth` downloads a result with the key (OpenRouter's `unsigned_urls`).
 
 **Capabilities are a closed list:** `voice`, `music`, `sfx`, `upscale`, `slowmo`, `img2video`, `bg-cut`, `llm`,
 `vision` (the tools map onto them: `sharpen` → upscale, `living` → img2video, `foley` → sfx, `behind` → bg-cut,
-`review` → vision). Text-to-video can never be registered: the registry refuses a capability or model that names it.
-`labelRequired` belongs to the capability (`voice` and `img2video`), never to a provider, so a reel is labelled the same
-whoever made the voice. A model without a commercial licence is refused; kie.ai's Suno music is marked
-`"risk": "unofficial"`, is never a default, and can only be picked with `acceptRisk: true`.
+`review` → vision). Text-to-video can never be registered: the registry refuses a capability, model, path or input
+that names it, and **every img2video model must take the still** (`files: {…: "image"}`), so a prompt-only mode is
+unreachable. `labelRequired` belongs to the capability (`voice` and `img2video`), never to a provider, so a reel is
+labelled the same whoever made the voice. A model without a commercial licence is refused; kie.ai's Suno music and
+PiAPI's Kling (run on PiAPI's own pool of consumer accounts) are marked `"risk": "unofficial"`, are never a default, and
+can only be picked with `acceptRisk: true`. Every provider names the official pages its entry was checked against
+(`docs`) and the day (`asOf`); placeholders are lowercase (`{image_url}`), or the validator refuses the file.
 
-What is registered (2026-11-17; **bold** = the default, exactly the tools before the registry):
+What is registered (2026-11-18; **bold** = the default, exactly the tools before the registry):
 
 | capability | models |
 | --- | --- |
-| voice | **fal `fal-ai/minimax/speech-02-hd`**; fal `fal-ai/elevenlabs/tts/eleven-v3`; ElevenLabs `eleven_v3`, `eleven_multilingual_v2`, `eleven_flash_v2_5`; Replicate `minimax/speech-2.8-turbo`; kie.ai `elevenlabs/text-to-speech-turbo-2-5`, `elevenlabs/text-to-speech-multilingual-v2` |
-| music | **fal `fal-ai/stable-audio-25/text-to-audio`**; Stability `stable-audio-2.5`; Replicate `stability-ai/stable-audio-2.5`; kie.ai `ai-music-api/generate` (Suno, unofficial) |
+| voice | **fal `fal-ai/minimax/speech-02-hd`**; fal `fal-ai/elevenlabs/tts/eleven-v3`; ElevenLabs `eleven_v3`, `eleven_multilingual_v2`, `eleven_flash_v2_5`; Replicate `minimax/speech-2.8-turbo`; kie.ai `elevenlabs/text-to-speech-turbo-2-5`, `elevenlabs/text-to-speech-multilingual-v2`; MiniMax `speech-2.8-hd`, `speech-2.8-turbo` (direct, `Japanese_CalmLady`); OpenRouter `elevenlabs/eleven-v3` (preset voices only) |
+| music | **fal `fal-ai/stable-audio-25/text-to-audio`**; Stability `stable-audio-2.5`; Replicate `stability-ai/stable-audio-2.5`; ElevenLabs `music_v2_5` (`force_instrumental`); kie.ai `ai-music-api/generate` (Suno, unofficial) |
 | sfx | **fal `fal-ai/mmaudio-v2`** (from the picture); ElevenLabs `eleven_text_to_sound_v3` (from words, ≤ 30 s); Stability `stable-audio-2.5` (from words) |
 | upscale | **fal `topaz/upscale/video/precision`**; fal `fal-ai/seedvr/upscale/video`; Replicate `topazlabs/video-upscale`; kie.ai `topaz/video-upscale` |
 | slowmo | **fal `fal-ai/rife/video`**; fal `fal-ai/film/video` |
-| img2video | **fal `fal-ai/kling-video/v2.5-turbo/pro/image-to-video`**; Replicate `kwaivgi/kling-v2.6`; kie.ai `kling-2.6/image-to-video` |
+| img2video | **fal `fal-ai/kling-video/v2.5-turbo/pro/image-to-video`**; Replicate `kwaivgi/kling-v2.6`; kie.ai `kling-2.6/image-to-video`; Runway `gen4_turbo` ($0.05/s), `gen4.5` ($0.12/s); MiniMax `MiniMax-H3` ($0.08/s), `MiniMax-H3-Highspeed` ($0.06/s); Together `Wan-AI/wan2.7-i2v`; OpenRouter `kwaivgi/kling-v3.0-std` ($0.084/s, its `usage.cost` recorded); Higgsfield `kling-video/v2.5-turbo/standard/image-to-video`; Luma `ray-3.2` (no list price: enter yours); PiAPI `kling-2.5-std` (unofficial) |
 | bg-cut | **fal `fal-ai/birefnet/v2/video`** (a mask); Replicate `bria/video-remove-background` (a cut-out with alpha) |
-| vision | **OpenRouter `google/gemini-3.8-flash`**; any OpenRouter model by name; your own server (from still frames) |
-| llm | any OpenRouter, Together or own-server model by name |
+| vision | **OpenRouter `google/gemini-3.8-flash`**; any OpenRouter model by name; Together `moonshotai/Kimi-K3` and Gemini `gemini-3.8-flash` (still pictures only: picture questions go there when the project picks them; the reviewer keeps watching video on OpenRouter); your own server (from still frames) |
+| llm | Together `openai/gpt-oss-120b`; Gemini `gemini-3.8-flash` (list price until 2026-12-31, then a warning); any OpenRouter, Together, Gemini or own-server model by name. With no pick: OpenRouter with `shared/spec.json` `openrouter.edlModel` |
+
+**Writing help (`research._llm`: post angles, word ideas) goes through the registry.** It asks the project's `llm`
+block (else OpenRouter with the studio's writing model), prices the question from the registry (`chat_price`: the
+model's list price, else OpenRouter's own price list for a model asked for by name; nothing known: not asked, the
+templates answer), and runs inside `charge()` with no slug: the daily budget and the AI total hold, the per-reel limit
+does not, and the ledger row keeps its purpose (`research`, `words-suggest`) and now its provider. A provider's
+`chat` options are data: OpenRouter `{"jsonMode": true, "extra": {"reasoning": {"effort": "low"}}}`, Gemini
+`{"jsonMode": false, "extra": {"reasoning_effort": "low"}}`, Together `{"jsonMode": false}` (the answer's JSON is read
+from the text, fenced or wrapped). Your own model server still answers instead when it is set and the project picked
+nothing else.
+
+**Looked at and left out** (registry `_rejected`, read 2026-11-18): MiniMax music (its paid Music API closed to new users
+on 2026-08-20); Gemini video (Veo 3.1 Preview shut down 2026-10-22; Omni Flash video is not on the OpenAI-compatible
+endpoint); PiAPI music (Suno sunset; Udio on a consumer-account pool, no licence); Together video understanding
+(dedicated endpoints only); Stability image-to-video (its API has none); Veo and Omni Flash through OpenRouter (image-
+conditioned, but their licence passes through OpenRouter unverified here).
+
+Sources (official, read 2026-11-18): docs.dev.runwayml.com/api and /guides/pricing, dev.runway.com/learn/commercial-use;
+platform.minimax.io/docs/api-reference/video-generation-v2-create, -v2-query, speech-t2a-http, /docs/pricing/overview,
+/docs/guides/music-generation, /protocol/terms-of-service; docs.together.ai/reference/create-videos,
+/docs/inference/videos/reference-and-keyframes, /docs/inference/vision/overview, /docs/serverless-models,
+together.ai/models/wan-27-i2v; openrouter.ai/docs (video image-to-video cookbook, submit-a-video-generation-request,
+tts create-speech), openrouter.ai/api/v1/videos/models; docs.higgsfield.ai/docs/concepts/requests and /file-uploads,
+higgsfield.ai/higgsfield-api, Higgsfield Terms §4.4; ai.google.dev/gemini-api/docs/openai, /pricing, /video;
+piapi.ai/docs/kling-api/create-task, /get-task, /overview, /tools/file-upload, /sunsetting-suno;
+docs.agents.lumalabs.ai/guides/videos/generation, /pricing, /usage, lumalabs.ai/legal/api-terms-of-use;
+elevenlabs.io/docs/api-reference/music/compose, elevenlabs.io/pricing/api; docs.stability.ai/llms.txt.
 
 The sharpen default moved from `fal-ai/topaz/upscale/video` (no longer in fal's catalogue search) to
 `topaz/upscale/video/precision` with the same inputs (Proteus, `upscale_factor`, `H264_output`). Checked on
@@ -146,12 +184,18 @@ before. A block naming a model the registry no longer lists falls back to the de
 daily limits, reserved, settled):
 
 1. the provider's price API: fal `GET /v1/models/pricing` (cached 24 h); OpenRouter `/api/v1/models` for the reviewer;
-2. else the registry's list price, with its `source` and `asOf`, and a `warning` when it is over 90 days old;
+2. else the registry's list price, with its `source` and `asOf`, and a `warning` when it is over 90 days old or past
+   its `validUntil` (a price the provider said would change on a known day);
 3. else a price you entered (`POST /api/ai/price`);
 4. else the call is refused: 409 `no_price` ("No price is known for … Enter its price in Settings › AI").
 
-The actual cost replaces the estimate when the provider reports it: OpenRouter's `usage.cost`, kie.ai's
-`creditsConsumed` (× $0.005 a credit), ElevenLabs' `character-cost` header (× the list price).
+The actual cost replaces the estimate when the provider reports it: OpenRouter's `usage.cost` (chat and video),
+kie.ai's `creditsConsumed` (× $0.005 a credit), ElevenLabs' `character-cost` header and MiniMax's
+`extra_info.usage_characters` (× the list price). MiniMax speech answers HTTP 200 with its error in
+`base_resp.status_code` (like kie.ai): read, so 1008 is "out of credit". Keys: `RUNWAY_API_KEY`, `MINIMAX_API_KEY`,
+`HIGGSFIELD_API_KEY` (`<key id>:<key secret>` as one value), `GEMINI_API_KEY`, `PIAPI_API_KEY`, `LUMA_AGENTS_API_KEY`,
+each checked with a free call before it is saved (Higgsfield has none: an unknown request's status answers 404 to a
+good key, 401 to a bad one). Runway and Luma report their credit balance.
 
 **Calls.** A submit waits at most 60 s and is sent once: a 429 or 503 is asked again after `Retry-After` (up to 3
 times), but a submit that timed out is never sent again, since it may have been accepted and billed (the estimate stays
@@ -205,6 +249,55 @@ Warnings: no key yet, no price known, the licence could not be checked live.
 
 `{ "provider": "elevenlabs", "voices": [{ "id", "name", "labels": {"language": "ja", …}, "preview" }], "next": "<token>" }`
 from ElevenLabs `GET /v2/voices` with the saved key (400 `no_key` without one).
+
+## The workflow: blocks, templates, undo, this month's spend (py/studio/workflow.py)
+
+Settings › Workflow and Settings › Keys & AI › AI blocks read one view. Nothing here asks a provider anything: prices
+come from the same chain as `/api/ai/providers` (fal's last live table, the registry's list price, a price you entered).
+
+### GET /api/workflow (free)
+
+`{ "capabilities": {cap: block}, "order": [...], "template": "music-first"|null, "perReel": 0.71, "reelSeconds": 15,
+"templates": [...], "undo": {"can", "at", "template"}, "ownLlm", "reviewBasis": "video"|"frames"|null, "spend": {…as
+/api/ai/spend…}, "units": [...], "rejected": [{"what", "why"}] }`.
+
+A block is the capability **as it really runs**: `{ on, provider, providerName, model, modelLabel, voice, source
+("default"|"workflow"|"own"|"key"), local, hasKey, labelRequired, what, perReel: {usd, basis, unit?, unitPrice?,
+source?}, choices: [...], tools }`. `llm` and `vision` follow your own model server first (writing help; a review from
+still frames), so they say `own` when it is set. `perReel` prices one typical 15 s reel (`TYPICAL`: about 60 characters
+read aloud, an 18 s music bed, two silent 2 s shots, three soft 2 s shots sharpened, two shots in slow motion, one photo
+moved for 5 s, a 2 s cut-out, one review); a block priced by tokens with no list price uses your average per call from
+the ledger, else `usd: null`. Each choice adds `docs` (the provider's first documentation link), `asOf` (when its
+registry entry was read), `risk` (e.g. "unofficial": picked only with `acceptRisk: true` on `/api/ai/select`, never a
+default, never by a template) and `priceNeeded` (no price anywhere, e.g. Luma: enter one with `/api/ai/price` first).
+`rejected` is the registry's `_rejected`: what was looked at and not offered, and why.
+
+A template (`shared/workflows/<id>.json`) is `{ id, order, icon, name: {en, ja}, summary: {en, ja}, who: {en, ja},
+blocks: {cap: {on: false} | {provider, model, voice?} | {provider: "@default"} | {provider: "@cheapest"} |
+{provider: "own", model: "@own"}} }`. A capability it leaves out is kept. `@cheapest` is the lowest cost per reel among
+registered models without a risk mark or a required voice, preferring services whose key is saved (new providers count by
+themselves); `@own` is your own model server (off, with a note, when none is set). A template is checked when read
+(`check_template`): registered models only, never text-to-video, both languages. In the view each template carries
+`diff` ([{capability, before, after, usdBefore, usdAfter}]), `notes`, `missingKeys`, `on`, `perReel` and `perReelNow`.
+
+### POST /api/workflow/apply
+
+`{ "template": "music-first", "confirm": true }` → `{ "applied", "notes", "undo", "view" }`. Without `confirm: true` it
+is refused (400 `confirm`): only the page's **Apply** button sends it. `workflow.json` as it was is first copied to
+`workflow.prev.json` (or noted as absent); prices you entered stay.
+
+### POST /api/workflow/undo
+
+`{}` → `{ "undone", "undo", "view" }`: the workflow from before the last Apply is back (the file is removed if there
+was none), once; 409 `nothing` when there is nothing to undo.
+
+### GET /api/ai/spend?month=YYYY-MM (free)
+
+Paid AI this calendar month (this computer's clock) from the `spend` table: `{ "month", "total", "calls",
+"byCapability": [{capability, usd, calls}], "byProvider": [{provider, name, usd, calls}], "rows": [{capability,
+provider, usd, calls}], "budget": {daily, month (daily × days), dayOfMonth, days, aiCap, aiSpent, aiLeft} }`. Rows
+written by `charge()` (`ai-<tool>`) map to their tool's capability; the tagger (`tagcheck`) counts as vision and word
+suggestions as llm. The status bar shows the total as **AI $…**.
 
 ## POST /api/ai/estimate (free)
 
