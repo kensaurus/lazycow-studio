@@ -57,6 +57,7 @@ This needs Node 20 or newer on your PATH. The double-click setup keeps its own N
 - [What you need](#what-you-need)
 - [More, when you need it](#more-when-you-need-it): first run, a made-up brand, costs, accounts, YouTube, a second studio, AI agents
 - [Documentation](#documentation)
+- [More from kensaurus](#more-from-kensaurus): Mushi Mushi, kenji skills, Tsumagoi Work&Camp and the other apps
 - [Licence](#licence), [credit](#credit-and-contributing) and [support](#support-lazycow)
 
 ## Quick start
@@ -333,6 +334,19 @@ From a clone, without npm: `claude mcp add lazycow -- node C:\path\to\lazycow-st
 | [AI tools](docs/ai-api.md), [results](docs/perf-api.md), [research](docs/research-api.md) | call those parts of the HTTP API |
 | [HTTP API](docs/openapi.yaml) | see every route (OpenAPI 3.1) |
 | [Roadmap](docs/ROADMAP.md), [changes](CHANGELOG.md) | see what is next and what changed |
+
+## More from kensaurus
+
+Lazycow Studio is one of the apps made by [kensaurus](https://kensaur.us/?view=portfolio&utm_source=lazycow&utm_medium=readme&utm_campaign=family), the small company that also runs the campsite in the GIFs above. If Lazycow helps you, these might too:
+
+| App | What it does | Get it |
+|:--|:--|:--|
+| **[Mushi Mushi](https://kensaur.us/mushi-mushi/?utm_source=lazycow&utm_medium=readme&utm_campaign=family)** | Tells you why your AI-built app broke, and hands the fix to your editor. One package: an SDK and a setup wizard for any app. Your users' bug reports become a plain-language diagnosis and a fix prompt; it works from Claude Code and Cursor too. | [`npm i mushi-mushi`](https://www.npmjs.com/package/mushi-mushi) · [GitHub](https://github.com/kensaurus/mushi-mushi) |
+| **[kenji skills](https://kensaur.us/notes/kenji-skills/en/?utm_source=lazycow&utm_medium=readme&utm_campaign=family)** | Step-by-step playbooks that keep AI coding assistants on track, for Claude Code, Cursor and Codex CLI. Free and open source. | [`@kensaurus/skills`](https://www.npmjs.com/package/@kensaurus/skills) · [GitHub](https://github.com/kensaurus/skills) |
+| **[Tsumagoi Work&Camp](https://tsumagoi.kensaur.us/?utm_source=lazycow&utm_medium=readme&utm_campaign=family)** | A 24-hour mountain lounge at 1,444 m in Gunma, run by us. Lazycow was built to post its reels every day. | [Visit](https://tsumagoi.kensaur.us/?utm_source=lazycow&utm_medium=readme&utm_campaign=family) · [How we built it](https://kensaur.us/notes/lazycow-studio/en/?utm_source=lazycow&utm_medium=readme&utm_campaign=family) |
+| **[Konte](https://kensaur.us/konte/?utm_source=lazycow&utm_medium=readme&utm_campaign=family)** (prototype) | Plan and make an 8-second AI video, step by step, storyboard first. | [Try it](https://kensaur.us/konte/?utm_source=lazycow&utm_medium=readme&utm_campaign=family) |
+
+Every app, with the story of why it exists: [kensaur.us](https://kensaur.us/?view=portfolio&utm_source=lazycow&utm_medium=readme&utm_campaign=family) (Solo Boss for one-person companies' books, glot.it for Thai, yen-yen, help her take photo, lets-talk, the wanting mind and more).
 
 ## Licence
 

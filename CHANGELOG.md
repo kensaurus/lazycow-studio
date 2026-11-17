@@ -2,6 +2,14 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.17.1 (2026-11-17)
+
+### Added
+- **More from kensaurus.** The README, the Japanese README, the npm README and the About window link the other
+  kensaurus products that suit Lazycow users: Mushi Mushi (`npm i mushi-mushi`: why an AI-built app broke, and the fix
+  for your editor), kenji skills (`@kensaurus/skills`), Tsumagoi Work&Camp and Konte, with every app on kensaur.us.
+  Names and taglines follow kensaur.us/apps.json; the links say they came from Lazycow (utm_source=lazycow).
+
 ## 0.17.0 (2026-11-17)
 
 ### Docs
