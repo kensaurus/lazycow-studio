@@ -98,6 +98,17 @@ npx lazycow api GET /api/posts
 npx lazycow open
 ```
 
+## More from kensaurus
+
+Lazycow is one of the [kensaurus](https://kensaur.us/?view=portfolio&utm_source=lazycow&utm_medium=npm&utm_campaign=family) apps. Also on npm:
+
+| Package | What it does |
+|:--|:--|
+| [**mushi-mushi**](https://www.npmjs.com/package/mushi-mushi) | Tells you why your AI-built app broke, and hands the fix to your editor. One package: an SDK and a setup wizard for any app; your users' bug reports become a diagnosis and a fix prompt, from Claude Code or Cursor too. [Site](https://kensaur.us/mushi-mushi/?utm_source=lazycow&utm_medium=npm&utm_campaign=family) |
+| [**@kensaurus/skills**](https://www.npmjs.com/package/@kensaurus/skills) | Step-by-step playbooks that keep AI coding assistants (Claude Code, Cursor, Codex CLI) on track. Free and open source. |
+
+And [Tsumagoi Work&Camp](https://tsumagoi.kensaur.us/?utm_source=lazycow&utm_medium=npm&utm_campaign=family), the mountain lounge Lazycow was built for; every app is on [kensaur.us](https://kensaur.us/?view=portfolio&utm_source=lazycow&utm_medium=npm&utm_campaign=family).
+
 ## Requirements
 
 Node 20 or newer. The studio itself runs on Windows 10/11 and macOS 14+ (Apple silicon); Linux works from source.

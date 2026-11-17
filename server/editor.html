@@ -3181,11 +3181,20 @@ function openAbout() {
         · <a href="${escUrl(a.support.manage)}" target="_blank" rel="noopener">${tr("about.manage")}</a></td></tr>` : ""}
       ${a.support?.sponsors?.length ? `<tr><td>${tr("about.sponsored")}</td><td>${a.support.sponsors.map((s) => s.url ? `<a href="${escUrl(s.url)}" target="_blank" rel="noopener sponsored">${esc(s.name)}</a>` : esc(s.name)).join(" · ")}</td></tr>` : ""}
       ${WORKSPACE ? `<tr><td>${tr("about.workspace")}</td><td>${esc(WORKSPACE)}</td></tr>` : ""}
+      <tr><td>${tr("about.family")}</td><td>${FAMILY.map((f) => `<a href="${escUrl(f.url + (f.url.includes("?") ? "&" : "?") + "utm_source=lazycow&utm_medium=app&utm_campaign=family")}" target="_blank" rel="noopener"><b>${esc(f.name)}</b></a> <span class="meta">${tr(f.key)}</span>`).join("<br>")}
+        <br><a href="https://kensaur.us/?view=portfolio&utm_source=lazycow&utm_medium=app&utm_campaign=family" target="_blank" rel="noopener">${tr("about.familyall")} ↗</a></td></tr>
     </table>
     <p class="meta">${tr("about.built")}</p>
     <div class="row wrap">${(a.docs || []).map((d) => `<button data-doc="${esc(d)}">${ico("list", "sm")}${esc(d)}</button>`).join("")}</div>
     <pre class="doc" id="aboutDoc" hidden></pre>`;
 }
+/* Other kensaurus products, shown in About (owner, 17 Nov: "crosslink and upsell our other products"). Names and
+   taglines follow kensaur.us/apps.json (Lazycow's "related" list); links carry utm_source=lazycow. */
+const FAMILY = [
+  { name: "Mushi Mushi", key: "fam.mushi", url: "https://kensaur.us/mushi-mushi/" },
+  { name: "kenji skills", key: "fam.skills", url: "https://kensaur.us/notes/kenji-skills/en/" },
+  { name: "Tsumagoi Work&Camp", key: "fam.tsumagoi", url: "https://tsumagoi.kensaur.us/" },
+];
 async function showDoc(name) {
   const box = $("#aboutDoc");
   try { const r = await fetch("/docs/" + encodeURIComponent(name)); box.textContent = r.ok ? await r.text() : `${name}: ${r.status}`; }
@@ -3675,7 +3684,7 @@ const I18N = {
     "about.credit2": "Credit",
     "about.creditv": "Forks keep NOTICE and, please, the line \"Based on Lazycow Studio by kensaurus\" with a link to kensaur.us.",
     "about.support": "Support", "about.supportwhy": "Free and open source. Paying funds development; plans add priority on your requests.", "about.once": "Pay what you want", "about.permonth": "/month", "about.manage": "Manage or cancel", "about.sponsored": "Sponsored by",
-    "about.workspace": "Workspace",
+    "about.family": "More from kensaurus", "about.familyall": "Every kensaurus app", "fam.mushi": "Tells you why your AI-built app broke, and hands the fix to your editor (npm i mushi-mushi)", "fam.skills": "Step-by-step playbooks that keep AI coding assistants on track (@kensaurus/skills)", "fam.tsumagoi": "A 24-hour mountain lounge, run by us: the reels Lazycow was built for", "about.workspace": "Workspace",
     "about.built": "Built on open-source software, local AI models, SIL-licensed fonts and CC0 music. Every one, with its licence:",
     "pd.livetitle": "Posted",
     "pd.bookedtitle": "Scheduled on {n}",
@@ -3944,7 +3953,7 @@ const I18N = {
     "about.credit2": "クレジット",
     "about.creditv": "フォークする場合は NOTICE を残し、できれば「kensaurus 制作の Lazycow Studio をもとにしています」と kensaur.us へのリンクを表示してください。",
     "about.support": "応援", "about.supportwhy": "無料のオープンソースです。お支払いは開発費になり、月額プランでは要望を優先して確認します。", "about.once": "好きな金額を支払う", "about.permonth": "/月", "about.manage": "変更・解約", "about.sponsored": "スポンサー",
-    "about.workspace": "ワークスペース",
+    "about.family": "kensaurusのほかのアプリ", "about.familyall": "kensaurusのアプリ一覧", "fam.mushi": "AIで作ったアプリが壊れた理由を説明し、直し方をエディタに渡す（npm i mushi-mushi）", "fam.skills": "AIのコーディング助手を、最後まで正しく動かす手順書集（@kensaurus/skills）", "fam.tsumagoi": "自分たちで運営する、山の24時間ラウンジ。Lazycowはここのリールのために生まれました", "about.workspace": "ワークスペース",
     "about.built": "オープンソースのソフトウェア、ローカルのAIモデル、SILライセンスのフォント、CC0の音楽で作られています。それぞれのライセンス：",
     "pd.livetitle": "投稿済み",
     "pd.bookedtitle": "{n}で予約済み",
