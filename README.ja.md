@@ -53,7 +53,7 @@ flowchart LR
 1. [最新のリリース](https://github.com/kensaurus/lazycow-studio/releases/latest)から **Lazycow-Studio-&lt;バージョン&gt;.zip** をダウンロードし、置いておく場所に展開します。
 2. まず **README.TXT** を開いてください。1997年ふうの説明書で、最後に日本語の手順もあります。
 3. **Start Lazycow** をダブルクリックします（Mac は初回だけ **Start Lazycow.command** を右クリック › 開く）。「WindowsによってPCが保護されました」と出たら、「詳細情報」›「実行」を選びます。新しいファイルだという意味で、危険なファイルという意味ではありません。中身はすべて [`scripts/bootstrap/windows.ps1`](scripts/bootstrap/windows.ps1) で読めます。
-4. 青いセットアップ画面が、スタジオの作業データの保存先と、素材の場所を聞きます。そのあと Node、Python、ffmpeg の固定版をダウンロードします。どれも SHA-256 を確認してからユーザーフォルダに置くので、管理者権限はいりません。10〜30分、約1.5 GB です。
+4. 青いセットアップ画面が、スタジオの作業データの保存先と、素材の場所を聞きます。そのあと Node、Python、ffmpeg の固定版をダウンロードします。どれも SHA-256 を確認してからユーザーフォルダに置くので、管理者権限はいりません。10〜30分、約1.3 GB です。
 5. スタジオが開き、Lazy Kenji が案内します。次からは、デスクトップの **Lazycow Studio** をダブルクリックしてください。
 
 対応しているのは Windows 10/11（64ビット）と、Apple シリコンの Mac（macOS 14 以降）です。途中で止まったら、もう一度 **Start Lazycow** をダブルクリックしてください。続きから再開します。何が起きたかは `setup.log` に残ります。

@@ -17,7 +17,9 @@ import { freeDiskBytes } from "./health.mjs";
 
 export const DROP_PORT = Number(process.env.STUDIO_DROP_PORT || 4319);
 /** Photo and video formats phones and cameras make (the studio catalogs these). */
-export const DROP_TYPES = [".jpg", ".jpeg", ".png", ".heic", ".heif", ".avif", ".webp", ".tif", ".tiff", ".dng", ".arw", ".cr2", ".cr3", ".nef", ".raf", ".orf", ".rw2", ".mp4", ".mov", ".m4v", ".3gp", ".mts", ".m2ts", ".mxf", ".mkv", ".webm", ".avi", ".mpg", ".mpeg", ".insv", ".insp", ".360"];
+/* Photo and video types the library catalogues (py/studio/ingest.py KEEP). PNG and WebP are left out on purpose: the
+   library treats them as screenshots and website graphics, so a dropped one was saved and then never appeared (17 Nov). */
+export const DROP_TYPES = [".jpg", ".jpeg", ".heic", ".heif", ".avif", ".tif", ".tiff", ".dng", ".arw", ".cr2", ".cr3", ".nef", ".raf", ".orf", ".rw2", ".mp4", ".mov", ".m4v", ".3gp", ".mts", ".m2ts", ".mxf", ".mkv", ".webm", ".avi", ".mpg", ".mpeg", ".insv", ".insp", ".360"];
 const MAX_FILE = 8 * 1024 ** 3;       // one file at most 8 GB (a long 4K video)
 const KEEP_FREE = 5 * 1024 ** 3;      // never fill the disk the studio renders on: keep 5 GB free after a file
 
@@ -103,6 +105,7 @@ export function saveUpload(req, res, { inbox, name: rawName, folder, onSaved, re
   const answer = reply || ((code, msg) => send(res, code, msg));
   const name = safeName(rawName || "");
   const ext = extname(name).toLowerCase();
+  if (ext === ".png" || ext === ".webp") return answer(415, "PNG and WebP are treated as screenshots and graphics, not footage. Save the photo as JPEG (or send the original from the camera), then add it.");
   if (!DROP_TYPES.includes(ext)) return answer(415, `Only photos and videos (${DROP_TYPES.join(" ")}).`);
   const size = Number(req.headers["content-length"] || 0);
   if (!size) return answer(411, "No file.");

@@ -232,7 +232,7 @@ So long files do hurt in this code. They are found by a blurred description, giv
 ### What it does not understand
 
 - **Sound.** Picking never listens. The clip's own sound is kept and mixed under the music, but whether it is speech, wind or a dog barking plays no part in the choice. Long videos measure wind and turn windy clips down (`quality.py`).
-- **Speech.** Words spoken in a clip are not used for picking. If `faster-whisper` is installed, long videos get English subtitles (`speech.py`). Reels do not use it.
+- **Speech.** Words spoken in a clip are not used for picking. If `faster-whisper` (or `mlx-whisper` on a Mac with Apple silicon) is installed, long videos get subtitles, English by default (`speech.py`). Reels do not use it.
 - **What happens over time.** Each file is described by three still frames, and windows are judged by sharpness and motion. The studio does not know that someone lights a fire at 0:42.
 - **Who someone is.** It counts faces and scores "a person" with CLIP. It does not recognise anyone.
 - **Text in the picture.** Signs and screens are not read for reels. A document or screenshot scores as filler. Long videos can send signboard pictures to the AI vision model if you added a key (`vlog.place_hints`).
@@ -252,7 +252,7 @@ Every model the code loads or calls. "Local" means it runs on your processor; no
 | Tag footage, plain-word search, pick clips per slot, find signboards for long videos | OpenCLIP `ViT-B-32-quickgelu` with OpenAI weights | `py/studio/library.py` (`CLIP_ARCH`), `service.py` | CPU. `npm run setup` installs `torch` (CPU build) and `open_clip_torch`; open_clip downloads the weights once on first use. |
 | Faces: consent gate, Blur faces, face-following crop | YuNet face detector (OpenCV Zoo, ONNX) | `py/studio/library.py`, `pick.py`, `shot.py` | Reads `<data>/bin/face_detection_yunet_2023mar.onnx`. Only `python -m studio shots` downloads it (`YUNET_URL` in `py/studio/shots.py`). **If the file is missing, no faces are found**, so the consent gate and Blur faces have nothing to act on. Put the file there before you rely on them. |
 | How good a frame looks (a small nudge when picking) | LAION aesthetic predictor v1, a linear head on the CLIP embedding | `py/studio/aesthetic.py` | `npm run setup` fetches the 4 KB head into `<data>/bin`. Without it nothing changes. |
-| Spoken words to subtitles (long videos) | faster-whisper `small` (language) and `medium.en` (text), int8 on CPU, with its voice-activity filter | `py/studio/speech.py` | **Optional**: not in `py/requirements.txt`. Install `faster-whisper` into the studio's venv to turn it on; it fetches both models from Hugging Face once (`small` is about 0.5 GB, `medium.en` is larger). English only. Without it, long videos have no subtitles. |
+| Spoken words to subtitles (long videos) | faster-whisper `small` (language) and `medium.en` (text) with its voice-activity filter: float16 on an NVIDIA GPU (CUDA), else int8 on the CPU. On a Mac with Apple silicon: mlx-whisper `mlx-community/whisper-large-v3-turbo` (Metal) | `py/studio/speech.py` (`settings`, `device`) | **Optional**: not in `py/requirements.txt`. Install `faster-whisper` (or `mlx-whisper` on Apple silicon) into the studio's venv to turn it on; it fetches its models from Hugging Face once (`small` is about 0.5 GB, `medium.en` is larger). English by default. `STUDIO_WHISPER_BACKEND`, `STUDIO_WHISPER_MODEL` and `STUDIO_WHISPER_LANGUAGE` change it ([Transcription](#transcription)). Without it, long videos have no subtitles. |
 | Beats for cuts | librosa beat tracker | `py/studio/sound.py`, `vlog.py`, `extras.py` | Signal processing, not a neural network. |
 | Scene cuts | PySceneDetect | `py/studio/shots.py` | Signal processing. |
 | What worked, predictions | Bayesian additive model with Thompson sampling | `py/studio/learn.py`, `predict.py` | numpy, closed form. Steers only when switched on. |
@@ -263,7 +263,7 @@ The studio's **Results › Log** page lists the local models too (`LOCAL_MODELS`
 
 | Task | Provider and model | Code | Key in `.env` | Change the model |
 |:--|:--|:--|:--|:--|
-| AI reviewer: watches the rendered reel (video and sound) and suggests fixes; judges a new version; gives the hook and look scores | OpenRouter, `google/gemini-3.8-flash` | `py/studio/ai.py` (`REVIEW_MODEL`, `review`) | `OPENROUTER_API_KEY_PARKED` (what **Settings › Keys & AI** saves), else `OPENROUTER_API_KEY` | `STUDIO_AI_REVIEW_MODEL` (another OpenRouter model that accepts video) |
+| AI reviewer: watches the rendered reel (video and sound) and suggests fixes; judges a new version; gives the hook and look scores | OpenRouter, `google/gemini-3.8-flash` | `py/studio/ai.py` (`REVIEW_MODEL`, `review`) | `OPENROUTER_API_KEY_PARKED` (what **Settings › Keys & AI** saves), else `OPENROUTER_API_KEY` | `STUDIO_AI_REVIEW_MODEL` (another OpenRouter model that accepts video), or `STUDIO_LLM_VISION_MODEL` on [your own server](#use-your-own-llm): it then reviews still frames for free, and the result is marked partial |
 | Long videos: chapter and video titles from pictures, a check of map labels and captions, place names read from signs | OpenRouter, `google/gemini-3.8-flash` | `py/studio/ai.py` (`vision_json`), `vlog.py` | same as the reviewer | `REVIEW_MODEL`, or `STUDIO_LLM_VISION_MODEL` on [your own server](#use-your-own-llm) |
 | Suggested new lines for the word bank (saved as "suggested"; a person approves each) | OpenRouter, `google/gemini-3.8-flash` | `py/studio/wording.py` (`suggest_lines`), `research.py` (`_llm`) | `OPENROUTER_API_KEY`, else the reviewer key | `openrouter.edlModel` in `shared/spec.json` (update `usdPerMInput` and `usdPerMOutput` with it), or `STUDIO_LLM_MODEL` on [your own server](#use-your-own-llm) |
 | Post angles in **Ideas** (research) | OpenRouter, same model | `py/studio/research.py` (`_llm_angles`) | same | same |
@@ -286,17 +286,17 @@ The studio's **Results › Log** page lists the local models too (`LOCAL_MODELS`
 
 Everything in the main flow (catalog, tags, search, picking, words, render, review, approve, the learning model) runs with no key and no account.
 
-1. **Install.** The zip and `npx lazycow install` download pinned Node, Python and ffmpeg, then run the same setup as `npm run setup` (`scripts/setup.mjs`): the Python packages, the CPU build of torch and open_clip, the aesthetic head, and a first set of CC0 music. This needs the internet once. The CLIP weights download the first time the studio tags footage.
+1. **Install.** First the check (`npx lazycow doctor`, or `scripts/bootstrap/doctor.ps1` / `doctor.sh` before Node is there): system, memory, disk and the download hosts; a BLOCKED computer downloads nothing. Then the zip and `npx lazycow install` download pinned Node, Python and ffmpeg, then run the same setup as `npm run setup` (`scripts/setup.mjs`): the Python packages, the CPU build of torch and open_clip, the aesthetic head, and a first set of CC0 music. This needs the internet once. The CLIP weights download the first time the studio tags footage.
 2. **Face model.** Download the YuNet file (`YUNET_URL` in `py/studio/shots.py`) to `<data>/bin/face_detection_yunet_2023mar.onnx`, so faces are found and the consent gate works.
 3. **Leave the AI keys empty.** `FAL_KEY`, `OPENROUTER_API_KEY`, `OPENROUTER_API_KEY_PARKED`, `TOGETHER_API_KEY` and `FIRECRAWL_API_KEY` in `.env` (see `.env.example`). With no key there are no calls to those services.
-4. **Optional subtitles.** Install `faster-whisper` into the studio's venv (`%STUDIO_DATA%\venv`) for subtitles on long videos. It downloads its models once, then runs offline.
+4. **Optional subtitles.** Install `faster-whisper` into the studio's venv (`%STUDIO_DATA%\venv`) for subtitles on long videos; on a Mac with Apple silicon, `mlx-whisper` is faster. Either downloads its models once, then runs offline ([Transcription](#transcription)).
 5. **Do not connect networks**, if you want nothing to go out. Approved reels are copied to the approved folder (`STUDIO_READY`, default `%STUDIO_DATA%\ready\`) for you to post by hand.
 
 What you lose without keys, and what happens instead:
 
 | Feature | Without a key |
 |:--|:--|
-| AI reviewer, hook and look scores | Not available. Reel scores (`/api/perf/scores`) leave those parts out and say the score is partial. |
+| AI reviewer, hook and look scores | Not available, unless [your own vision model](#use-your-own-llm) is set: it reviews still frames (no sound, no motion) and the review is marked partial. Without either, reel scores (`/api/perf/scores`) leave those parts out and say the score is partial. |
 | A better version of a booked reel | Still made; a person judges it instead of the reviewer. |
 | Suggested new lines | Refused with a message, unless [your own model](#use-your-own-llm) is set. Write and approve lines yourself on the Words page. |
 | Post angles in Ideas | Fixed templates, or [your own model](#use-your-own-llm). (Ideas itself needs a Firecrawl key.) |
@@ -306,9 +306,24 @@ What you lose without keys, and what happens instead:
 
 Music search uses Openverse over the internet. To stay offline after setup, use the tracks `npm run setup` fetched, or add your own files to `<data>/audio/music`.
 
+### Transcription
+
+Subtitles for long videos come from `py/studio/speech.py`, on your computer. It picks a backend by itself; `.env` can override it:
+
+| Setting | Values | Default |
+|:--|:--|:--|
+| `STUDIO_WHISPER_BACKEND` | `auto`, `faster-whisper`, `mlx`, `off` | `auto`: `mlx` on a Mac with Apple silicon when `mlx-whisper` is installed, else `faster-whisper`. `off` treats every clip as silent. |
+| `STUDIO_WHISPER_MODEL` | any model the backend loads, e.g. `large-v3-turbo` (faster-whisper) or `mlx-community/whisper-small-mlx` (mlx) | `medium.en`; `medium` when you keep other languages; `mlx-community/whisper-large-v3-turbo` on mlx |
+| `STUDIO_WHISPER_LANGUAGE` | a language code or a comma list, e.g. `ja` or `en,ja` | `en`. Speech in other languages, and noise guessed as one, is dropped. An English-only model (`*.en`) with another language is refused with a message. |
+
+- **NVIDIA GPU.** faster-whisper runs on CUDA in float16 when CTranslate2 finds a GPU (`ctranslate2.get_cuda_device_count()`), else int8 on the CPU. If CUDA is found but will not run (a missing cuBLAS or cuDNN), it says so once and finishes on the CPU (`device`, `_faster_safe`).
+- **Apple silicon.** `pip install mlx-whisper` in the studio's venv. It reads the same 16 kHz audio and returns the same segments; the same filters drop noise and repeated lines (`_keep`).
+- Each clip is transcribed once and cached in `<data>/speech`. Changing the backend, model or language makes a fresh entry; CPU and CUDA share one.
+- YouTube captions are labelled with the language of their words: Japanese when the subtitles have kana or kanji, else English (`upload_vlog` in `py/studio/youtube.py`).
+
 ## Use your own LLM
 
-**Yes, since 0.18.0,** for the writing jobs and the picture questions. Point the studio at any server that speaks the OpenAI chat API: a local one (Ollama, LM Studio, vLLM, llama.cpp server) or a hosted one (OpenAI, Groq, OpenRouter with any model).
+**Yes, since 0.18.0,** for the writing jobs and the picture questions, and for the AI reviewer from still frames. Point the studio at any server that speaks the OpenAI chat API: a local one (Ollama, LM Studio, vLLM, llama.cpp server) or a hosted one (OpenAI, Groq, OpenRouter with any model).
 
 **In the app:** Settings › Keys & AI › **Your own AI model**. Pick a preset, type the model name, press **Check and save**. Before saving, the studio asks the server for its `/models` list, so a wrong address or model name is caught there. **Stop using it** goes back to OpenRouter.
 
@@ -317,7 +332,8 @@ Music search uses Openverse over the internet. To stay offline after setup, use 
 ```
 STUDIO_LLM_BASE_URL=http://127.0.0.1:11434/v1      # Ollama; LM Studio is http://127.0.0.1:1234/v1
 STUDIO_LLM_MODEL=qwen3:8b                          # writing: suggested lines, post angles
-STUDIO_LLM_VISION_MODEL=qwen3-vl:8b                # optional: long videos' names, chapters, caption check
+STUDIO_LLM_VISION_MODEL=qwen3-vl:8b                # optional: long videos' names, chapters, caption check; the reviewer (frames)
+STUDIO_AI_REVIEW_LOCAL=1                           # optional: review on your vision model even with an OpenRouter key
 STUDIO_LLM_API_KEY=                                # only if your server asks for one
 ```
 
@@ -325,7 +341,7 @@ STUDIO_LLM_API_KEY=                                # only if your server asks fo
 |:--|:--|:--|
 | Suggested new lines (Words), post angles (Ideas) | `STUDIO_LLM_MODEL` | `_llm` in `py/studio/research.py` |
 | Long videos: names and chapters from pictures, caption and map-label check, signboards | `STUDIO_LLM_VISION_MODEL` (a model that reads images); without it, OpenRouter as before | `vision_json` in `py/studio/ai.py` |
-| AI reviewer (watches the reel as video) | Still OpenRouter (`STUDIO_AI_REVIEW_MODEL`): it sends the whole reel as video, which most local servers do not accept | `review` in `py/studio/ai.py` |
+| AI reviewer: hook and look scores, captions over the wrong picture, unapproved claims, fixes | `STUDIO_LLM_VISION_MODEL`, from **still frames**, when there is no OpenRouter key, or when `STUDIO_AI_REVIEW_LOCAL=1` (with a key and without that line, OpenRouter watches the video as before). It sends 12 to 16 frames (the opening, the middle of every shot, evenly spaced moments), 540 px tall, as labelled contact sheets, with the captions and their times, the shot times and the approved facts. The answer has the same shape as the video review, marked `"partial": true, "basis": "frames"`: it hears nothing and sees no motion, so its look score leaves out sound and movement | `review_basis`, `frame_times`, `_review_frames` in `py/studio/ai.py` |
 | fal.ai tools, older paid tagging, gap fill | Unchanged | `py/studio/ai.py`, `tag.py`, `extras.py` |
 
 Calls to your own server are not priced or charged to the AI limits. Replies must be JSON; most servers honour `response_format: json_object`, and the studio also reads JSON wrapped in a sentence or a code fence. A model that answers poorly gives worse suggestions; nothing it writes reaches a reel until a person approves it. The setting lives in `config.own_llm` (`py/studio/config.py`); the `.env` file is read fresh on each call, so a change applies without a restart.

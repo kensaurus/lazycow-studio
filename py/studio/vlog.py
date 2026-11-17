@@ -1839,6 +1839,19 @@ def _targets(shots: list[dict]) -> dict | None:
 TAB_GB = 1.5  # what one Remotion render tab of a 1080p film takes, with room for the rest of the build
 
 
+def sys_platform() -> str:
+    import sys
+
+    return sys.platform
+
+
+def _vm_stat_free(text: str) -> float:
+    """GB that macOS can hand out now, from `vm_stat`: (free + inactive + speculative) pages × the page size it prints."""
+    size = int((re.search(r"page size of (\d+) bytes", text) or [0, 4096])[1])
+    pages = sum(int(m.group(2)) for m in re.finditer(r"Pages (free|inactive|speculative):\s+(\d+)", text))
+    return pages * size / 2**30
+
+
 def free_gb() -> float:
     """Memory free now, in GB (0 when it cannot be read)."""
     try:
@@ -1853,6 +1866,8 @@ def free_gb() -> float:
             m = Mem()
             m.len = ctypes.sizeof(Mem)
             return m.avail / 2**30 if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m)) else 0.0
+        if sys_platform() == "darwin":  # macOS has no SC_AVPHYS_PAGES: free + inactive + speculative pages from vm_stat
+            return _vm_stat_free(subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=5).stdout)
         return os.sysconf("SC_AVPHYS_PAGES") * os.sysconf("SC_PAGE_SIZE") / 2**30
     except Exception:
         return 0.0

@@ -38,8 +38,8 @@ test("the published files are only the package's own (no .env, no tests, no stud
   const out = execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", ["pack", "--dry-run", "--json"], { cwd: PKG, encoding: "utf8", shell: process.platform === "win32" });
   const parsed = JSON.parse(out);  // npm 10: [ {...} ]; npm 11: { lazycow: {...} }
   const files = (Array.isArray(parsed) ? parsed[0] : parsed[pkg.name]).files.map((f) => f.path).sort();
-  assert.deepEqual(files, ["LICENSE", "NOTICE", "README.md", "bin/lazycow.mjs", "lib/client.d.ts", "lib/client.mjs", "lib/env.mjs",
-    "lib/install.mjs", "lib/mcp.mjs", "lib/release.json", "package.json", "server.json"]);
+  assert.deepEqual(files, ["LICENSE", "NOTICE", "README.md", "bin/lazycow.mjs", "lib/client.d.ts", "lib/client.mjs", "lib/doctor.mjs", "lib/env.mjs",
+    "lib/health.mjs", "lib/install.mjs", "lib/mcp.mjs", "lib/release.json", "package.json", "server.json"]);
 });
 
 test("lazycow --version and help", () => {

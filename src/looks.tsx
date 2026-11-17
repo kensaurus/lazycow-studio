@@ -758,10 +758,11 @@ export const TypedHook: React.FC<{ beat: Beat; kicker?: Kicker | null; style: St
   const K = kickerBox(L);
   const start = beat.startSec * fps + 2;
   const kChars = kicker ? [...kicker.ja] : [];
-  const kTyped = Math.floor(interpolate(frame, [start, start + kChars.length * 1.6], [0, kChars.length], CLAMP));
-  const hStart = start + kChars.length * 1.6 + 4;
+  // A range of zero length throws in interpolate: a POV reel with no kicker crashed on frame 3 (pov-1114, 17 Nov).
+  const kTyped = kChars.length ? Math.floor(interpolate(frame, [start, start + kChars.length * 1.6], [0, kChars.length], CLAMP)) : 0;
+  const hStart = start + kChars.length * 1.6 + (kChars.length ? 4 : 0);
   const total = columns.reduce((a, c) => a + [...c].length, 0);
-  const typed = Math.floor(interpolate(frame, [hStart, hStart + total * 2.4], [0, total], CLAMP));
+  const typed = total ? Math.floor(interpolate(frame, [hStart, hStart + total * 2.4], [0, total], CLAMP)) : 0;
   const blink = Math.floor(frame / 15) % 2 === 0 ? 1 : 0;
   // The caret takes no room in the line, so a full line never wraps it onto the next one.
   const caret = (on: boolean) => (

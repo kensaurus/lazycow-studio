@@ -68,6 +68,10 @@ test("files dropped on the studio page: saved without overwriting, wrong types r
     assert.equal(again.status, 200);
     assert.equal((await again.json()).name, "clip-1.mov");  // a second file with the same name keeps both
     assert.equal((await put("notes.txt", "x")).status, 415);
+    // PNG and WebP: the library never catalogues them (screenshots), so they are refused with why, not saved and lost.
+    const png = await put("screen.png", "x");
+    assert.equal(png.status, 415);
+    assert.match(await png.text(), /PNG and WebP are treated as screenshots/);
     assert.equal((await put("../../escape.jpg", "CC")).status, 200);
     const files = readdirSync(join(inbox, "2026-11-10_dropped")).sort();
     assert.deepEqual(files, ["clip-1.mov", "clip.mov", "escape.jpg"]);

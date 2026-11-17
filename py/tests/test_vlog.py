@@ -246,3 +246,10 @@ def test_render_tabs_follow_the_memory_free():
     assert vlog.render_tabs(7.6) == 5 and vlog.render_tabs(2.0) == 2 and vlog.render_tabs(40.0) == 8
     assert vlog.render_tabs(0.0) == 8  # unknown: as before
     assert vlog.free_gb() > 0
+
+
+def test_free_memory_is_read_on_macos_too():
+    """macOS has no SC_AVPHYS_PAGES, so free_gb() was always 0 there (found preparing the macOS CI, 17 Nov)."""
+    sample = ("Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                               12000.\n"
+              "Pages active:                            400000.\nPages inactive:                           50000.\nPages speculative:                         3000.\n")
+    assert abs(vlog._vm_stat_free(sample) - (65000 * 16384) / 2**30) < 1e-9

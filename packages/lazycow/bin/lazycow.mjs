@@ -12,7 +12,10 @@ const [cmd = "help", ...rest] = process.argv.slice(2);
 
 const HELP = `lazycow ${PKG.version}: Lazycow Studio from the command line. By kensaurus, https://kensaur.us
 
-  npx lazycow install [--dir <folder>] [--yes]   Download, check (SHA-256) and set up the studio
+  npx lazycow doctor [--json] [--dir <folder>]   Can this computer run it? Checks before anything is downloaded
+                                                 (exit 0 ready, 1 slow, 2 blocked)
+  npx lazycow install [--dir <folder>] [--yes]   Check (doctor), download, check (SHA-256) and set up the studio
+                      [--force]                  install even when the check says BLOCKED
   npx lazycow open                               Open the studio in your browser
   npx lazycow status                             Is the studio running, and is this computer ready
   npx -y lazycow mcp                             MCP server for Claude Code, Claude Desktop, Cursor
@@ -48,9 +51,29 @@ try {
     case "mcp":
       await import("../lib/mcp.mjs");
       break;
+    case "doctor": {
+      const { doctor } = await import("../lib/doctor.mjs");
+      const dir = flag("--dir");
+      const { result } = await doctor({ dir: typeof dir === "string" ? dir : undefined, json: !!flag("--json"), offline: !!flag("--offline") });
+      process.exitCode = result.exitCode;
+      break;
+    }
     case "install": {
-      const { install } = await import("../lib/install.mjs");
-      const dir = flag("--dir"), zip = flag("--zip");
+      const dir = flag("--dir"), zip = flag("--zip"), force = !!flag("--force");
+      // Step 1: the doctor, before anything is downloaded. A local --zip needs no download hosts.
+      const { doctor } = await import("../lib/doctor.mjs");
+      const { install, defaultDir, precheck } = await import("../lib/install.mjs");
+      // A full folder or a wrong local zip is said first: the machine check would hide it behind its own verdict.
+      try { await precheck({ dir: typeof dir === "string" ? dir : undefined, zip: typeof zip === "string" ? zip : undefined }); }
+      catch (e) { process.stderr.write(`${e.message}\n`); process.exit(1); }
+      const { result } = await doctor({ dir: typeof dir === "string" ? dir : defaultDir(), offline: typeof zip === "string", out: process.stderr });
+      if (result.verdict === "BLOCKED" && !force) {
+        process.stderr.write("Nothing was downloaded. Fix the above and run this again, or install anyway with: npx lazycow install --force\n");
+        process.exit(2);
+      }
+      // The setup it starts (scripts/bootstrap) skips its own check, or is told to carry on past it.
+      process.env.LAZYCOW_CHECKED = result.verdict;
+      if (force) process.env.LAZYCOW_FORCE = "1";
       await install({ dir: typeof dir === "string" ? dir : undefined, zip: typeof zip === "string" ? zip : undefined,
         yes: !!flag("--yes"), noStart: !!flag("--no-start") });
       break;

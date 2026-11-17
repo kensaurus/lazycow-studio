@@ -188,3 +188,12 @@ def test_a_recut_whose_new_shot_shows_a_face_is_not_offered_for_a_reel_without_f
     assert not adds_faces({}, manifest, [{"shot": 2}])  # the swapped shot has none; another shot's face was there before
     assert not adds_faces({"allowFaces": True}, manifest, [{"shot": 1}])
     assert not adds_faces({"blurFaces": True}, manifest, [{"shot": 3}])
+
+
+def test_a_frames_review_and_a_video_review_are_not_compared():
+    """A review from still frames on your own model sees no motion or sound: against a video review, a person decides."""
+    from studio.versions import better_than
+
+    video = {"mismatches": [1, 2], "hook": 4, "look": 4, "basis": "video"}
+    assert better_than(video, {"mismatches": [], "hook": 9, "look": 9, "basis": "frames"}) == "unknown"
+    assert better_than({**video, "basis": "frames"}, {"mismatches": [], "hook": 9, "look": 9, "basis": "frames"}) == "better"

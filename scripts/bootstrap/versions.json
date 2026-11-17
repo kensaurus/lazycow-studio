@@ -2,18 +2,22 @@
   "_documentation": {
     "FILE": "scripts/bootstrap/versions.json",
     "PURPOSE": "Exactly what the double-click setup downloads: one pinned version of each tool, its official URL and SHA-256. A file whose hash differs is deleted and setup stops.",
-    "NOTES": "Each version was at least two weeks old when pinned (13 Nov 2026). Hashes come from the publishers: nodejs.org SHASUMS256.txt, the uv release .sha256 files, the GyanD/codexffmpeg release digests and ffmpeg.martin-riedl.de .sha256 files. To update: scripts/bootstrap/README.md."
+    "NOTES": "Each version was at least two weeks old when pinned (13 Nov 2026; the Linux entries, same versions, on 17 Nov 2026). Hashes come from the publishers: nodejs.org SHASUMS256.txt, the uv release .sha256 files, the GyanD/codexffmpeg release digests and ffmpeg.martin-riedl.de .sha256 files (macOS and Linux; the Linux builds link only glibc and libstdc++, so they need glibc 2.35 or newer). To update: scripts/bootstrap/README.md."
   },
   "python": "3.13",
   "node": {
     "version": "26.13.0",
     "win-x64": { "url": "https://nodejs.org/dist/v26.13.0/node-v26.13.0-win-x64.zip", "sha256": "dcc60d59a0746999f99064a01c020445d54d84228c691cdbf25b49ac3b59150a", "dir": "node-v26.13.0-win-x64" },
-    "darwin-arm64": { "url": "https://nodejs.org/dist/v26.13.0/node-v26.13.0-darwin-arm64.tar.gz", "sha256": "d38bd5e5a2ddce6bbb5ce45e46e208337da4d51fffe611e567fd32073d6439f6", "dir": "node-v26.13.0-darwin-arm64" }
+    "darwin-arm64": { "url": "https://nodejs.org/dist/v26.13.0/node-v26.13.0-darwin-arm64.tar.gz", "sha256": "d38bd5e5a2ddce6bbb5ce45e46e208337da4d51fffe611e567fd32073d6439f6", "dir": "node-v26.13.0-darwin-arm64" },
+    "linux-x64": { "url": "https://nodejs.org/dist/v26.13.0/node-v26.13.0-linux-x64.tar.gz", "sha256": "5848553868b402d3fabb5b09270649977780a390f832155721025a08b5104455", "dir": "node-v26.13.0-linux-x64" },
+    "linux-arm64": { "url": "https://nodejs.org/dist/v26.13.0/node-v26.13.0-linux-arm64.tar.gz", "sha256": "439e9c438acdf6a6ffe47418da709153d66c4bed812e30a473faacb107dd2791", "dir": "node-v26.13.0-linux-arm64" }
   },
   "uv": {
     "version": "0.13.5",
     "win-x64": { "url": "https://github.com/astral-sh/uv/releases/download/0.13.5/uv-x86_64-pc-windows-msvc.zip", "sha256": "a38b8d1902b7cfbc76b423ba1bb456f623f42064cdc72628b6075b89afd1019a" },
-    "darwin-arm64": { "url": "https://github.com/astral-sh/uv/releases/download/0.13.5/uv-aarch64-apple-darwin.tar.gz", "sha256": "743f85035a1996ecb350659e01cd9faea9709829be09b1b4b03c73eaf3c9cd73", "dir": "uv-aarch64-apple-darwin" }
+    "darwin-arm64": { "url": "https://github.com/astral-sh/uv/releases/download/0.13.5/uv-aarch64-apple-darwin.tar.gz", "sha256": "743f85035a1996ecb350659e01cd9faea9709829be09b1b4b03c73eaf3c9cd73", "dir": "uv-aarch64-apple-darwin" },
+    "linux-x64": { "url": "https://github.com/astral-sh/uv/releases/download/0.13.5/uv-x86_64-unknown-linux-gnu.tar.gz", "sha256": "f68d291c75783122dad58ab77def0e13f3233f358731db5d6d7e8715603b928f", "dir": "uv-x86_64-unknown-linux-gnu" },
+    "linux-arm64": { "url": "https://github.com/astral-sh/uv/releases/download/0.13.5/uv-aarch64-unknown-linux-gnu.tar.gz", "sha256": "4bb69cf95ed13f23713bb7bc09f241896ea0c75b7c557e615a20604b82f9c403", "dir": "uv-aarch64-unknown-linux-gnu" }
   },
   "ffmpeg": {
     "version": "9.0.2",
@@ -22,6 +26,16 @@
     "darwin-arm64": {
       "ffmpeg": { "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip", "sha256": "c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924" },
       "ffprobe": { "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffprobe.zip", "sha256": "fcbe839537485eaee7a7a8bc5cbc0f90d53617e80943e8a5b2e31cb851197ea6" }
+    },
+    "linux-x64": {
+      "glibc": "2.35",
+      "ffmpeg": { "url": "https://ffmpeg.martin-riedl.de/download/linux/amd64/1789931100_9.0.2/ffmpeg.zip", "sha256": "fa8ecf4abbd290d98f7d188b8649cc6b391ae209a98452be955a15aab1909d7f" },
+      "ffprobe": { "url": "https://ffmpeg.martin-riedl.de/download/linux/amd64/1789931100_9.0.2/ffprobe.zip", "sha256": "3f428c49070be3d24ec338602b76d412e401ffcb8a5641ef0e729181a232fc32" }
+    },
+    "linux-arm64": {
+      "glibc": "2.35",
+      "ffmpeg": { "url": "https://ffmpeg.martin-riedl.de/download/linux/arm64/1789931697_9.0.2/ffmpeg.zip", "sha256": "93a76ae90db5474eecdf951a729857c64f3de23567228d6a7d5e6e8e3cd1021b" },
+      "ffprobe": { "url": "https://ffmpeg.martin-riedl.de/download/linux/arm64/1789931697_9.0.2/ffprobe.zip", "sha256": "bcbe80fb741c180083327afaf5434812e006b33cacde2016b9aeaf6936128330" }
     }
   }
 }

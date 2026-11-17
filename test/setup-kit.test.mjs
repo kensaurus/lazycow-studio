@@ -10,7 +10,8 @@ const has = (p) => existsSync(new URL(`../${p}`, import.meta.url));
 const V = JSON.parse(read("scripts/bootstrap/versions.json"));
 
 test("every download is pinned to an official https URL and a SHA-256", () => {
-  const items = [V.node["win-x64"], V.node["darwin-arm64"], V.uv["win-x64"], V.uv["darwin-arm64"], V.ffmpeg["win-x64"], V.ffmpeg["darwin-arm64"].ffmpeg, V.ffmpeg["darwin-arm64"].ffprobe];
+  const items = [V.node["win-x64"], V.node["darwin-arm64"], V.uv["win-x64"], V.uv["darwin-arm64"], V.ffmpeg["win-x64"], V.ffmpeg["darwin-arm64"].ffmpeg, V.ffmpeg["darwin-arm64"].ffprobe,
+    ...["linux-x64", "linux-arm64"].flatMap((a) => [V.node[a], V.uv[a], V.ffmpeg[a].ffmpeg, V.ffmpeg[a].ffprobe])];
   for (const it of items) {
     assert.match(it.url, /^https:\/\/(nodejs\.org\/dist\/|github\.com\/(astral-sh\/uv|GyanD\/codexffmpeg)\/releases\/download\/|ffmpeg\.martin-riedl\.de\/download\/)/, it.url);
     assert.match(it.sha256, /^[0-9a-f]{64}$/, it.url);
@@ -18,14 +19,26 @@ test("every download is pinned to an official https URL and a SHA-256", () => {
   assert.ok(V.node["win-x64"].url.includes(`v${V.node.version}/`) && V.uv["win-x64"].url.includes(`/${V.uv.version}/`) && V.ffmpeg["win-x64"].url.includes(`/${V.ffmpeg.version}/`), "the version and the URL agree");
 });
 
-test("the Python packages are locked with hashes for Windows (CPU torch) and Mac", () => {
-  for (const f of ["py/requirements-win.lock", "py/requirements-mac.lock"]) {
+test("the Python packages are locked with hashes for Windows and Linux (CPU torch) and Mac", () => {
+  for (const f of ["py/requirements-win.lock", "py/requirements-mac.lock", "py/requirements-linux.lock", "py/requirements-linux-arm64.lock"]) {
     const lock = read(f);
     assert.match(lock, /^torch==2\.\d+\.\d+/m, f);
     assert.match(lock, /^open-clip-torch==/m, f);
     assert.ok((lock.match(/--hash=sha256:[0-9a-f]{64}/g) || []).length > 50, `${f} carries hashes`);
   }
-  assert.match(read("py/requirements-win.lock"), /^torch==[\d.]+\+cpu/m, "Windows gets the CPU build, not a 2 GB CUDA one");
+  for (const f of ["py/requirements-win.lock", "py/requirements-linux.lock", "py/requirements-linux-arm64.lock"]) {
+    assert.match(read(f), /^torch==[\d.]+\+cpu/m, `${f}: the CPU build, not a 2 GB CUDA one`);
+    assert.doesNotMatch(read(f), /^nvidia-/m, f);
+  }
+});
+
+test("the Linux installer checks every download, picks the lock for its processor and needs no sudo", () => {
+  const sh = read("scripts/bootstrap/linux.sh");
+  assert.match(sh, /rm -f "\$out"; fail/, "a file with the wrong hash is deleted");
+  assert.match(sh, /--torch-backend cpu --require-hashes "\$ROOT\/py\/\$LOCK"/);
+  assert.match(sh, /LOCK=requirements-linux\.lock/); assert.match(sh, /LOCK=requirements-linux-arm64\.lock/);
+  const code = sh.split("\n").filter((l) => !l.trimStart().startsWith("#")).join("\n");
+  assert.doesNotMatch(code, /\bsudo\b|apt-get|\/etc\/profile|\.bashrc/, "nothing system-wide");
 });
 
 test("README.TXT walks through the steps and the files it names exist", () => {

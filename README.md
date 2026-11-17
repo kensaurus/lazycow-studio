@@ -83,17 +83,35 @@ Read more in [Architecture](docs/architecture.md): [the reel pipeline](docs/arch
 
 ## Quick start
 
+### First: can this computer run it? (10 seconds, nothing installed)
+
+Paste one line. It checks the system, processor, memory, free disk and whether the download sites answer, then says **READY**, **SLOW** or **BLOCKED** with the reason and the fix. Nothing is downloaded.
+
+Windows (PowerShell):
+
+```
+irm https://raw.githubusercontent.com/kensaurus/lazycow-studio/main/scripts/bootstrap/doctor.ps1 | iex
+```
+
+macOS or Linux (Terminal):
+
+```
+curl -fsSL https://raw.githubusercontent.com/kensaurus/lazycow-studio/main/scripts/bootstrap/doctor.sh | sh
+```
+
+Already have Node? `npx lazycow doctor` does the same and adds a 3-second processor test that estimates the minutes per reel (scaled from 364 real builds, median 357 s, on a 32-thread Ryzen 9 5950X). Add `--json` for scripts; it exits 0 (ready), 1 (slow) or 2 (blocked). The setup below runs the same check as its step 1 and stops before downloading anything when the answer is BLOCKED (an Intel Mac, for example: PyTorch has had no Intel-Mac builds since 2.2). `--force` (`-Force` on Windows) installs anyway.
+
 ### The easy way: download, unzip, double-click
 
 No terminal, no Node, no Python to install first. Just like 1997, minus the CD.
 
 1. Download **Lazycow-Studio-&lt;version&gt;.zip** from the [latest release](https://github.com/kensaurus/lazycow-studio/releases/latest) and unzip it somewhere you will keep it.
 2. Open **README.TXT** first. Yes, really. It has the steps, and some jokes.
-3. Double-click **Start Lazycow** (Mac: right-click **Start Lazycow.command** › Open, the first time). If Windows says "Windows protected your PC", choose **More info › Run anyway**: the file is new, not bad. You can read every line in [`scripts/bootstrap/windows.ps1`](scripts/bootstrap/windows.ps1).
-4. A blue 1997-style setup screen asks where to keep the studio's work and where your footage is, then downloads pinned copies of Node, Python and ffmpeg (each checked against its SHA-256, kept in your user folder, no admin rights). It takes 10 to 30 minutes, about 1.5 GB.
+3. Double-click **Start Lazycow** (Mac: right-click **Start Lazycow.command** › Open, the first time). If Windows says "Windows protected your PC", choose **More info › Run anyway**: the file is new, not bad. You can read every line in [`scripts/bootstrap/windows.ps1`](scripts/bootstrap/windows.ps1). On Linux, open a terminal in the unzipped folder and run `bash scripts/bootstrap/linux.sh` (or skip the zip: `npx lazycow install` does all of it).
+4. A blue 1997-style setup screen asks where to keep the studio's work and where your footage is, then downloads pinned copies of Node, Python and ffmpeg (each checked against its SHA-256, kept in your user folder, no admin rights). It takes 10 to 30 minutes and downloads about 1.3 GB in all: about 0.65 GB during setup, and the 0.6 GB footage-search model the first time it searches.
 5. The studio opens, and Lazy Kenji shows you around. Next time, double-click **Lazycow Studio** on your desktop.
 
-Windows 10/11 (64-bit), or a Mac with Apple silicon and macOS 14+. If anything goes wrong, double-click Start Lazycow again: it carries on where it stopped, and `setup.log` says what happened. How it works: [scripts/bootstrap/README.md](scripts/bootstrap/README.md).
+Windows 10/11 (64-bit), a Mac with Apple silicon and macOS 14+, or 64-bit Linux (x86_64 or ARM) with glibc 2.35+ (Ubuntu 22.04, Debian 12, Fedora 36 or newer; no sudo, and the menu entry goes in `~/.local/share/applications`). If anything goes wrong, double-click Start Lazycow again: it carries on where it stopped, and `setup.log` says what happened. How it works: [scripts/bootstrap/README.md](scripts/bootstrap/README.md).
 
 ### For developers: the terminal way
 
@@ -121,7 +139,7 @@ You need Node 20+, Python 3.12+ and a current ffmpeg ([details](#what-you-need))
 
 4. Open **http://127.0.0.1:4317**. The first load takes 10 to 20 seconds while the search model starts. Follow the **Getting started** list on the page.
 
-`npm run setup` ends with a list of anything still missing and the exact fix. Usually that is ffmpeg: put a current `ffmpeg` and `ffprobe` in the data folder's `bin`, or on your PATH. Run it again any time. `npm run setup -- --check` only reports.
+`npm run setup` ends with a list of anything still missing and the exact fix. Usually that is ffmpeg 5.1 or newer: put `ffmpeg` and `ffprobe` (`.exe` on Windows) in the data folder's `bin`, install one on your PATH (`brew install ffmpeg`; `sudo apt install ffmpeg` on Debian 12 or Ubuntu 24.04 and newer), or point `STUDIO_FFMPEG` and `STUDIO_FFPROBE` at one. Run it again any time. `npm run setup -- --check` only reports.
 
 To choose where things go on a first run:
 
@@ -210,10 +228,13 @@ This is the one rule the studio never breaks.
 |:--|:--|:--|
 | Processor | 4 threads | 8 threads or more |
 | Memory | 6 GB | 12 GB or more |
+| Free disk to install | 6 GB | |
 | Free disk for renders | 3 GB | 20 GB or more |
 | Screen | 1280 px wide | 1440 px or more |
 
-Software: **Node 20** or newer, **Python 3.12** or newer, and a current **ffmpeg** (the build must support `-fps_mode`; builds from 2021 do not). A current Chrome, Edge or Safari for the studio page.
+Software: **Node 20** or newer, **Python 3.12** or newer, and **ffmpeg 5.1** or newer (`-fps_mode`, which frame sampling uses, arrived in 5.1, and the music ducking needs 5.0's `sidechaincompress`; Ubuntu 22.04's 4.4 and the 2021 builds still on many PATHs are too old). A current Chrome, Edge or Safari for the studio page. A Mac needs Apple silicon: PyTorch, which the footage search runs on, has had no Intel-Mac builds since 2.2.
+
+The studio, its setup and `npx lazycow doctor` find ffmpeg by one rule: `STUDIO_FFMPEG` / `STUDIO_FFPROBE` if set, else the studio's tools folder (`STUDIO_TOOLS`, default the data folder's `bin`), else your PATH, but only if that one is 5.1 or newer. An older one is never used quietly: the System page says it is too old and how to fix it on your system.
 
 Windows is where the studio is used every day. macOS and Linux work for the main flow but are tested less.
 

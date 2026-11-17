@@ -119,7 +119,8 @@ def _review_sum(r: dict | None) -> dict | None:
     if not r:
         return None
     return {"hook": (r.get("hook") or {}).get("score"), "look": (r.get("look") or {}).get("score"), "mismatches": r.get("mismatches") or [],
-            "claims": r.get("claims") or [], "summary": r.get("summary") or "", "at": r.get("at")}
+            "claims": r.get("claims") or [], "summary": r.get("summary") or "", "at": r.get("at"),
+            "basis": r.get("basis") or "video"}
 
 
 def _qa_sum(manifest: dict) -> dict:
@@ -314,6 +315,9 @@ def better_than(before: dict | None, after: dict | None) -> str:
     wrong picture is better; more is worse; as many, the hook and look scores decide (worse by 2 or more is worse).
     Without both reviews: "unknown" (a person decides)."""
     if not before or not after:
+        return "unknown"
+    # A review from still frames (your own vision model) and one that watched the video see different things: not comparable.
+    if (before.get("basis") or "video") != (after.get("basis") or "video"):
         return "unknown"
     a, b = len(before.get("mismatches") or []), len(after.get("mismatches") or [])
     if b < a:

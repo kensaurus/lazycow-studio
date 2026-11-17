@@ -52,6 +52,9 @@ jobs:
         run: |
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
           ./mcp-publisher login github-oidc
+          # The registry checks npm, which can take a minute to show a new version (0.18.0 failed here once).
+          v=$(node -p "require('./package.json').version")
+          for i in $(seq 1 30); do npm view "lazycow@$v" version >/dev/null 2>&1 && break; sleep 10; done
           ./mcp-publisher publish
 
       # Slack: a published release → #releases, a failed one → #alerts. Posts only from the public repository

@@ -70,6 +70,7 @@ HTTP status + `{ "error": "<one plain sentence>", "code": "<code>" }`. A key nev
   "tools": [ { "tool": "review", "provider": "openrouter", "model": "google/gemini-3.8-flash", "labelRequired": false,
                "what": "watches the rendered reel and suggests fixes (nothing is applied)" } ],
   "reviewModel": "google/gemini-3.8-flash",
+  "reviewBasis": "video",
   "paidTagging": false,
   "summary": "AI assist: $2.61 of $20.00 spent, $2.61 today (daily budget $2.00); $2.00 per reel."
 }
@@ -81,7 +82,7 @@ HTTP status + `{ "error": "<one plain sentence>", "code": "<code>" }`. A key nev
 
 | tool | provider / model | works on (automatic choice) | price (2026-11-09) | label |
 | --- | --- | --- | --- | --- |
-| `review` | OpenRouter `google/gemini-3.8-flash` (`STUDIO_AI_REVIEW_MODEL`) | the rendered 9:16 master, sent at 360x640 with its sound, plus captions, shot times, approved facts | tokens, ≈ $0.008 per 20 s reel | no |
+| `review` | OpenRouter `google/gemini-3.8-flash` (`STUDIO_AI_REVIEW_MODEL`); or your own `STUDIO_LLM_VISION_MODEL` from still frames (see Reviews) | the rendered 9:16 master, sent at 360x640 with its sound, plus captions, shot times, approved facts; on your own model, 12-16 frames on contact sheets instead of the video | tokens, ≈ $0.008 per 20 s reel; free on your own model | no |
 | `sharpen` | fal `fal-ai/topaz/upscale/video` (Proteus, H.264) | video shots under 1080 px on the short side, up to 3; factor to reach 1080 (x1-x4); the clip's own sound is put back | $0.01 / s | no |
 | `slowmo` | fal `fal-ai/rife/video` (1 new frame between each pair) | video shots at ≤ 31 fps, ≥ 2 s, not already slowed, up to 2 (longest first); played at half speed | $0.0013 / s | no |
 | `living` | fal `fal-ai/kling-video/v2.5-turbo/pro/image-to-video`, 5 s | still photos (not 360), 1 by default (`max_living`); prompt allows only a slow camera move, nothing new | $0.07 / s = $0.35 | **yes** |
@@ -196,6 +197,29 @@ The same render is answered from the cache, free (`cached: true`); `fresh: true`
   banned phrases are sent with the video). `guard`: the studio's own fact guard run on every caption
   (`{text, problem}`, e.g. `price`, `banned:…`): deterministic, show it as a warning.
 - Unless the reel is approved, a note is added to the project's `ai` list.
+- `basis`: `"video"` (OpenRouter watched the reel with its sound) or `"frames"` (your own vision model read still
+  frames). `partial`: `false` for a video review, `true` for a frames review. An older review file has neither field:
+  read it as `"video"`.
+
+**From still frames (your own vision model).** When `STUDIO_LLM_VISION_MODEL` is set (`config.own_llm`) and there is no
+OpenRouter key, or `STUDIO_AI_REVIEW_LOCAL=1` is in `.env`, the reviewer does not send the video. It grabs 12 to 16
+frames of the master (`frame_times`: the opening at 0.3 s, the middle of every shot, evenly spaced moments), 540 px
+tall, puts them four to a JPEG contact sheet labelled `#frame time shot`, and sends the sheets with the same data
+(captions with times, shots with times, approved facts, banned phrases, rules) plus `frames: [{frame, at, shot}]`
+through `vision_json`. It is free (nothing in `spend`). The brief tells the model it has no sound and no motion. The
+result has the same shape, plus:
+
+```json
+{ "model": "qwen3-vl:8b", "usd": 0, "basis": "frames", "partial": true, "frames": 13, "server": "http://127.0.0.1:11434/v1",
+  "hook": { "score": 6, "notes": "From still frames: …" }, "look": { "score": 7, "notes": "From still frames (no sound or motion judged): …" } }
+```
+
+- The cache is per render, model and basis, so a frames review is never returned as a video review, and the other
+  way round. Add a key (without `STUDIO_AI_REVIEW_LOCAL`) and the next review watches the video.
+- `GET /api/ai` has `reviewBasis`: `"video"`, `"frames"` or `null` (no reviewer). The estimate's `review` row then
+  has `provider: "own"`, the vision model, `unit: "frames"` and `usd: 0`.
+- A frames review cannot hear the audio or see the motion, so its look score is not the same measure as a video
+  review's. Compare two reviews only when they have the same `basis`.
 
 **GET /api/ai/review?slug=day-1108** (free): `{ "slug": "day-1108", "review": <the last review> | null }`, with
 `review.current: false` when the reel was rendered again since.
