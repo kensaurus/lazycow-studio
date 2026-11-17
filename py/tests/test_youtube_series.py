@@ -149,3 +149,10 @@ def test_series_comments_say_where_each_part_sits(studio):
     assert texts[2].startswith("Part 2 of 2: The River Crossing and a Birthday. That's the whole series. Watch it from Part 1: https://youtu.be/NEW1")
     out = youtube.series_comments()
     assert out["commented"] == [1, 2] and youtube.series_comments()["commented"] == [], "each part's comment once"
+
+
+def test_a_long_videos_language_follows_its_title():
+    """17 Nov: every long video was declared English, Japanese ones too."""
+    assert youtube._lang_of("浅間山の雲、71分 | Clouds over Mt. Asama") == "ja"
+    assert youtube._lang_of("Highlands & Coast · Part 1 of 2") == "en"
+    assert youtube._lang_of("") == "en"

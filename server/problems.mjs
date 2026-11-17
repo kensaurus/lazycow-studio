@@ -140,7 +140,9 @@ export function findProblems({ posts = [], reviews = [], parts = [], connections
   // 5. A network where the posts measured so far reached nobody: worth a look on the network itself (a new or
   //    restricted account, or a number the studio cannot read).
   for (const [n, v] of Object.entries(perf?.networks || {})) {
-    if (!(Number(v?.posts) >= 2) || Number(v?.median) !== 0) continue;
+    // A median of 0 is not "nobody": the summary's `silent` says whether every measured post got nothing (17 Nov: one
+    // Facebook reel at 100 views, six at 0-1, and this said all seven had 0 views).
+    if (!(Number(v?.posts) >= 2) || Number(v?.median) !== 0 || v?.silent === false) continue;
     const metric = v.metric === "engagements" ? "likes, reposts or replies" : "views";
     out.push({
       id: `reach:${n}`, level: "amber",

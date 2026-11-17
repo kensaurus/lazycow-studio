@@ -2997,6 +2997,36 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
 
   # ---------------------------------------------------------------- AI
+  /api/ai/llm:
+    get:
+      tags: [AI]
+      operationId: getOwnLlm
+      summary: Your own OpenAI-compatible model server (Ollama, LM Studio, vLLM, OpenAI, Groq, OpenRouter) as set, and presets for the Settings form. Never returns the key. Save it with POST /api/settings `{llm: {base_url, model, vision_model?, api_key?}}`; an empty base_url removes it.
+      responses:
+        "200":
+          description: Presets and the current setting.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  presets:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        base_url: { type: string }
+                        model: { type: string }
+                        vision_model: { type: string }
+                  ownLlm:
+                    nullable: true
+                    type: object
+                    properties:
+                      url: { type: string }
+                      model: { type: string }
+                      visionModel: { type: string }
+                      hasKey: { type: boolean }
   /api/ai:
     get:
       tags: [AI]

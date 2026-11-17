@@ -36,7 +36,7 @@ import { withLimit, tiktokVideoUrl } from "./helper.mjs";
 import { setLinkWanted, autoReconnect, beginConnect, browserState, cancelConnect, closeHelper, configureHelper, extensionConnected, setExtensionToken, headlineOf, helperStatus, inLane, openSignin, PERF_NETWORKS, readPerf, planWeek, postFor, prepare as helperPrepare, schedule as helperSchedule, scheduleRefusal, SCHEDULERS, unschedule as helperUnschedule, UNSCHEDULERS } from "./helper.mjs";
 import { buildId, folderBytes, freeDiskBytes, judgeSystem, LIMITS, medianSeconds, etaSeconds, probeEncoders, systemFacts } from "./health.mjs";
 import { openDrop, closeDrop, dropState, DROP_TYPES, saveUpload } from "./dropbox.mjs";
-import { classify, pickNext, noteStart, noteResult, YT_PER_DAY } from "./swap.mjs";
+import { bookedBeforeNewWords, classify, pickNext, noteStart, noteResult, YT_PER_DAY } from "./swap.mjs";
 import { AUTO_NETS, CHROME_NETS, fitsNetwork, planAhead, todayIn } from "./autoplan.mjs";
 import { setStartup, startupState } from "../scripts/autostart.mjs";
 import qrcode from "qrcode-generator";
@@ -858,9 +858,21 @@ setInterval(tickAuto, 10 * 60_000);
    Same shape as research: one short Python process per call (request JSON on stdin, `RESULT {...}` on stdout).
    Every paid call inside goes through one ledger with a per-reel cap, an AI total cap and the daily budget.
    `run` is a background job (STAGE / PROGRESS lines, like a render) and can queue a render when it ends. */
-const AI_TIMEOUT = { status: 60_000, estimate: 120_000, review: 300_000, "last-review": 30_000, "check-key": 40_000, "save-key": 40_000, "save-caps": 20_000, credits: 60_000 };
+const AI_TIMEOUT = { status: 60_000, estimate: 120_000, review: 300_000, "last-review": 30_000, "check-key": 40_000, "save-key": 40_000, "save-caps": 20_000, credits: 60_000, "save-llm": 40_000, "llm-presets": 20_000 };
 const AI_TOOLS = ["review", "sharpen", "slowmo", "living", "foley", "behind", "music", "voice"];
-const AI_SETTINGS = ["fal_key", "openrouter_key", "together_key", "ai_reel_cap_usd", "ai_total_cap_usd", "daily_usd_budget"];
+const AI_SETTINGS = ["fal_key", "openrouter_key", "together_key", "ai_reel_cap_usd", "ai_total_cap_usd", "daily_usd_budget", "llm"];
+/* Your own model server is saved in .env by Python while this process runs; every Python job is started with ENV, which
+   took .env's STUDIO_* lines at start. Take the STUDIO_LLM_* lines again so a saved (or removed) server applies at once,
+   unless the shell that started the studio set them (that still wins, as for every STUDIO_ setting). */
+function syncLlmEnv() {
+  let now = {};
+  try { now = Object.fromEntries(readFileSync(join(ROOT, ".env"), "utf8").split(/\r?\n/).map((l) => /^\s*(STUDIO_LLM_[A-Z_]+)\s*=\s*(.*)$/.exec(l)).filter(Boolean).map((m) => [m[1], m[2].trim().replace(/^["']|["']$/g, "")])); }
+  catch { /* no .env: nothing set */ }
+  for (const k of ["STUDIO_LLM_BASE_URL", "STUDIO_LLM_MODEL", "STUDIO_LLM_VISION_MODEL", "STUDIO_LLM_API_KEY"]) {
+    if (SHELL_ENV[k]) continue;
+    if (now[k]) { ENV[k] = now[k]; FILE_ENV_BASE[k] = now[k]; } else { delete ENV[k]; delete FILE_ENV_BASE[k]; }
+  }
+}
 // The ranch overlay (shared/ranch.mjs): the owner's checkout keeps the ranch's reels in ./projects; a clone without it
 // keeps them in its data folder. RANCH: the main project of a checkout with the overlay (same rule as py/studio/config.py).
 const OVERLAY = ranchOverlay(ROOT, pick("STUDIO_RANCH", ""));
@@ -1597,7 +1609,13 @@ function startPerfBrowser({ networks = [], why = "asked" } = {}) {
     const read = await readPerf({ home: HOME_DIR, items,
       onStep: (label, stage, stages) => { Object.assign(job, { label, stage, stages }); broadcast("job", job); } });
     const stored = [], left = [];
+    // A post booked before its reel got new words shows the older text, so "not found" by the new text proves nothing.
+    const [logRows, ov] = await Promise.all([ask({ cmd: "posts" }).catch(() => []), ask({ cmd: "overview" }).catch(() => ({ reels: [] }))]);
+    const rowOf = new Map((Array.isArray(logRows) ? logRows : []).map((p) => [Number(p.id), p]));
+    const reelOf = new Map((ov.reels || []).map((x) => [x.slug, x]));
     for (const r of read) {
+      if (r.state === "missing" && bookedBeforeNewWords(rowOf.get(Number(r.post_id)), reelOf.get(r.slug)))
+        Object.assign(r, { state: "unsure", message: `${r.message} It was booked before the reel got new words, so the network shows the older text: look for it there, then press It's out.` });
       // Found on the network (no numbers yet, or LINE, which has none): the post is out (py/studio/live.py seen).
       if (r.state === "found") await ask({ cmd: "live", action: "seen", id: r.post_id, url: r.page && SPECIFIC_POST.test(r.page) ? r.page : "", source: "found in your Chrome" }).catch(() => {});
       // Not found: marked missing only once it is hours past its time and still booked (live.missing decides).
@@ -1615,7 +1633,7 @@ function startPerfBrowser({ networks = [], why = "asked" } = {}) {
     }
     // A post that shows no counts yet (state "missing": too new, or the site has not counted it) is not a failure: it
     // is read again on the next hourly round. Only a real problem (sign-in, a failed read) makes the job an error.
-    const notYet = left.filter((x) => ["missing", "found", "unreadable"].includes(x.state)).length, real = left.length - notYet;
+    const notYet = left.filter((x) => ["missing", "unsure", "found", "unreadable"].includes(x.state)).length, real = left.length - notYet;  // unsure: booked with older words (bookedBeforeNewWords)
     const summary = `Read ${stored.length} of ${items.length} post${items.length === 1 ? "" : "s"} in your Chrome`
       + (notYet ? `; ${notYet} not showing numbers yet (read again next hour)` : "") + (real ? `; ${real} not read (see the list)` : "") + ".";
     job.result = { stored, left, summary };
@@ -1644,6 +1662,19 @@ function jobWords(slug = "") {
   const h = /^helper-(.+)-([a-z]+(?:-[a-z]+)?)$/.exec(slug); if (h) return [`Posting ${h[1]} through your Chrome (${h[2]})`, `Chrome経由の投稿：${h[1]}（${h[2]}）`];
   return null;
 }
+/* A cause a person can act on, in place of a Python error and a file path [en, ja], or null. The renderer's own log
+   holds the reason ("remotion failed …; see …raw_9x16.log"): on 15 Nov it was ENOSPC, the drive full. */
+function jobCause(lines, last) {
+  let text = lines.slice(-20).join("\n");
+  const log = /see (\S+\.log)\s*$/.exec(last)?.[1];
+  if (log) try { const all = readFileSync(log, "utf8"); text += "\n" + all.slice(-20000); } catch { /* the log is gone */ }
+  if (/ENOSPC|no space left on device/i.test(text)) {
+    const drive = /ENOSPC[^\n]*?-> '([A-Za-z]:)\\/.exec(text)?.[1] || "the drive";
+    return [`The computer ran out of disk space on ${drive} while making it. Check there is free space again, then open the reel and make it again.`,
+      `作成中に${drive === "the drive" ? "ドライブ" : drive}の空き容量がなくなりました。空きが戻っていることを確かめてから、リールを開いてもう一度作ってください。`];
+  }
+  return null;
+}
 /** A job that ended in an error: kept as a problem for a week (or until dismissed), with its last line. */
 function noteJobProblem(job) {
   // The same job finished fine later: its earlier failure is over (a one-off timeout stayed red for a week, 13-14 Nov).
@@ -1652,14 +1683,19 @@ function noteJobProblem(job) {
   const what = PROBLEM_KINDS[job.kind] || "job";
   const verUse = /^ver-/.test(job.slug || "");
   const named = jobWords(job.slug);
-  const fix = verUse ? ["Versions", "バージョン", "#/versions"] : /^vlog/.test(job.slug || "") ? ["Long videos", "長い動画", "#/videos"] : ["See the log", "ログを見る", "#/log/activity"];
+  // A reel's make or remix: the fix is on the reel (Make again), not in the log (17 Nov: 11 cards said "See the log").
+  const reelJob = ["build", "remix"].includes(job.kind) && SLUG_RX.test(job.slug || "");
+  const fix = verUse ? ["Versions", "バージョン", "#/versions"] : /^vlog/.test(job.slug || "") ? ["Long videos", "長い動画", "#/videos"]
+    : reelJob ? ["Open the reel", "リールを開く", `#/reel/${job.slug}`] : ["See the log", "ログを見る", "#/log/activity"];
+  const last = String((job.lines || []).slice(-1)[0] || job.label || "");
+  const cause = jobCause(job.lines || [], last);
   PROBLEMS.record({
     id: `job:${job.slug}`, level: "red",
     title: verUse ? `The new version of ${job.slug.slice(4)} was not used` : named ? `${named[0]} did not finish` : `The ${what} of ${job.slug} did not finish`,
-    detail: String((job.lines || []).slice(-1)[0] || job.label || "It stopped with an error.").slice(0, 300),
+    detail: (cause ? cause[0] : last || "It stopped with an error.").slice(0, 300),
     fix: { label: fix[0], href: fix[2] },
     ja: { title: verUse ? `${job.slug.slice(4)}の新しい版は使われませんでした` : named ? `${named[1]}が最後まで終わりませんでした` : `${job.slug}の処理が最後まで終わりませんでした`,
-      detail: String((job.lines || []).slice(-1)[0] || job.label || "エラーで止まりました。").slice(0, 300), fix: fix[1] },
+      detail: (cause ? cause[1] : last || "エラーで止まりました。").slice(0, 300), fix: fix[1] },
   });
   setTimeout(() => tickProblems().catch(() => {}), 2000);
 }
@@ -2830,6 +2866,11 @@ const server = createServer(async (req, res) => {
       try { return send(res, 200, await ai("credits", { fresh: url.searchParams.get("fresh") === "1" })); }
       catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
     }
+    /* Your own model server (py/studio/ai.py save_llm): presets for the Settings form and what is set now (never the key). */
+    if (req.method === "GET" && url.pathname === "/api/ai/llm") {
+      try { return send(res, 200, await ai("llm-presets")); }
+      catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
     if (req.method === "GET" && url.pathname === "/api/ai") {
       try { return send(res, 200, await ai("status")); }
       catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
@@ -2897,13 +2938,20 @@ const server = createServer(async (req, res) => {
             if (typeof b[field] !== "string" || b[field].length > 400) return send(res, 400, { error: `Paste the ${provider} key as text.`, code: "bad_key", field });
             saved[field] = await ai("save-key", { provider, key: b[field].trim() });
           }
+          if (b.llm !== undefined) {
+            const l = b.llm;
+            if (!l || typeof l !== "object" || Array.isArray(l) || Object.values(l).some((v) => v !== undefined && (typeof v !== "string" || v.length > 400)))
+              return send(res, 400, { error: "Your model server: an address, a model name, and optionally a vision model and a key, as text.", code: "bad_input", field: "llm" });
+            saved.llm = await ai("save-llm", { base_url: l.base_url || "", model: l.model || "", vision_model: l.vision_model || "", ...(l.api_key !== undefined ? { api_key: l.api_key } : {}) });
+            syncLlmEnv();
+          }
           if (b.ai_reel_cap_usd !== undefined || b.ai_total_cap_usd !== undefined || b.daily_usd_budget !== undefined) {
             saved.caps = await ai("save-caps", { ai_reel_cap_usd: b.ai_reel_cap_usd, ai_total_cap_usd: b.ai_total_cap_usd, daily_usd_budget: b.daily_usd_budget });
           }
         } catch (e) { return send(res, e.status || 400, { error: e.message, code: e.code || "bad_key", saved }); }
         const status = await ai("status").catch(() => null);
         const view = { saved: Object.fromEntries(Object.entries(saved).map(([k, v]) => [k, k === "caps" ? v.saved : { saved: v.saved, removed: v.removed }])),
-          keys: status?.keys || null, caps: status?.caps || null };
+          keys: status?.keys || null, caps: status?.caps || null, ownLlm: status?.ownLlm ?? null, ...(saved.llm?.models ? { models: saved.llm.models } : {}) };
         if (b.tz === undefined) return send(res, 200, { ok: true, ai: view, ...(researchView ? { research: researchView } : {}) });
       }
       const tz = String(b.tz || "").trim();

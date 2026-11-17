@@ -19,6 +19,14 @@ const SOON_MS = 30 * 60e3;
 
 const stampMs = (c) => Date.parse(String(c).replace(" ", "T") + (/[zZ]|[+-]\d\d:?\d\d$/.test(String(c)) ? "" : "Z"));  // the log's created stamps are UTC
 
+/* The reel got new words after this booking was made, so the network shows the older text: looking there for the reel's
+   current first line cannot prove the post missing (aerial-1108 on Google Maps, 14 Nov: live with its 9 Nov words,
+   marked missing). */
+export function bookedBeforeNewWords(p, reel) {
+  const words = Date.parse(reel?.wordsAt || "") || 0;
+  return !!words && !!p?.created && words > stampMs(p.created) + 60e3;
+}
+
 /* Why a booking still holds older words and is not swapped yet, or null when it does not (or is no longer) need one:
    ready · review (the new render waits for a person) · rendering · soon (out within 30 min) · elsewhere (booked inside
    LINE, LinkedIn or Google Maps) · failed (stopped after MAX_TRIES). A booking whose time has passed is out: null. */

@@ -574,8 +574,11 @@ def _post_text(reel: dict, channel: str) -> str:
         # A Pin: a searchable title, a description, and the link the Pin opens.
         return f"TITLE: {reel['yt_title']}\n\nDESCRIPTION:\n{post['ja']}\n\n{post['en']}\n\nLINK: {link}\n"
     if channel == "bluesky":
-        # Bluesky: 300 characters at most, link included.
-        return _fit(f"{SHORT[reel['slug']]['x']}\n{link}", 300) + "\n"
+        # Bluesky: 300 characters at most, link included, and two topic tags (shared/playbooks.json "bluesky": 0-2,
+        # topic only). With none, a post reaches followers only: 17 Nov, 7 posts at 0 likes on a 2-follower account.
+        topic = [t for t in reel["tags"] if t not in ("#キャンプ", f"#{_brand_handle().lstrip('@')}")][:1]
+        tagline = " ".join(["#キャンプ", *topic])
+        return _fit(f"{SHORT[reel['slug']]['x']}\n{link}", 300 - len(tagline) - 1) + "\n" + tagline + "\n"
     if channel == "gbp":
         # Google Business Profile post: short, the 予約 button carries the link.
         return f"{post['ja']}\n\n{post['price_ja']}\n\nボタン：予約 → {link}\n"

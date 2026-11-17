@@ -729,8 +729,44 @@ def _llm_key() -> str:
     return reviewer_key()
 
 
+def _own_llm(system: str, user: str, max_tokens: int) -> dict | None:
+    """The same question to your own model server (config.own_llm): no key needed, nothing charged. None when failing."""
+    from studio.config import own_llm
+
+    own = own_llm()
+    payload = {"model": own["model"], "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+               "response_format": {"type": "json_object"}, "max_tokens": max_tokens + 2000, "temperature": 0.4}
+    ck = _cache_key("own-llm", payload)
+    hit = _cache_get(ck)
+    if hit is not None:
+        return hit
+    headers = {"Content-Type": "application/json", **({"Authorization": f"Bearer {own['key']}"} if own["key"] else {})}
+    try:
+        status, _, raw = _http("POST", own["url"], data=json.dumps(payload).encode("utf-8"), headers=headers, timeout=180)
+        if status == 400:  # LM Studio refuses response_format json_object (it takes json_schema or text): ask in plain text
+            payload.pop("response_format", None)
+            status, _, raw = _http("POST", own["url"], data=json.dumps(payload).encode("utf-8"), headers=headers, timeout=180)
+    except ResearchError:
+        return None
+    body = _json(raw)
+    if status >= 400:
+        return None
+    try:
+        text = re.sub(r"^```(json)?|```$", "", str(body["choices"][0]["message"]["content"]).strip()).strip()
+        out = json.loads(text if text.startswith("{") else re.search(r"\{[\s\S]*\}", text).group(0))
+    except (KeyError, IndexError, TypeError, ValueError, AttributeError):
+        return None
+    _cache_put(ck, "own-llm", out)
+    return out
+
+
 def _llm(system: str, user: str, purpose: str = "research", max_tokens: int = 700) -> dict | None:
-    """OpenRouter through the studio's daily USD budget (studio.edl's model). None when off, over budget or failing."""
+    """OpenRouter through the studio's daily USD budget (studio.edl's model), or your own model server when one is set
+    (STUDIO_LLM_BASE_URL). None when off, over budget or failing."""
+    from studio.config import own_llm
+
+    if own_llm():
+        return _own_llm(system, user, max_tokens)
     if not _llm_key():
         return None
     from studio.db import connect, spent_today
@@ -1442,9 +1478,11 @@ def links(req: dict) -> dict:
 # ---------- 6. status and the key ----------
 
 def status(req: dict | None = None) -> dict:
+    from studio.config import own_llm
+
     key = api_key()
     out = {"ready": bool(key), "credits": None, "cache": cache_info(), "today": usage_today(), "dailyCap": daily_cap(),
-           "llm": bool(_llm_key()), "sources": ["https://api.firecrawl.dev/v2/team/credit-usage"] if key else []}
+           "llm": bool(_llm_key() or own_llm()), "sources": ["https://api.firecrawl.dev/v2/team/credit-usage"] if key else []}
     if key:
         try:
             out["credits"] = credits(key, fresh=bool((req or {}).get("fresh")))

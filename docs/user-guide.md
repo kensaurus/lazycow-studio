@@ -432,6 +432,8 @@ There are three ways in:
 - **Footage › Add a folder**.
 - **Footage › Add from Google Photos**: pick the items.
 
+Short takes work best: 5 to 15 seconds, one subject each, with a still second at the start and end. Why, and the rest of the camera settings: [Filming guide](filming-guide.md).
+
 ### Quality check, colour match and steadying
 
 Every render is checked when it finishes, at 9:16, 4:5 and 16:9. The result is in the render's `manifest.json` as `qa` (one entry per aspect). A check marked **bad** only flags the reel for you; nothing is blocked or deleted.

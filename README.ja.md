@@ -24,6 +24,26 @@ Lazycow Studio は、写真と動画の中から合うカットを探し、無�
 
 YouTube、Facebook、Bluesky には直接投稿します。X、TikTok、LinkedIn、Google マップ、LINE は、あなたの Chrome で各サービスの予約画面に入力します。
 
+## しくみ
+
+スタジオは3つの部分でできています。画面と HTTP API を出す Node サーバー（`server/review.mjs`。`127.0.0.1:4317` だけで待ち受けます）、素材の整理・タグ付け・カット選びをする Python（`python -m studio …`）、書き出しをする Remotion と ffmpeg です。タグ付けと検索は OpenCLIP があなたのPCのプロセッサーで行うので、基本の流れにはキーも LLM もいりません。クラウドのAIは、キーを入れたときだけ動きます（OpenRouter のレビュー係と言葉の提案、fal.ai のスローモーション・音楽・音声など）。文章づくりと画像の読み取りは、自分のモデルでも動かせます。OpenAI 互換のサーバーなら、ローカル（Ollama、LM Studio、vLLM、llama.cpp）でもクラウドでも使えます（設定 › キーとAI ›「自分のAIモデル」、または `.env` の `STUDIO_LLM_BASE_URL`）。MCP でつなぐ AI エージェントのほうは、どのモデルでも使えます。
+
+```mermaid
+flowchart LR
+  UI["スタジオの画面<br/>server/editor.html"] -- "HTTP" --> N["Node サーバー<br/>server/review.mjs<br/>127.0.0.1:4317"]
+  AG["あなたのAIエージェント<br/>モデルは自由"] -- "MCP" --> N
+  N --> PY["Python エンジン<br/>python -m studio<br/>CLIP検索はPCのCPUで"]
+  F[("素材<br/>読むだけ")] --> PY
+  PY --> R["Remotion と ffmpeg<br/>書き出し"]
+  PY --> D[("データフォルダ<br/>カタログ、書き出し、キー")]
+  N -. "承認済みのリールだけ" .-> P["YouTube、Facebook、Bluesky、<br/>あなたの Chrome で X、TikTok など"]
+  PY -. "キーを入れたときだけ" .-> C["OpenRouter、fal.ai"]
+```
+
+詳しくは [docs/architecture.md](docs/architecture.md)（英語）へ。[リールができるまで](docs/architecture.md#the-reel-pipeline)、[使っているAIモデルの一覧](docs/architecture.md#ai-and-ml-models)、[すべてPCの中で動かす](docs/architecture.md#run-it-fully-local)、[自分のLLMを使う](docs/architecture.md#use-your-own-llm)、[PCの外に出るもの](docs/architecture.md#what-leaves-your-computer)があります。
+
+**撮影のコツ:** スタジオは各ファイルを3枚の静止画で見分け、1本のリールに1つのファイルから1〜4秒のカットを1つしか使いません。だから長回しより、短いカットをたくさん撮るほうが向いています。詳しくは[撮影ガイド](docs/filming-guide.ja.md)へ。カットの長さ、構図、設定、チェックリストをまとめています。
+
 ## はじめ方は3通り
 
 ### 1. ダブルクリックで始める（おすすめ）
@@ -109,7 +129,7 @@ Cursor（`.cursor/mcp.json`）や Claude Desktop（`claude_desktop_config.json`�
 
 スタジオ、検索モデル、音楽、投稿は無料です。お金がかかるのは、自分で選んだときだけです。
 
-- 有料のAIツール（fal.ai、OpenRouter、Together AI）と、Web を調べる Firecrawl は任意です。使うときは自分のキーを入れます。
+- 有料のAIツール（fal.ai、OpenRouter）と、Web を調べる Firecrawl は任意です。使うときは自分のキーを入れます。Together AI のキーは保存できますが、いまはどのツールも使っていません。
 - 有料の呼び出しは、先に金額を出し、上限を超えると実行しません。初期値は1日2ドル、1本2ドル、合計20ドルです。**Settings › Keys & AI** で変えられます。
 - AIが承認済みのリールを書き換えることはありません。新しい下書きを作り、それをまた人がレビューします。
 
@@ -131,9 +151,10 @@ Lazycow Studioは、[kensaurus](https://kensaur.us/?view=portfolio&utm_source=la
 | 読むもの | こんなときに |
 |:--|:--|
 | [User guide](docs/user-guide.md) | 画面ごとの使い方を知りたい、困ったことを解決したい |
+| [撮影ガイド](docs/filming-guide.ja.md)（日本語） | スタジオがうまく編集できる素材を撮りたい（カットの長さ、構図、設定、チェックリスト） |
 | [MCP](docs/mcp.md) | AIエージェントにスタジオを使わせたい |
 | [Chrome link](docs/helper.md) | X、TikTok、Google マップ、LINE、LinkedIn の予約をしたい |
-| [Architecture](docs/architecture.md) | 仕組みと、データの置き場所を知りたい |
+| [Architecture](docs/architecture.md) | 仕組み、どのAIモデルがどこで動くか、PCの中だけで動かす方法、データの置き場所を知りたい |
 | [HTTP API](docs/openapi.yaml) | すべての API ルートを見たい（OpenAPI 3.1） |
 
 ## 応援する

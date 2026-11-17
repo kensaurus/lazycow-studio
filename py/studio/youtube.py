@@ -727,6 +727,12 @@ def _uploaded(n: int, made: str | None = None) -> dict | None:
     return up
 
 
+def _lang_of(text: str) -> str:
+    """A long video's language for YouTube, from its title: "ja" when it has kana or kanji, else "en". Every long video
+    was declared English (17 Nov), so a Japanese video was offered to English-speaking viewers first."""
+    return "ja" if re.search(r"[぀-ヿ一-鿿]", text or "") else "en"
+
+
 def upload_vlog(n: int, privacy: str = "unlisted", at: str | None = None, force: bool = False) -> dict:
     """A long video (studio.vlog part n) to the channel of the account in use (use()): its title, description with
     chapters, tags and thumbnail. privacy: private, unlisted (only people with the link) or public; `at` schedules it
@@ -768,7 +774,7 @@ def upload_vlog(n: int, privacy: str = "unlisted", at: str | None = None, force:
         st.update(privacyStatus="private", publishAt=_rfc3339(at))
     resource = {"snippet": {"title": meta["title"][:100], "description": description[:5000],
                             "tags": [str(t)[:60] for t in (meta.get("tags") or [])][:30], "categoryId": TRAVEL,
-                            "defaultLanguage": "en", "defaultAudioLanguage": "en"}, "status": st}
+                            "defaultLanguage": _lang_of(meta["title"]), "defaultAudioLanguage": _lang_of(meta["title"])}, "status": st}
     result = _resumable(video, resource)
     vid = result["id"]
     url = f"https://youtu.be/{vid}"

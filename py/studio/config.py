@@ -173,6 +173,32 @@ def daily_budget() -> float:
         return 2.0
 
 
+def own_llm(vision: bool = False) -> dict | None:
+    """Your own model server instead of OpenRouter: anything that speaks the OpenAI chat API (Ollama, LM Studio, vLLM,
+    llama.cpp server). Set in .env:
+      STUDIO_LLM_BASE_URL      e.g. http://127.0.0.1:11434/v1 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio)
+      STUDIO_LLM_MODEL         the model for writing jobs, e.g. qwen2.5:7b-instruct
+      STUDIO_LLM_VISION_MODEL  optional: a model that reads pictures, e.g. qwen2.5vl:7b (long-video titles, chapters)
+      STUDIO_LLM_API_KEY       optional: only if your server asks for one
+    Returns {url, model, key} or None (not set; for vision, no vision model). Calls to it cost nothing in the ledger.
+    The .env file is read fresh and wins (Settings › Keys & AI saves there while the studio runs), like ai._env."""
+    fresh = _llm_file()
+    get = lambda name: (fresh[name] if name in fresh else os.environ.get(name, "")).strip()  # noqa: E731
+    base = get("STUDIO_LLM_BASE_URL").rstrip("/")
+    model = get("STUDIO_LLM_VISION_MODEL" if vision else "STUDIO_LLM_MODEL")
+    if not base or not model or not base.startswith(("http://", "https://")):
+        return None
+    return {"url": base + "/chat/completions", "model": model, "key": get("STUDIO_LLM_API_KEY")}
+
+
+def _llm_file() -> dict:
+    """The STUDIO_LLM_* lines of .env as they are now; a name that is absent falls back to the environment."""
+    out = {}
+    for path in (ROOT / ".env", ROOT / ".env.local"):
+        out.update({k: v for k, v in _parse_env(path).items() if k.startswith("STUDIO_LLM_")})
+    return out
+
+
 def ensure_dirs() -> None:
     for name in ("bin", "proxies", "mezz", "renders", "keyframes", "catalog", "review", "masks", "upscaled"):
         (DATA / name).mkdir(parents=True, exist_ok=True)
