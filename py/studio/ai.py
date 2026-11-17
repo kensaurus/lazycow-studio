@@ -14,6 +14,9 @@ OVERVIEW: Every paid call goes through charge(): it prices the call first from t
           music {id}, voice {lines}); reels.build uses them. A project without them renders exactly as
           before. Each tool adds a note to project["ai"]: {tool, model, usd, at, what, label_required}.
           Results are cached per source clip (a clip is paid for once) and reviews per rendered master.
+          With your own vision model (config.own_llm) and no OpenRouter key, or STUDIO_AI_REVIEW_LOCAL=1, the reviewer
+          reads 12-16 still frames on contact sheets instead of the video (review_basis): free, and marked
+          {"partial": true, "basis": "frames"} because it hears nothing and sees no motion.
           Text-to-video of places is not offered: nothing here makes a scene that was not filmed.
 DEPENDENCIES: Python stdlib, ffmpeg (studio build), cv2 (photo resize), studio.config, studio.db,
               studio.guard, studio.projects, studio.reels (shot windows), studio.research (approved facts)
@@ -573,6 +576,14 @@ def plan(slug: str, tools: list[str], options: dict | None = None) -> list[dict]
     for tool in [t for t in ORDER if t in tools]:
         provider, model, label, what = TOOLS[tool]
         base = {"tool": tool, "provider": provider, "model": model, "label_required": label}
+        if tool == "review" and review_basis() == "frames":
+            from studio.config import own_llm
+
+            own, n = own_llm(vision=True), len(frame_times(project))
+            items.append({**base, "provider": "own", "model": own["model"], "target": None, "quantity": n, "unit": "frames", "usd": 0.0,
+                          "cached": False, "basis": "frames",
+                          "what": f"review of {n} still frames of the rendered reel on your own model ({own['model']}): no sound or motion, free"})
+            continue
         if tool == "review":
             m = model_prices(model)
             tin, tout = int(total_sec * 300 + 3500), 1800
@@ -661,7 +672,8 @@ def estimate(req: dict) -> dict:
     per_tool = []
     for t in [t for t in ORDER if t in tools]:
         rows = [i for i in items if i["tool"] == t]
-        per_tool.append({"tool": t, "provider": TOOLS[t][0], "model": TOOLS[t][1], "usd": round(sum(i["usd"] for i in rows), 4),
+        per_tool.append({"tool": t, "provider": rows[0]["provider"] if rows else TOOLS[t][0], "model": rows[0]["model"] if rows else TOOLS[t][1],
+                         "usd": round(sum(i["usd"] for i in rows), 4),
                          "items": rows, "labelRequired": TOOLS[t][2], "what": TOOLS[t][3],
                          "note": None if rows else "nothing on this reel fits this tool (see its rule in docs/ai-api.md)"})
     if locked(slug) and target == slug and any(t != "review" for t in tools):
@@ -1033,15 +1045,124 @@ REVIEW_SYSTEM = (
 )
 
 
-def _review_system() -> str:
-    """The reviewer's brief: the ranch's in the Tsumagoi workspace; any other project, its own name and no ranch facts."""
+# The same brief for a review from still frames (your own vision model, review_basis() == "frames"): the reply has the
+# same shape, but the model is told it has no sound and no motion, so it does not pretend to judge them.
+FRAMES_BRIEF = (
+    ("You get the video with its sound, the caption track",
+     "You get still frames of the video on contact sheets (each frame labelled with its number, time and shot; there is "
+     "NO sound and NO motion, so never judge audio, music, pacing or camera movement), the caption track"),
+    ("Judge only what you can see and hear.", "Judge only what you can see in the frames."),
+    ("why the first 3 seconds do or do not stop a thumb", "why the first 3 seconds (the frames before 3 s) do or do not stop a thumb"),
+    ("picture and sound quality: sharpness, motion, exposure, audio", "picture quality you can see in stills: sharpness, exposure, framing"),
+)
+
+
+def _review_system(frames: bool = False) -> str:
+    """The reviewer's brief: the ranch's in the Tsumagoi workspace; any other project, its own name and no ranch facts.
+    frames: the brief for a review from still frames (no sound, no motion), same reply shape."""
     from studio.brand import brand
 
     b = brand()
-    if b["ranch"]:
-        return REVIEW_SYSTEM
-    who = f"for {b['name']}" if b["name"] else "for a small business"
-    return REVIEW_SYSTEM.replace("for 嬬恋牧場Work&Camp, a real campsite and workation place in Tsumagoi, Gunma, Japan", who)
+    text = REVIEW_SYSTEM
+    if not b["ranch"]:
+        who = f"for {b['name']}" if b["name"] else "for a small business"
+        text = text.replace("for 嬬恋牧場Work&Camp, a real campsite and workation place in Tsumagoi, Gunma, Japan", who)
+    if frames:
+        for old, new in FRAMES_BRIEF:
+            if old not in text:  # the brief was edited: fail loudly rather than send a video brief with stills
+                raise AiError(f"The frames brief is out of date (missing: {old[:40]}).", "bug", 500)
+            text = text.replace(old, new)
+    return text
+
+
+def review_basis() -> str | None:
+    """How the reviewer looks at a reel: "video" (OpenRouter watches the whole reel with its sound), "frames" (your own
+    vision model, config.own_llm(vision=True), reads still frames: no sound, no motion, free) or None (neither is set).
+    Frames when a vision model is set and either there is no OpenRouter key or STUDIO_AI_REVIEW_LOCAL=1 asks for it."""
+    from studio.config import own_llm
+
+    if own_llm(vision=True) and (not reviewer_key() or _env("STUDIO_AI_REVIEW_LOCAL").lower() in ("1", "on", "true", "yes")):
+        return "frames"
+    return "video" if reviewer_key() else None
+
+
+REVIEW_FRAMES = (12, 16)   # a frames review sends at least / at most this many stills
+FRAME_HEIGHT = 540         # each still this tall (the 1080x1920 master halved)
+FRAMES_PER_SHEET = 4       # stills side by side on one contact sheet (4 x 304 px wide)
+
+
+def frame_times(project: dict) -> list[dict]:
+    """The moments a frames review looks at: the opening (the hook), the middle of every shot, and evenly spaced moments
+    to fill up to REVIEW_FRAMES[0]; never more than REVIEW_FRAMES[1] (even moments go first, then shots evenly).
+    [{"frame": 1.., "at": seconds, "shot": 1..}] in time order."""
+    spans, t = [], 0.0
+    for s in project.get("shots", []):
+        sec = float(s.get("sec") or 0)
+        spans.append((t, sec))
+        t += sec
+    total = t
+    if total <= 0:
+        return []
+    lo, hi = REVIEW_FRAMES
+    gap = min(0.5, 0.4 * total / lo)  # two moments closer than this show the same picture
+    fixed = sorted([(min(0.3, total / 2), "hook")] + [(a + sec / 2, "shot") for a, sec in spans if sec > 0])
+    if len(fixed) > hi:  # more shots than room: keep the hook, spread the rest evenly
+        rest = fixed[1:]
+        fixed = [fixed[0]] + [rest[round(k * (len(rest) - 1) / (hi - 2))] for k in range(hi - 1)]
+    pts = list(fixed)
+    for k in range(lo):
+        at = (k + 0.5) * total / lo
+        if all(abs(at - p) >= gap for p, _ in pts):
+            pts.append((at, "even"))
+    pts.sort()
+    while len(pts) > hi:  # drop the even moment closest to a neighbour
+        evens = [i for i, (_, kind) in enumerate(pts) if kind == "even"]
+        if not evens:
+            break
+        near = lambda i: min(abs(pts[i][0] - pts[j][0]) for j in (i - 1, i + 1) if 0 <= j < len(pts))  # noqa: E731
+        pts.pop(min(evens, key=near))
+    out = []
+    for n, (at, _) in enumerate(pts, 1):
+        at = round(min(at, max(0.0, total - 0.05)), 2)
+        shot = next((i + 1 for i, (a, sec) in enumerate(spans) if a <= at < a + sec), len(spans))
+        out.append({"frame": n, "at": at, "shot": shot})
+    return out
+
+
+def _review_sheets(mp4: Path, frames: list[dict], folder: Path) -> list[Path]:
+    """The frames as JPEG contact sheets, FRAMES_PER_SHEET side by side, each FRAME_HEIGHT tall and labelled
+    "#n 3.2s shot 2" so the model can name the moment. A frame ffmpeg cannot read is left out."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    folder.mkdir(parents=True, exist_ok=True)
+    pics = []
+    for f in frames:
+        dest = folder / f"frame-{f['frame']:02d}.jpg"
+        _ffmpeg(["-ss", f"{f['at']:.3f}", "-i", str(mp4), "-frames:v", "1", "-vf", f"scale=-2:{FRAME_HEIGHT}", "-q:v", "3", str(dest)])
+        try:
+            with Image.open(dest) as im:
+                pics.append((f, im.convert("RGB")))
+        except OSError:
+            continue
+        finally:
+            dest.unlink(missing_ok=True)
+    try:
+        font = ImageFont.load_default(size=22)
+    except TypeError:  # Pillow before 10.1
+        font = ImageFont.load_default()
+    sheets, bar, pad = [], 30, 6
+    for s in range(0, len(pics), FRAMES_PER_SHEET):
+        row = pics[s:s + FRAMES_PER_SHEET]
+        sheet = Image.new("RGB", (sum(im.width for _, im in row) + pad * (len(row) + 1), FRAME_HEIGHT + bar + pad), (16, 16, 16))
+        draw, x = ImageDraw.Draw(sheet), pad
+        for f, im in row:
+            sheet.paste(im, (x, bar))
+            draw.text((x + 4, 4), f"#{f['frame']} {f['at']:.1f}s shot {f['shot']}", fill=(255, 220, 90), font=font)
+            x += im.width + pad
+        dest = folder / f"sheet-{s // FRAMES_PER_SHEET + 1}.jpg"
+        sheet.save(dest, quality=85)
+        sheets.append(dest)
+    return sheets
 
 
 def _facts_text() -> list[str]:
@@ -1058,6 +1179,12 @@ def _facts_text() -> list[str]:
 
 
 def _review_payload(project: dict, video_b64: str) -> list[dict]:
+    return [{"type": "text", "text": "Review this reel. Data:\n" + json.dumps(_review_data(project), ensure_ascii=False)},
+            {"type": "video_url", "video_url": {"url": "data:video/mp4;base64," + video_b64}}]
+
+
+def _review_data(project: dict) -> dict:
+    """What the reviewer reads beside the picture: captions with times, shots with times, approved facts, the rules."""
     from studio.brand import copy_rules
 
     rules = copy_rules()
@@ -1073,8 +1200,7 @@ def _review_payload(project: dict, video_b64: str) -> list[dict]:
             "shots": shots, "approved_facts": _facts_text() if RANCH else [], "banned_phrases": rules["banned"],
             "rules": (["No prices on screen."] if rules["noPrices"] else [])
             + ([f"牧場 only inside the registered name {rules['registered']}."] if rules["registered"] else [])}
-    return [{"type": "text", "text": "Review this reel. Data:\n" + json.dumps(data, ensure_ascii=False)},
-            {"type": "video_url", "video_url": {"url": "data:video/mp4;base64," + video_b64}}]
+    return data
 
 
 def _score(v) -> float | None:
@@ -1200,16 +1326,24 @@ def review_file(slug: str, mp4: Path, project: dict, dest: Path) -> dict:
 
 
 def _review(slug: str, project: dict, mp4: Path, f: Path, req: dict, notes: bool) -> dict:
-    from studio.guard import problems as guard_problems
+    """review() and review_file(): from frames on your own vision model (review_basis() == "frames") or the whole video
+    on OpenRouter. Cached per render, model and basis."""
+    from studio.config import own_llm
 
-    model = str(req.get("model") or _env("STUDIO_AI_REVIEW_MODEL") or REVIEW_MODEL)
+    basis = review_basis()
+    own = own_llm(vision=True) if basis == "frames" else None
+    model = own["model"] if own else str(req.get("model") or _env("STUDIO_AI_REVIEW_MODEL") or REVIEW_MODEL)
     stamp = f"{mp4.stat().st_size}-{int(mp4.stat().st_mtime)}"
     old = _read(f)
-    if old and old.get("stamp") == stamp and old.get("model") == model and not req.get("fresh"):
+    # The cache is per render, model AND basis: a review from frames never stands in for one that watched the video.
+    if (old and old.get("stamp") == stamp and old.get("model") == model and old.get("basis", "video") == (basis or "video")
+            and not req.get("fresh")):
         return {**old, "cached": True}
+    if own:
+        return _finish_review(slug, project, f, notes, model, stamp, *_review_frames(slug, project, mp4, own))
     key = reviewer_key()
     if not key:
-        raise AiError("Add your OpenRouter key in Settings › AI to use the reviewer.", "no_key", 400)
+        raise AiError("Add your OpenRouter key in Settings › AI to use the reviewer (or set your own vision model: it reviews still frames).", "no_key", 400)
     small = HOME / "reviews" / f"{slug}_small.mp4"
     small.parent.mkdir(parents=True, exist_ok=True)
     _ffmpeg(["-i", str(mp4), "-vf", "scale=360:640,fps=15", "-c:v", "libx264", "-preset", "fast", "-crf", "30",
@@ -1249,18 +1383,57 @@ def _review(slug: str, project: dict, mp4: Path, f: Path, req: dict, notes: bool
 
     out, usd = charge("openrouter", model, "review", slug, est, call, note="review")
     out.pop("_tokens", None)
+    return _finish_review(slug, project, f, notes, model, stamp, out, usd, {"basis": "video", "partial": False})
+
+
+def _review_frames(slug: str, project: dict, mp4: Path, own: dict) -> tuple[dict, float, dict]:
+    """The reviewer on your own vision model: 12-16 still frames of the render (the opening, every shot's middle, evenly
+    spaced moments) on labelled contact sheets, with the same data and the same reply shape as the video review. Free
+    (vision_json does not charge your own server). No sound and no motion: the result says so (partial, basis frames)."""
+    frames = frame_times(project)
+    folder = HOME / "reviews" / f"{slug}_frames"
+    try:
+        sheets = _review_sheets(mp4, frames, folder)
+        if not sheets:
+            raise AiError("No frames could be read from the render. Render it again, then review.", "not_rendered", 409)
+        data = {**_review_data(project), "frames": frames}
+        prompt = (f"Review this reel from {len(frames)} still frames on {len(sheets)} contact sheet{'s' if len(sheets) != 1 else ''} "
+                  "(left to right, each labelled #frame, time and shot). There is no sound and no motion. Data:\n"
+                  + json.dumps(data, ensure_ascii=False))
+        answer = vision_json(sheets, _review_system(frames=True), prompt, slug, purpose="review", max_tokens=4000)
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    try:
+        out = parse_review(json.dumps(answer, ensure_ascii=False))
+    except AiError as err:
+        err.charged = False  # your own server: nothing was spent
+        raise
+    for k, what in (("hook", "From still frames: "), ("look", "From still frames (no sound or motion judged): ")):
+        out[k]["notes"] = (what + out[k]["notes"])[:600]
+    return out, 0.0, {"basis": "frames", "partial": True, "frames": len(frames), "server": own["url"].rsplit("/chat/completions", 1)[0]}
+
+
+def _finish_review(slug: str, project: dict, f: Path, notes: bool, model: str, stamp: str, out: dict, usd: float, how: dict) -> dict:
+    """The review written to f with the studio's own fact-guard rows, and a note on the reel. how: {"basis": "video" |
+    "frames", "partial": bool, ...}; a frames review (your own vision model on stills) is partial: no sound, no motion."""
+    from studio.guard import problems as guard_problems
+
     guard = []
     for b in project.get("beats", []):
         for k in ("ja", "en"):
             for p in guard_problems(b.get(k, "") or ""):
                 guard.append({"text": (b.get(k) or "").replace("\n", " "), "problem": p})
+    frames = how.get("basis") == "frames"
     res = {"slug": slug, "model": model, "usd": round(usd, 4), "at": datetime.now().isoformat(timespec="seconds"), "stamp": stamp,
-           **out, "guard": guard, "cached": False,
-           "note": "Suggestions for a person; nothing is changed. The fact guard rows are the studio's own check of the words."}
+           **out, **how, "guard": guard, "cached": False,
+           "note": "Suggestions for a person; nothing is changed. The fact guard rows are the studio's own check of the words."
+           + (f" Read from {how.get('frames')} still frames by your own model: no sound and no motion, so the look score leaves"
+              " out sound and movement." if frames else "")}
     _write(f, res)
     if notes and not locked(slug):
         _add_notes(slug, [{"tool": "review", "model": model, "usd": round(usd, 4), "what": f"hook {out['hook']['score']}/10, look {out['look']['score']}/10, "
-                           f"{len(out['mismatches'])} caption mismatches, {len(out['claims'])} unapproved claims", "label_required": False}])
+                           f"{len(out['mismatches'])} caption mismatches, {len(out['claims'])} unapproved claims"
+                           + (f" (from {how.get('frames')} still frames, no sound)" if frames else ""), "label_required": False}])
     return res
 
 
@@ -1406,11 +1579,12 @@ def status(req: dict | None = None) -> dict:
             (PURPOSE + "%",))]
     s, c = spent(), caps()
     keys = {p: bool(key_for(p)) for p in KEY_NAMES}
-    return {"ready": keys["fal"] or keys["openrouter"], "keys": keys, "caps": c, "spent": {"total": s["total"], "today": s["today"], "perReel": per},
+    # Ready also with only your own vision model: the reviewer then works from still frames (review_basis "frames").
+    return {"ready": keys["fal"] or keys["openrouter"] or review_basis() == "frames", "keys": keys, "caps": c, "spent": {"total": s["total"], "today": s["today"], "perReel": per},
             "byTool": by_tool, "room": {"total": round(c["total"] - s["total"], 4), "today": round(c["daily"] - s["today"], 4)},
             "tools": [{"tool": t, "provider": TOOLS[t][0], "model": TOOLS[t][1], "labelRequired": TOOLS[t][2], "what": TOOLS[t][3]} for t in ORDER],
             "reviewModel": _env("STUDIO_AI_REVIEW_MODEL") or REVIEW_MODEL, "paidTagging": bool(openrouter_key()),
-            "ownLlm": own_llm_view(),
+            "ownLlm": own_llm_view(), "reviewBasis": review_basis(),
             "summary": (f"AI assist: {_usd(s['total'])} of {_usd(c['total'])} spent, {_usd(s['today'])} today (daily budget {_usd(c['daily'])}); "
                         f"{_usd(c['reel'])} per reel.")}
 

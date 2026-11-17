@@ -15,6 +15,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statfsSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ffmpegFix, MIN_FFMPEG, resolveTool } from "../server/health.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const WIN = process.platform === "win32";
@@ -52,7 +53,6 @@ const SOURCE = abs(env.STUDIO_SOURCE || opt("--footage") || join(DATA, "footage"
 const VENV_PY = WIN ? join(DATA, "venv", "Scripts", "python.exe") : join(DATA, "venv", "bin", "python");
 const PY = abs(env.STUDIO_PY) || VENV_PY;
 const TOOLS = abs(env.STUDIO_TOOLS) || join(DATA, "bin");
-const FFMPEG = join(TOOLS, WIN ? "ffmpeg.exe" : "ffmpeg");
 
 console.log(`Lazycow Studio setup${CHECK ? " (check only: nothing is changed)" : ""}\n  code    ${ROOT}\n  data    ${DATA}\n  footage ${SOURCE}\n`);
 
@@ -116,12 +116,16 @@ if (existsSync(PY)) {
   say(clip || pyOk("import torch, open_clip"), "footage search model (torch + open_clip, CPU)", "", "run: npm run setup");
 }
 
-/* 5. ffmpeg: a current build in the tools folder (the 2021 one many PATHs carry lacks -fps_mode) */
-const ffmpegFound = existsSync(FFMPEG) ? FFMPEG : run(WIN ? "where" : "which", ["ffmpeg"]).stdout?.split(/\r?\n/)[0]?.trim() || "";
-const fpsMode = ffmpegFound && /fps_mode/.test(run(ffmpegFound, ["-hide_banner", "-h", "full"], { maxBuffer: 64 * 1024 * 1024 }).stdout || "");
-say(!!ffmpegFound && fpsMode, "ffmpeg with -fps_mode", ffmpegFound || "not found",
-  WIN ? `download a current "release essentials" build from https://www.gyan.dev/ffmpeg/builds/ and put ffmpeg.exe and ffprobe.exe in ${TOOLS}`
-    : process.platform === "darwin" ? "brew install ffmpeg (or put a current ffmpeg and ffprobe in " + TOOLS + ")" : `install a current ffmpeg (your package manager, or a static build in ${TOOLS})`);
+/* 5. ffmpeg and ffprobe by the studio's one rule (server/health.mjs resolveTool): STUDIO_FFMPEG, else the tools
+      folder, else PATH only if it is MIN_FFMPEG or newer (the 2021 build many PATHs carry lacks -fps_mode). */
+const minFf = `${MIN_FFMPEG.major}.${MIN_FFMPEG.minor}`;
+for (const name of ["ffmpeg", "ffprobe"]) {
+  const t = resolveTool(name, { env, toolsDir: TOOLS });
+  const where = t.source === "path" ? `${t.path} (PATH, version ${t.version || "unknown"})` : t.source === "env" ? `${t.path} (STUDIO_${name.toUpperCase()})` : t.path;
+  say(t.usable, `${name} ${minFf} or newer`, t.found ? where : "not found",
+    ffmpegFix(process.platform, TOOLS, t.tooOld ? t : null).replace(/^(.)/, (c) => c.toLowerCase())
+      + (WIN ? ` A current "release essentials" build: https://www.gyan.dev/ffmpeg/builds/` : ""));
+}
 
 /* 6. the picture-quality (aesthetic) head: 4 KB of weights the reel picker scores clips with */
 const aes = join(TOOLS, "sa_0_4_vit_b_32_linear.pth");

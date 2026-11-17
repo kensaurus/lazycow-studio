@@ -8,8 +8,9 @@
 
   Works in Windows PowerShell 5.1 (built into Windows 10 and 11). Plain ASCII only, so it reads the same in every console.
 #>
-param([string]$Data = "", [string]$Footage = "", [switch]$Yes, [switch]$NoShortcuts, [switch]$NoOpen)
+param([string]$Data = "", [string]$Footage = "", [switch]$Yes, [switch]$NoShortcuts, [switch]$NoOpen, [switch]$Force)
 # -Yes takes every suggestion; -NoShortcuts and -NoOpen are for test runs (scripts/bootstrap/README.md).
+# -Force carries on when the step 1 check (doctor.ps1) says BLOCKED (also LAZYCOW_FORCE=1, set by npx lazycow install --force).
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"   # Invoke-WebRequest's own bar is very slow in 5.1; curl.exe draws ours
@@ -94,11 +95,19 @@ Say "  |    Your footage. Your PC. You just say yes.                      |" "Cy
 Say "  |                                                                  |" "Cyan"
 Say "  +------------------------------------------------------------------+" "Cyan"
 Say "   Did you read README.TXT first? Good. (If not: it is short. And funny.)"
-Say "   This takes 10 to 30 minutes and downloads about 1.5 GB. Get a coffee."
+Say "   This takes 10 to 30 minutes and downloads about 1.3 GB. Get a coffee."
 Say "   Lazy Kenji is already on the bean bag."
 
 # 1. This PC ------------------------------------------------------------------------------------------------------
 Step 1 "Looking at this PC"
+# The check before anything is downloaded (doctor.ps1, the same rules as `npx lazycow doctor`). npx lazycow install has
+# already run it when LAZYCOW_CHECKED is set.
+if (-not $env:LAZYCOW_CHECKED) {
+  $verdict = Run (Join-Path $PSHOME "powershell.exe") @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "doctor.ps1"), "-Dir", $env:LOCALAPPDATA) -Show
+  if ($verdict -eq 2 -and -not ($Force -or $env:LAZYCOW_FORCE -eq "1")) {
+    Fail "This PC cannot run Lazycow Studio yet (BLOCKED, above). Nothing was downloaded." "Fix what it says, then double-click Start Lazycow again. To install anyway: powershell -ExecutionPolicy Bypass -File scripts\bootstrap\windows.ps1 -Force"
+  }
+}
 if (-not [Environment]::Is64BitOperatingSystem) { Fail "Lazycow Studio needs 64-bit Windows." "Use a 64-bit Windows 10 or 11 PC." }
 if (-not (Get-Command curl.exe -ErrorAction SilentlyContinue)) { Fail "curl.exe is missing (it ships with Windows 10 1803 and newer)." "Update Windows, then try again." }
 $free = (Get-PSDrive -Name ($env:LOCALAPPDATA.Substring(0, 1))).Free / 1GB

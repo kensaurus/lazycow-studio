@@ -77,7 +77,7 @@ Every model runs on your own computer. No footage is sent anywhere to be tagged 
 
 | Tool | Licence | Note |
 |---|---|---|
-| [FFmpeg](https://ffmpeg.org) | LGPL-2.1+, or GPL-2.0+ for builds that include x264 | The studio calls the `ffmpeg.exe` you put in `STUDIO_DATA\bin`; it does not ship one. If you redistribute a GPL build, its terms apply to that binary. |
+| [FFmpeg](https://ffmpeg.org) | LGPL-2.1+, or GPL-2.0+ for builds that include x264 | The studio calls the ffmpeg it finds (`STUDIO_FFMPEG`, else the tools folder `STUDIO_TOOLS`, else a PATH ffmpeg 5.1 or newer); the release zip does not ship one, and the double-click setup downloads a pinned build into the tools folder. If you redistribute a GPL build, its terms apply to that binary. |
 | [Python](https://www.python.org) | PSF License | |
 | [Node.js](https://nodejs.org) | MIT | |
 

@@ -6,6 +6,7 @@
 
 | You want to… | Run |
 |:--|:--|
+| Check this computer first (nothing is downloaded) | `npx lazycow doctor` |
 | Install the studio (no terminal skills needed after this line) | `npx lazycow install` |
 | Let Claude Code, Claude Desktop or Cursor drive it | `claude mcp add lazycow -- npx -y lazycow mcp` |
 | Script it from Node | `import { createClient } from "lazycow"` |
@@ -44,13 +45,41 @@ Recorded in the author's own studio (everyone on camera agreed). Each GIF opens,
 | ![Settings › Accounts: each network and the one step left](https://raw.githubusercontent.com/kensaurus/lazycow-studio/main/docs/img/pages/accounts.gif) **Accounts.** Each network, how it gets posted, and the one step left. | ![The InstallShield-style setup wizard](https://raw.githubusercontent.com/kensaurus/lazycow-studio/main/docs/img/pages/setup.gif) **Setup.** A 1998 InstallShield-style wizard, step by step. |
 | ![The DO NOT CLICK 1999 pop-up tour](https://raw.githubusercontent.com/kensaurus/lazycow-studio/main/docs/img/pages/popups.gif) **DO NOT CLICK.** The opt-in 1999 pop-up tour of every page. Esc stops it. | More in the [user guide](https://github.com/kensaurus/lazycow-studio/blob/main/docs/user-guide.md#a-tour-page-by-page). |
 
+## Check this computer first
+
+```
+npx lazycow doctor
+```
+
+One screen, before anything is downloaded: system and processor type, threads, memory, free disk where the studio goes, graphics, any Python, Node or ffmpeg already there, whether each download site answers (5 s each, all at once), and a 3-second processor test that estimates the time per reel from the reference PC (Ryzen 9 5950X, 32 threads: a median 357 s over 364 real builds). It ends with **READY**, **SLOW** or **BLOCKED**, the reason and the fix, and exits 0, 1 or 2. `--json` for scripts, `--dir <folder>` to check another drive, `--offline` to skip the network.
+
+```
+Lazycow check · Windows 11 x64 · 32 threads · 64 GB RAM
+✓ Free space on C: 774 GB (needs 6 GB to install, 20 GB for renders)
+✓ Downloads reachable: github.com, release-assets.githubusercontent.com, nodejs.org, pypi.org, … (10 of 10)
+! Graphics: AMD found. Lazycow renders on the processor today.
+Estimated time per reel: about 6 minutes (processor test: 1.06x the AMD Ryzen 9 5950X)
+Verdict: READY. Install downloads about 1.3 GB and takes 10–30 minutes.
+```
+
+No Node yet? The same core check (system, memory, disk, download sites) in one line:
+
+```
+irm https://raw.githubusercontent.com/kensaurus/lazycow-studio/main/scripts/bootstrap/doctor.ps1 | iex     # Windows PowerShell
+curl -fsSL https://raw.githubusercontent.com/kensaurus/lazycow-studio/main/scripts/bootstrap/doctor.sh | sh   # macOS, Linux
+```
+
+An Intel Mac is BLOCKED: the footage search runs on PyTorch, which has had no Intel-Mac (macOS x86) builds since 2.2.
+
 ## Install the studio
 
 ```
 npx lazycow install
 ```
 
-It downloads this version's release zip from GitHub, checks it against the SHA-256 built into the package, unpacks it to `~/Lazycow Studio`, and starts the double-click setup. The setup installs Node, Python and ffmpeg for Lazycow only, in about 10 minutes. Options: `--dir <empty folder>`, `--yes` (take every suggestion).
+Step 1 is the check above. When it says BLOCKED, nothing is downloaded; `--force` installs anyway.
+
+It downloads this version's release zip from GitHub, checks it against the SHA-256 built into the package, unpacks it to `~/Lazycow Studio`, and starts the double-click setup (on Linux it runs in the same terminal). The setup installs Node, Python and ffmpeg for Lazycow only, in about 10 minutes. Options: `--dir <empty folder>`, `--yes` (take every suggestion).
 
 Prefer to click? Download the zip from [Releases](https://github.com/kensaurus/lazycow-studio/releases), unzip it, read `README.TXT`, and double-click **Start Lazycow**.
 
@@ -127,7 +156,7 @@ And [Tsumagoi Work&Camp](https://tsumagoi.kensaur.us/?utm_source=lazycow&utm_med
 
 ## Requirements
 
-Node 20 or newer. The studio itself runs on Windows 10/11 and macOS 14+ (Apple silicon); Linux works from source.
+Node 20 or newer. The studio itself runs on Windows 10/11 (64-bit), macOS 14+ on Apple silicon (not Intel Macs), and 64-bit Linux, with 4 threads and 6 GB of memory at least (8 and 12 recommended) and 6 GB free to install. It brings its own Python and ffmpeg; one you already have is used only if it is ffmpeg 5.1 or newer. `npx lazycow doctor` checks all of it.
 
 ## Credits and licence
 

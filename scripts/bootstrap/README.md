@@ -6,6 +6,13 @@ pinned tools in [`versions.json`](versions.json), checks each SHA-256, keeps the
 (Mac: `~/Library/Application Support/Lazycow`), installs the locked Python packages with uv, runs `npm ci` and
 `scripts/setup.mjs`, makes shortcuts and opens the studio. No admin rights, nothing on the system PATH.
 
+Step 1 of each script is the check: [`doctor.ps1`](doctor.ps1) (Windows) or [`doctor.sh`](doctor.sh) (macOS, Linux),
+the no-Node twins of `npx lazycow doctor` (`packages/lazycow/lib/doctor.mjs`): system and processor type, threads,
+memory, free disk and the download hosts. BLOCKED (exit 2) stops before the first download unless `-Force` /
+`--force` / `LAZYCOW_FORCE=1`; `npx lazycow install` runs the Node check first and sets `LAZYCOW_CHECKED`, so the
+script skips its own. Both also run on their own, as one pasted line (README › Quick start). `test/doctor.test.mjs`
+keeps their limits and host lists in step with `doctor.mjs` and `server/health.mjs`: a new download host goes in all three.
+
 ## Update a pinned tool
 
 1. Pick a release at least two weeks old.

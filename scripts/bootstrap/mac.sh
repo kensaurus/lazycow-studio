@@ -4,7 +4,9 @@
 # SHA-256 in versions.json; keeps them in ~/Library/Application Support/Lazycow. No admin password, nothing system-wide.
 # Apple silicon (M1 or newer) and macOS 14 or newer: torch has no builds for Intel Macs any more.
 # Not yet tested on a real Mac (13 Nov 2026): if a step fails, the log says which, and please tell us on GitHub.
+# --force (or LAZYCOW_FORCE=1) carries on when the step 1 check (doctor.sh) says BLOCKED.
 set -u
+FORCE=0; [ "${1:-}" = "--force" ] && FORCE=1; [ "${LAZYCOW_FORCE:-}" = 1 ] && FORCE=1
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 LC="$HOME/Library/Application Support/Lazycow"
 LOG="$LC/setup.log"
@@ -38,9 +40,15 @@ say "\033[36m  +----------------------------------------------------------------
 say "  |    L A Z Y C O W   S T U D I O          S E T U P                |"
 say "  |    Your footage. Your Mac. You just say yes.                     |"
 say "  +------------------------------------------------------------------+\033[0m"
-say "   Did you read README.TXT first? Good. This takes 10 to 30 minutes (about 1.5 GB)."
+say "   Did you read README.TXT first? Good. This takes 10 to 30 minutes (about 1.3 GB)."
 
 step 1 "Looking at this Mac"
+# The check before anything is downloaded (doctor.sh, the same rules as `npx lazycow doctor`); skipped when
+# npx lazycow install has already run it (LAZYCOW_CHECKED).
+if [ -z "${LAZYCOW_CHECKED:-}" ]; then
+  sh "$ROOT/scripts/bootstrap/doctor.sh" --dir "$HOME" 2>&1 | tee -a "$LOG" | sed 's/^/      /'
+  [ "${PIPESTATUS[0]}" = 2 ] && [ "$FORCE" != 1 ] && fail "This Mac cannot run Lazycow Studio yet (BLOCKED, above). Nothing was downloaded." "Fix what it says, then open Start Lazycow again. To install anyway: bash scripts/bootstrap/mac.sh --force"
+fi
 [ "$(uname -m)" = "arm64" ] || fail "This Mac has an Intel processor." "Lazycow Studio needs Apple silicon (M1 or newer) for its search model. Sorry!"
 major=$(sw_vers -productVersion | cut -d. -f1)
 [ "$major" -ge 14 ] || fail "macOS $major is too old." "Update to macOS 14 (Sonoma) or newer."

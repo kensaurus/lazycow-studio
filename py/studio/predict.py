@@ -101,7 +101,8 @@ def score(row: dict, seconds: float | None = None, review: dict | None = None) -
             v = (review.get(k) or {}).get("score")
             if isinstance(v, (int, float)):
                 parts[k] = {"value": round(float(v), 1), "of": 10, "points": WEIGHTS[k] * ai_share(v),
-                            "note": str((review.get(k) or {}).get("notes") or "")[:240]}
+                            "note": str((review.get(k) or {}).get("notes") or "")[:240],
+                            "basis": review.get("basis") or "video"}  # "frames": your own model saw stills only (the page marks it)
     if "nearHook" in row:  # repeats a follower would see: same headline within FRESH_DAYS (near_repeats)
         same = int(row.get("nearHook") or 0)
         parts["fresh"] = {"value": same, "points": WEIGHTS["fresh"] * max(0.0, 1.0 - same / 2.0), "days": FRESH_DAYS,
@@ -119,7 +120,8 @@ def score(row: dict, seconds: float | None = None, review: dict | None = None) -
     missing = [k for k in WEIGHTS if k not in parts]
     for p in parts.values():
         p["points"] = round(p["points"], 1)
-    return {"score": round(100.0 * total / have) if have else None, "parts": parts, "partial": bool(missing), "missing": missing}
+    return {"score": round(100.0 * total / have) if have else None, "parts": parts, "partial": bool(missing), "missing": missing,
+            "basis": (review or {}).get("basis") or ("video" if review else None)}
 
 
 # ---------- prediction: how it should do on one network ----------

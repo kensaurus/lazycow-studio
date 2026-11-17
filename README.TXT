@@ -32,7 +32,7 @@
                                            silicon, macOS 14+)
   [x] 8 GB of memory (16 GB is happier)
   [x] 20 GB of free disk space
-  [x] An internet connection for the first setup (about 1.5 GB)
+  [x] An internet connection for the first setup (about 1.3 GB)
   [x] Google Chrome or Microsoft Edge
   [ ] A floppy drive                     (NOT required. Phew.)
   [ ] A serial number                    (NOT required. See STEP 7.)

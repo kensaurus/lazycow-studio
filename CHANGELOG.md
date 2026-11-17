@@ -2,6 +2,48 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.19.0 (2026-11-17)
+
+### Added
+- **See what is going on.** Pages draw what used to take reading:
+  - **Footage:** one Add footage area (this computer, cloud, phones and people) with drag and drop everywhere and
+    per-file progress, and a map of where footage comes from: the project in the centre, each place a branch with its
+    clips, unused clips, status and last check. Click a place to look for new files, browse it or stop reading it.
+  - **Settings › Accounts:** how each network gets its post. The studio posts it, your Chrome posts it, or you do; each
+    network hangs off its way with its next booking, how many are booked and its sign-in.
+  - **Results:** posts in, views out. One band per network from its posts to the views they brought; networks that
+    show your posts to nobody are dashed, with the reason on click.
+  - **Problems:** grouped by cause, with one line per group on what fixes it.
+  - **Reel editor:** where this reel is (made → approved → booked → live, with dates) and each network's state.
+  Maps become lists on a phone; everything works by keyboard and respects reduced motion.
+- **Check before you install.** `npx lazycow doctor`, or `doctor.ps1` / `doctor.sh` before Node is installed, checks
+  the system, processor, memory, free space, graphics, Node, Python, ffmpeg and the download hosts, runs a 3-second
+  processor test, estimates minutes per reel, then says READY, SLOW or BLOCKED with the fix. Every installer runs it
+  first, so a machine that cannot run Lazycow (an Intel Mac, a full disk) stops before downloading anything.
+- **Linux.** `scripts/bootstrap/linux.sh` (x86_64 and arm64) installs pinned, hash-checked Node, Python, uv and
+  ffmpeg, like Windows and macOS; `npx lazycow install` runs it.
+- **The AI reviewer on your own model.** With your own vision model and no OpenRouter key (or
+  `STUDIO_AI_REVIEW_LOCAL=1`), the reviewer looks at 12–16 still frames with the captions and shot times. It is free,
+  and its hook and look scores are marked partial (no sound or motion). Versions never compare a frames review with a
+  video review.
+- **Faster subtitles.** Long-video subtitles use an NVIDIA GPU when there is one, and MLX on Apple silicon when
+  `mlx-whisper` is installed. `STUDIO_WHISPER_BACKEND`, `STUDIO_WHISPER_MODEL`, `STUDIO_WHISPER_LANGUAGE` (e.g.
+  `en,ja`); YouTube captions are labelled with the language of their words.
+
+### Changed
+- **ffmpeg is found one way everywhere:** `STUDIO_FFMPEG`, else the studio's tools folder, else PATH. A PATH ffmpeg
+  older than 5.1 is refused with a fix for your system, instead of failing in odd ways; a Homebrew or apt ffmpeg now
+  counts.
+- CI runs the tests on Ubuntu, Windows and macOS.
+- The first download is about 1.3 GB (measured).
+
+### Fixed
+- A POV reel with no kicker line stopped rendering on frame 3.
+- PNG and WebP files dropped on the page were saved and then never appeared (the library treats them as
+  screenshots); they are now refused with why.
+- Free memory read as 0 on macOS, so long videos never sized their render tabs.
+- `Start Lazycow.command` and the shell installers are executable in the release zip, so a Mac can open them.
+
 ## 0.18.0 (2026-11-17)
 
 ### Added

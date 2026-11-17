@@ -121,7 +121,17 @@ export async function install(opts = {}) {
       say("The setup opened in Terminal. It installs Node, Python and ffmpeg for Lazycow only.");
       return { dir, sha256: got, started: true };
     }
-    say(`On Linux, run it from that folder: npm ci && npm run setup && npm run review (see README.md).`);
+    if (process.platform === "linux") {
+      // No Terminal app to hand off to: the setup runs here, in this terminal, and asks its questions here.
+      const args = [join(dir, "scripts", "bootstrap", "linux.sh")];
+      if (opts.yes) args.push("--yes");
+      say("Setting up in this terminal. It installs Node, Python and ffmpeg for Lazycow only (about 10 minutes).");
+      const r = spawnSync("bash", args, { stdio: "inherit" });
+      if (r.status === 0) return { dir, sha256: got, started: true };
+      say(`The setup stopped. Run it again from that folder (it resumes): bash scripts/bootstrap/linux.sh`);
+      return { dir, sha256: got, started: false };
+    }
+    say(`On this system, run it from that folder: npm ci && npm run setup && npm run review (see README.md).`);
     return { dir, sha256: got, started: false };
   } finally {
     rmSync(work, { recursive: true, force: true });

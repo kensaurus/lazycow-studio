@@ -2,7 +2,8 @@
 /**
  * FILE: scripts/build-packages.mjs
  * PURPOSE: Keep the npm package (packages/lazycow) in step with the studio: the MCP server copied from
- *          server/mcp.mjs, LICENSE and NOTICE, the version, the MCP registry entry, and the release zip's SHA-256.
+ *          server/mcp.mjs, the system-check rules copied from server/health.mjs (for `lazycow doctor`), LICENSE and
+ *          NOTICE, the version, the MCP registry entry, and the release zip's SHA-256.
  * USAGE:  node scripts/build-packages.mjs [--zip <Lazycow-Studio-x.y.z.zip>]   write everything
  *         node scripts/build-packages.mjs --check                              exit 1 when anything is out of step
  * NOTES:  --zip hashes the release zip that `lazycow install` will accept (scripts/release-zip.mjs makes it). Without
@@ -30,6 +31,10 @@ const lf = (s) => s.replace(/\r\n/g, "\n");
 const mcp = lf(read(join(ROOT, "server", "mcp.mjs")));
 const [shebang, ...body] = mcp.split("\n");
 want.set(join(PKG, "lib", "mcp.mjs"), [shebang, "// Generated from server/mcp.mjs by scripts/build-packages.mjs. Edit that file, then run the script.", ...body].join("\n"));
+
+// 1b. The system check's rules: `npx lazycow doctor` (lib/doctor.mjs) reuses its checks, LIMITS and the ffmpeg rule.
+want.set(join(PKG, "lib", "health.mjs"), "// Generated from server/health.mjs by scripts/build-packages.mjs. Edit that file, then run the script.\n"
+  + lf(read(join(ROOT, "server", "health.mjs"))));
 
 // 2. Licence and attribution travel with the package (Apache-2.0 section 4).
 want.set(join(PKG, "LICENSE"), lf(read(join(ROOT, "LICENSE"))));

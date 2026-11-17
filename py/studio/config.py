@@ -130,19 +130,123 @@ def trusted_folder(path: Path) -> bool:
     return any(low.startswith(str(root).lower().rstrip("\\/") + os.sep) for root in trusted_roots())
 
 
+# ffmpeg: the same rule as server/health.mjs resolveTool (the server, the System page and `npx lazycow doctor`).
+# The oldest ffmpeg the studio runs on: -fps_mode (studio.pick) arrived in 5.1, and sidechaincompress fed two audio
+# formats (studio.sound ducking) negotiates them only since 5.0. A 2021 build fails both.
+MIN_FFMPEG = (5, 1)
+# libavcodec (major, minor) of each release -> (ffmpeg major, minor), for git builds that print no release number.
+_LAVC = [((62, 11), (8, 0)), ((61, 19), (7, 1)), ((61, 3), (7, 0)), ((60, 31), (6, 1)), ((60, 3), (6, 0)),
+         ((59, 37), (5, 1)), ((59, 18), (5, 0)), ((58, 134), (4, 4)), ((58, 91), (4, 3)), ((58, 54), (4, 2)),
+         ((58, 35), (4, 1)), ((58, 18), (4, 0))]
+
+
+class FfmpegTooOld(FileNotFoundError):
+    """The only ffmpeg found is one on PATH older than MIN_FFMPEG. A FileNotFoundError, so code that already copes
+    with a missing ffmpeg copes with this one the same way, and says why."""
+
+
+def parse_ffmpeg_version(text: str) -> tuple[int, int, str] | None:
+    """(major, minor, text) from `ffmpeg -version` output, or None. Git builds ("2021-06-23-git-…", "N-1234-g…")
+    are read from their libavcodec line."""
+    import re
+
+    head = re.search(r"\bff(?:mpeg|probe) version\s+(\S+)", text or "", re.I)
+    rel = re.match(r"n?(\d{1,2})\.(\d+)(?:\.(\d+))?", head.group(1)) if head else None
+    if rel:
+        label = f"{rel.group(1)}.{rel.group(2)}" + (f".{rel.group(3)}" if rel.group(3) else "")
+        return int(rel.group(1)), int(rel.group(2)), label
+    lavc = re.search(r"libavcodec\s+(\d+)\.\s*(\d+)\.", text or "")
+    if not lavc:
+        return None
+    have = (int(lavc.group(1)), int(lavc.group(2)))
+    if have[0] > _LAVC[0][0][0]:
+        return have[0] - 54, 0, f"{have[0] - 54}.x (git build)"
+    for lav, (major, minor) in _LAVC:
+        if have >= lav:
+            return major, minor, f"{major}.{minor} (git build)"
+    return 3, 0, "older than 4.0 (git build)"
+
+
+def resolve_tool(name: str, env: dict | None = None, tools: Path | str | None = None, windows: bool | None = None,
+                 exists=None, which=None, run=None, minimum: tuple[int, int] = MIN_FFMPEG) -> dict:
+    """Where ffmpeg or ffprobe is. 1. STUDIO_FFMPEG / STUDIO_FFPROBE; 2. the tools folder (STUDIO_TOOLS, else
+    <data>/bin), .exe on Windows; 3. PATH, but only at MIN_FFMPEG or newer (an older one comes back `too_old`).
+    Everything that touches the machine is injectable, so the tests need no ffmpeg."""
+    import shutil
+    import subprocess
+
+    env = os.environ if env is None else env
+    tools = TOOLS if tools is None else Path(tools)
+    windows = (os.name == "nt") if windows is None else windows
+    exists = exists or (lambda p: Path(p).is_file())
+    which = which or shutil.which
+
+    def version_of(path: str) -> str:
+        try:
+            return subprocess.run([path, "-version"], capture_output=True, text=True, timeout=8).stdout or ""
+        except (OSError, subprocess.SubprocessError):
+            return ""
+
+    run = run or version_of
+    exe = f"{name}.exe" if windows else name
+    out = {"name": name, "path": None, "source": None, "version": None, "too_old": False, "tools": str(tools)}
+    chosen = str(env.get(f"STUDIO_{name.upper()}", "") or "").strip()
+    if chosen:
+        return {**out, "path": chosen, "source": "env"}
+    local = str(tools / exe)
+    if exists(local):
+        return {**out, "path": local, "source": "tools"}
+    found = which(exe) or which(name)
+    if not found:
+        return out
+    parsed = parse_ffmpeg_version(run(found))
+    too_old = parsed is None or parsed[:2] < tuple(minimum)
+    return {**out, "path": found, "source": "path", "version": parsed[2] if parsed else None, "too_old": too_old}
+
+
+_PATH_CHECKED: dict[tuple[str, float], dict] = {}
+
+
+def _tool(name: str) -> Path:
+    # A tools-folder or STUDIO_* hit costs one stat; a PATH hit runs `-version` once per file (cached by mtime).
+    first = resolve_tool(name, run=lambda _p: "")
+    if first["source"] != "path":
+        if first["path"]:
+            return Path(first["path"])
+        return Path(name)  # nothing anywhere: the call fails with "not found", as it always did
+    try:
+        key = (first["path"], os.stat(first["path"]).st_mtime)
+    except OSError:
+        key = (first["path"], 0.0)
+    if key not in _PATH_CHECKED:
+        _PATH_CHECKED[key] = resolve_tool(name)
+    r = _PATH_CHECKED[key]
+    if r["too_old"]:
+        raise FfmpegTooOld(
+            f"The {name} on PATH ({r['path']}, version {r['version'] or 'unknown'}) is older than "
+            f"{MIN_FFMPEG[0]}.{MIN_FFMPEG[1]}, which the studio needs (-fps_mode, sidechaincompress), so it is not used. "
+            + _tool_fix(r["tools"]))
+    return Path(r["path"])
+
+
+def _tool_fix(tools: str) -> str:
+    import sys
+
+    if sys.platform == "win32":
+        return f'Run the setup again (double-click "Start Lazycow"): it downloads a current ffmpeg into {tools}. Or set STUDIO_FFMPEG and STUDIO_FFPROBE.'
+    if sys.platform == "darwin":
+        return f"Install a current one (brew install ffmpeg), or run the setup again: it downloads ffmpeg into {tools}."
+    return f"Install ffmpeg {MIN_FFMPEG[0]}.{MIN_FFMPEG[1]} or newer from your distribution, or put a static build in {tools}."
+
+
 def ffmpeg_bin() -> Path:
-    """The studio's current ffmpeg. The 2021 build on PATH lacks flags the studio uses."""
-    for local in (DATA / "bin" / "ffmpeg.exe", TOOLS / "ffmpeg.exe"):
-        if local.exists():
-            return local
-    return Path("ffmpeg")
+    """The studio's ffmpeg: STUDIO_FFMPEG, else the tools folder, else a new enough one on PATH (FfmpegTooOld if not)."""
+    return _tool("ffmpeg")
 
 
 def ffprobe_bin() -> Path:
-    for local in (DATA / "bin" / "ffprobe.exe", TOOLS / "ffprobe.exe"):
-        if local.exists():
-            return local
-    return Path("ffprobe")
+    """The studio's ffprobe, by the same rule as ffmpeg_bin."""
+    return _tool("ffprobe")
 
 
 def load_env() -> None:

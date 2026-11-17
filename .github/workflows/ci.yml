@@ -1,5 +1,9 @@
 # The studio's tests on every pull request and on main: npm test (layout, copy, server, helper) and pytest (the
-# Python pipeline). No secrets: the tests use a throwaway data folder, fake network replies and no paid service.
+# Python pipeline), each on Linux, Windows and macOS (Apple silicon), the three systems the setup supports. No secrets:
+# the tests use a throwaway data folder, fake network replies and no paid service.
+# Each system gets ffmpeg the way a person there would (apt on Linux; on Windows and macOS the build the double-click
+# setup downloads, pinned in scripts/bootstrap/versions.json and checked against its SHA-256) and the same
+# locked Python packages the setup installs (py/requirements-<system>.lock, checked against their hashes).
 name: CI
 
 on:
@@ -16,9 +20,14 @@ concurrency:
 
 jobs:
   node:
-    name: npm test
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    name: npm test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # ubuntu-24.04, not ubuntu-latest: that label moves to 26.04 in November 2026 (actions/runner-images#14748).
+        os: [ubuntu-24.04, windows-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,23 +41,74 @@ jobs:
       - run: npm run typecheck
 
   python:
-    name: pytest
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    name: pytest (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            lock: requirements-linux.lock
+            torch: --torch-backend cpu
+          - os: windows-latest
+            lock: requirements-win.lock
+            torch: --torch-backend cpu
+          - os: macos-15   # Apple silicon, 7 GB RAM
+            lock: requirements-mac.lock
+            torch: ""
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      UV_PYTHON_PREFERENCE: only-managed   # the same standalone Python 3.13 the setup installs, not the runner's own
     defaults:
       run:
+        shell: bash
         working-directory: py
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v10
         with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: py/requirements.txt
-      - name: ffmpeg and libsndfile
+          version: "0.13.5"   # scripts/bootstrap/versions.json
+          python-version: "3.13"
+          activate-environment: true
+          enable-cache: true
+          cache-dependency-glob: py/requirements-*.lock
+
+      - name: ffmpeg and libsndfile (apt; Ubuntu 24.04 gives ffmpeg 6.1)
+        if: runner.os == 'Linux'
         run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends ffmpeg libsndfile1
-      # requirements.txt only: the search model (torch, open_clip) is imported lazily and no test needs it.
-      - run: python -m pip install -r requirements.txt
+      # Not Homebrew: its ffmpeg is built without libzimg, so no zscale, and the HDR camera format cannot render
+      # (test_formats). The Mac setup (mac.sh) installs this build, which has it.
+      - name: ffmpeg (the pinned, SHA-256-checked build the Mac setup downloads)
+        if: runner.os == 'macOS'
+        run: |
+          bin="$RUNNER_TEMP/ffmpeg-bin"; mkdir -p "$bin"
+          for t in ffmpeg ffprobe; do
+            read -r url sha < <(node -p "const f=require('../scripts/bootstrap/versions.json').ffmpeg['darwin-arm64']['$t']; [f.url, f.sha256].join(' ')")
+            curl -fsSL --retry 3 -o "$RUNNER_TEMP/$t.zip" "$url"
+            echo "$sha  $RUNNER_TEMP/$t.zip" | shasum -a 256 -c -
+            unzip -o -q "$RUNNER_TEMP/$t.zip" -d "$bin"; chmod +x "$bin/$t"
+          done
+          echo "$bin" >> "$GITHUB_PATH"
+      - name: ffmpeg (the pinned, SHA-256-checked build the Windows setup downloads)
+        if: runner.os == 'Windows'
+        run: |
+          read -r url sha dir < <(node -p "const f=require('../scripts/bootstrap/versions.json').ffmpeg['win-x64']; [f.url, f.sha256, f.dir].join(' ')")
+          tmp="$(cygpath -u "$RUNNER_TEMP")"
+          curl -fsSL --retry 3 -o "$tmp/ffmpeg.zip" "$url"
+          echo "$sha  $tmp/ffmpeg.zip" | sha256sum -c -
+          7z x -y -bd -o"$tmp" "$tmp/ffmpeg.zip" > /dev/null
+          bin="$(cygpath -w "$tmp/$dir/bin")"
+          echo "$bin" >> "$GITHUB_PATH"
+          echo "STUDIO_TOOLS=$bin" >> "$GITHUB_ENV"
+      - name: Which ffmpeg
+        run: |
+          ffmpeg -hide_banner -version | sed -n 1p
+          ffprobe -hide_banner -version | sed -n 1p
+
+      - name: Python packages (the setup's lock, checked against its hashes)
+        run: |
+          uv pip sync ${{ matrix.torch }} --require-hashes ${{ matrix.lock }}
+          uv pip install "pytest>=8.0"
       - run: python -m pytest -q

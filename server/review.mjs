@@ -34,7 +34,7 @@ import { homedir } from "node:os";
 import { createHash, randomBytes } from "node:crypto";
 import { withLimit, tiktokVideoUrl } from "./helper.mjs";
 import { setLinkWanted, autoReconnect, beginConnect, browserState, cancelConnect, closeHelper, configureHelper, extensionConnected, setExtensionToken, headlineOf, helperStatus, inLane, openSignin, PERF_NETWORKS, readPerf, planWeek, postFor, prepare as helperPrepare, schedule as helperSchedule, scheduleRefusal, SCHEDULERS, unschedule as helperUnschedule, UNSCHEDULERS } from "./helper.mjs";
-import { buildId, folderBytes, freeDiskBytes, judgeSystem, LIMITS, medianSeconds, etaSeconds, probeEncoders, systemFacts } from "./health.mjs";
+import { buildId, folderBytes, freeDiskBytes, judgeSystem, LIMITS, medianSeconds, etaSeconds, probeEncoders, resolveTool, systemFacts } from "./health.mjs";
 import { openDrop, closeDrop, dropState, DROP_TYPES, saveUpload } from "./dropbox.mjs";
 import { bookedBeforeNewWords, classify, pickNext, noteStart, noteResult, YT_PER_DAY } from "./swap.mjs";
 import { AUTO_NETS, CHROME_NETS, fitsNetwork, planAhead, todayIn } from "./autoplan.mjs";
@@ -139,7 +139,11 @@ setLinkWanted(() => (channelsView().channels || []).some((c) => CHROME_NETS.incl
 if (!QUIET) setTimeout(() => autoReconnect(0), 3000);  // a saved Chrome link key: link to Chrome at start, no click (when a network needs it)
 // Whose studio this is (footage, words, accounts): shown beside the logo. Any short name.
 const WORKSPACE = String(pick("STUDIO_WORKSPACE", "")).replace(/[<>\u0000-\u001f]/g, "").slice(0, 40);
-const FFMPEG = join(pick("STUDIO_TOOLS", join(DATA, "bin")), process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
+// ffmpeg by the one rule (server/health.mjs resolveTool, same as py/studio/config.py): STUDIO_FFMPEG, else the tools
+// folder, else PATH. A PATH ffmpeg older than MIN_FFMPEG is still run for previews, but /api/health blocks and says why.
+const TOOLS_DIR = pick("STUDIO_TOOLS", join(DATA, "bin"));
+const FFMPEG = resolveTool("ffmpeg", { env: { STUDIO_FFMPEG: pick("STUDIO_FFMPEG", "") }, toolsDir: TOOLS_DIR }).path
+  || join(TOOLS_DIR, process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
 const RENDERS = join(DATA, "renders");
 /* Collected footage lands under imports/ (a trusted footage source the watcher already scans). */
 const COLLECT_INBOX = join(DATA, "imports", "collected");
@@ -413,7 +417,7 @@ function createWorkspace(b) {
   writeFileSync(join(data, "profiles.json"), JSON.stringify({ displayName: name, handle: "", networks: {} }, null, 2));
   const entry = { id, name, color: WS_COLORS.includes(b.color) ? b.color : WS_COLORS[(w.list.length + 1) % WS_COLORS.length], created: new Date().toISOString(),
     env: { STUDIO_DATA: data, STUDIO_SOURCE: source, STUDIO_DRAFTS: join(data, "drafts"), STUDIO_READY: join(data, "ready"), STUDIO_PROJECTS: join(data, "projects"),
-      STUDIO_WORKSPACE: name, STUDIO_TZ: tz, STUDIO_PY: PY, STUDIO_TOOLS: dirname(FFMPEG) } };
+      STUDIO_WORKSPACE: name, STUDIO_TZ: tz, STUDIO_PY: PY, STUDIO_TOOLS: TOOLS_DIR } };
   w.list.push(entry);
   writeWorkspaces(w);
   return entry;
@@ -1356,7 +1360,8 @@ async function runScoreQueue() {
         // No reviewer key (a new install, or a project that does not use AI): skip quietly, as promised above, instead
         // of leaving a failed ai-<slug> job on the board after every render.
         const st = await ai("status").catch(() => null);
-        if (!st?.keys?.openrouter) { console.log(`[auto-score] ${slug}: skipped, no OpenRouter key`); continue; }
+        // Your own vision model reviews from still frames for free (py/studio/ai.py review_basis): no key needed then.
+        if (!st?.keys?.openrouter && st?.reviewBasis !== "frames") { console.log(`[auto-score] ${slug}: skipped, no OpenRouter key and no vision model of your own`); continue; }
         const input = aiInput({ slug, tools: ["review"] });
         const est = await ai("estimate", input);
         if (!est.fits) { console.log(`[auto-score] ${slug}: ${est.refusal}`); continue; }

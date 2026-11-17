@@ -788,7 +788,9 @@ def upload_vlog(n: int, privacy: str = "unlisted", at: str | None = None, force:
     captions = None
     if series and (d / "subtitles.srt").exists():
         try:
-            captions = upload_captions(vid, d / "subtitles.srt")["id"]
+            # The captions' language from their own words (speech.py can now keep Japanese: STUDIO_WHISPER_LANGUAGE).
+            cap_lang = _lang_of((d / "subtitles.srt").read_text(encoding="utf-8", errors="replace"))
+            captions = upload_captions(vid, d / "subtitles.srt", cap_lang, "日本語" if cap_lang == "ja" else "English")["id"]
         except Exception as err:  # the upload stands; the .srt can be added in Studio
             note += f"; captions not added ({str(err)[:120]})"
     record(slug, "youtube", "scheduled" if at else "posted", at or datetime.now().isoformat(timespec="minutes"), vid, url, note=note)

@@ -65,7 +65,7 @@ The top bar has five sections, in the order work moves: **Footage**, **Reels**, 
 
 ![Footage: where clips come from, then every clip and photo grouped by where it came from, marked used or unused, filtered to videos](img/pages/footage.gif)
 
-Every photo and video the studio can use, with its tags. **Where footage comes from** lists each place it reads (a Drive folder, the Google Photos picks, a Google Form) and how many files each holds. **Fresh footage** says how many more reels your unused clips can make, and what to film next.
+Every photo and video the studio can use, with its tags. **Add footage** holds every way in, and under it **Where footage comes from**: a map with the project in the middle and each place it reads as a branch (a Drive folder, the Google Photos picks, the drop box, files dropped on the page, a Google Form), with its clips, how many are unused, when it was last checked and whether it is watched. Click a place for its details, **Look for new files**, **Browse this folder** or **Stop reading this folder**. **Fresh footage** says how many more reels your unused clips can make, and what to film next.
 
 **Add from Google Photos** opens Google's picker: since March 2025 an app can only read the photos you pick there, so a renamed or new album is not seen until you pick its items. Search does not find album names in the picker; open the album in Google Photos to see what is in it.
 
@@ -96,6 +96,8 @@ Each reel waiting for you, one row each: the reel (press it to play), its score,
 ![The reel editor: the library on the left, the player, the reel's properties, and the timeline of words, clips, music and effects](img/pages/editor.gif)
 
 Open a reel to edit it. The editor has the clips on a timeline, the words, the music and the reel's style.
+
+**Where this reel is** sits at the top of **Properties**: made, approved, booked and live, each with its date, and the step it waits on marked in yellow. Under it is one small logo for each network the reel is booked on or out on, with a dot for its state (green: out, blue: booked, amber: a reminder, red: not found). Click a logo to open **Exports** at that network.
 
 **Each reel has its own style.** A new reel draws one of each:
 
@@ -130,7 +132,7 @@ The top of the page also shows **Runs by itself**, the swap of older bookings, a
 
 ![Results: views this week, the best post and the next post; views by network; the networks that show posts to nobody; views per post side by side; every post's numbers](img/pages/results.gif)
 
-The top says how many people saw your posts this week and on which networks. A red box names any network that shows your posts to nobody, with what to check there. **Each network, side by side** compares posts, views per post, reactions and the best post. **Every post** lists each post with its latest numbers.
+The top says how many people saw your posts this week and on which networks. **Posts in, views out** draws it as one band per network: from its posts on the left to the views they brought on the right. A dashed red band means the network shows your posts to nobody; a dashed grey one means the studio cannot read its numbers. Point at a band to lift it, or click it (or press Enter) for the reason and the numbers. On a phone the same shows as bars. A red box names any network that shows your posts to nobody, with what to check there. **Each network, side by side** compares posts, views per post, reactions and the best post. **Every post** lists each post with its latest numbers.
 
 **How reels did** compares cut styles, themes and lengths on each network. Numbers come about 3 days after a post. They mean little before about 15 measured posts. **Activity log** lists every finished job, with how long it took and why it failed.
 
@@ -142,7 +144,7 @@ The Facebook card also says whether **Instagram Stories** are on: every reel boo
 
 | Tab | What it is for |
 |:--|:--|
-| **Accounts** | Each network: on or off for this project, connected or not, and a button for anything that needs one step |
+| **Accounts** | **How each network gets its post**: a map with the project in the middle, the three ways a post leaves the studio (the studio posts it, your Chrome posts it, you post it from a reminder) and each network on its way, with its next booking and when its sign-in ends. A dashed line and an amber dot mean one step is left. Click a network for its details, **Show its card** or **See its posts**. Under the map, each network: on or off for this project, connected or not, and a button for anything that needs one step |
 | **Keys & AI** | Your AI keys and spending limits, **This project** (your name, link and words), the **Chrome link**, **YouTube: Google account and app**, and **Use with Claude or Cursor** |
 
 ![Settings › Keys & AI: AI keys, the spending limits per reel, per day and in total, and what has been spent](img/keys-ai.webp)
@@ -426,11 +428,14 @@ The studio does not post to Instagram. Approved reels appear in the ready folder
 
 ### Add new footage
 
-There are three ways in:
+**Footage › Add footage** shows every way in, one colour for each kind:
 
-- Put files in a dated folder inside your footage folder (`2026\20261123_winter-open\`). The studio finds them within 30 minutes.
-- **Footage › Add a folder**.
-- **Footage › Add from Google Photos**: pick the items.
+- **This computer**: drag photos and videos onto the box (or press **Choose files**), up to 8 GB each. They land in the studio inbox and are catalogued about 20 s after the last one. Or **Add a folder** the studio keeps watching.
+- **Cloud**: **Google Drive folder** (a Drive folder synced by Drive for desktop) or **Add from Google Photos** (pick the items).
+- **Phones and other people**: the drop box (a QR code for phones on this Wi-Fi) or your Google Form.
+- Or put files in a dated folder inside your footage folder (`2026\20261123_winter-open\`). The studio finds them within 30 minutes.
+
+Adding from a link (a shared video URL) is not built yet.
 
 Short takes work best: 5 to 15 seconds, one subject each, with a still second at the start and end. Why, and the rest of the camera settings: [Filming guide](filming-guide.md).
 
@@ -463,6 +468,10 @@ and stays until it is fixed, even if the page was closed when it happened.
 |:--|:--|:--|
 | Red | Something will not happen until you fix it | a booked reel that is not approved; a post that did not go out, or was not seen live hours after its time; a sign-in (Bluesky's lasts about two weeks) that ends before posts booked after it; a job that stopped with an error |
 | Amber | It works, but not as well as it could | a network whose measured posts reached nobody yet (a new or restricted account, or a number the studio cannot read); a network booked through your Chrome that nobody has checked is signed in (LINE, Pinterest: press **Open … in my Chrome**, then **I'm signed in**); long videos that repeat days or vary a lot in length |
+
+The list is grouped by cause (making stopped, posts that did not go out, sign-ins, networks not showing your posts,
+project notes). A bar at the top shows every problem in its group's colour; click a group to jump to it. Each group
+says in one line what fixes all of it.
 
 Each one has a **Fix** button that opens the right page, and some have a second one that opens the network itself
 (**Look on Google Maps**, **Open TikTok Studio**). On **Posting**, the same things lead the panel above the calendar,
