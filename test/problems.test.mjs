@@ -77,7 +77,7 @@ test("a post booked but not seen live is red, with a link to look on the network
   assert.equal(p.also.href, "https://business.google.com/locations");
 });
 
-test("a sign-in that ends before booked posts is red two weeks ahead; with nothing booked after it, only near the end", () => {
+test("a sign-in that ends before booked posts is amber two weeks ahead and red from 3 days before; never dismissable", () => {
   const connections = { bluesky: { connected: true, until: "2026-11-22T23:35+00:00" }, facebook: { connected: true } };
   const posts = [
     { id: 1, slug: "a", network: "bluesky", status: "queued", at: "2026-11-20T19:00+09:00" },
@@ -87,8 +87,8 @@ test("a sign-in that ends before booked posts is red two weeks ahead; with nothi
   const reviews = [{ slug: "story-a", status: "approved" }, { slug: "story-b", status: "approved" }, { slug: "story-c", status: "approved" }];
   const [p] = findProblems({ posts, reviews, connections, now: NOW });
   assert.equal(p.id, "signin:bluesky");
-  assert.equal(p.level, "red");
-  assert.equal(p.dismissable, false);
+  assert.equal(p.level, "amber", "10 days ahead it will become a problem: amber, not red (owner, 17 Nov)");
+  assert.equal(p.dismissable, false, "about the future: fixed, never dismissed");
   assert.match(p.title, /Bluesky signs out in 10 days/);
   assert.match(p.detail, /2 booked posts after that will not go out/);
   assert.match(p.detail, /App password/);
@@ -96,6 +96,11 @@ test("a sign-in that ends before booked posts is red two weeks ahead; with nothi
   assert.deepEqual(findProblems({ posts: posts.slice(0, 1), reviews, connections, now: NOW }), [], "nothing after the end, 10 days left: quiet");
   const late = findProblems({ posts: [], connections, now: Date.parse("2026-11-21T00:00:00Z") });
   assert.equal(late[0]?.level, "amber", "2 days left with nothing booked after: a heads-up");
+  const near = findProblems({ posts, reviews, connections, now: Date.parse("2026-11-20T00:00:00Z") }).find((f) => f.id === "signin:bluesky");
+  assert.equal(near?.level, "red", "3 days left with posts booked after it: red");
+  assert.equal(near?.dismissable, false);
+  const out = findProblems({ posts: [], connections, now: Date.parse("2026-11-22T12:00:00Z") });
+  assert.equal(out[0]?.level, "red", "under a day left: red");
 });
 
 test("a network whose measured posts reached nobody is amber, with where to look (TikTok and Facebook, 0 views)", () => {

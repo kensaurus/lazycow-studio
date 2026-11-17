@@ -2,6 +2,29 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.21.0 (2026-11-17)
+
+### Added
+- **Posting › Week**, now the default: one lane per network and one column per day, with each post shown by state.
+  - **States:** booked on the site, sent by the studio, a reminder, failed or missing, or an open slot.
+  - **Header row:** holidays and events.
+  - **Moving posts:** drag a studio-held post to another day, with Undo. A post booked on the site says why it cannot
+    move.
+  - **Tray:** approved reels wait beside the lanes. Drop one on a slot and it is booked only after you press "Book it".
+- **Reels › Today:** what goes out today, what waits for review, what finished overnight, this week's views, and
+  how much footage is left.
+- **Needs you:** one strip on every page, worst first, each item with its fix. It replaces the old banner and the
+  status lines. A sign-in that ends soon is amber until 3 days before.
+- **Motion switch:** Settings › Keys & AI › This studio: Auto, On or Reduced. "On" animates even when the system
+  asks for reduced motion.
+
+### Changed
+- **Reels Monitor:** the week grid is coloured by state, and a day opens Posting at that day.
+- **Settings › Accounts:**
+  - Steps are full-width rows. Bluesky, for example, reads "connected until 1 Dec", with one "Add app password".
+  - Ready cards are compact.
+  - The map counts every booking, saying how many are Instagram Stories.
+
 ## 0.20.0 (2026-11-17)
 
 ### Added
