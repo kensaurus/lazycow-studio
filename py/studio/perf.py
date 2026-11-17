@@ -362,6 +362,11 @@ class YouTube(Collector):
                         if a.get(k) is not None:
                             numbers[k] = a[k]
                     extra = {k: a[k] for k in ("engaged_views", "analytics_views") if a.get(k) is not None}
+                    # A Short that people loop is watched over 100 % on average: the column holds 0-100, so it keeps 100
+                    # and the real figure rides in extra (16 Nov: one such reading stopped the whole hourly read).
+                    if (numbers.get("avg_view_pct") or 0) > 100:
+                        extra["avg_view_pct_raw"] = numbers["avg_view_pct"]
+                        numbers["avg_view_pct"] = 100.0
                 out.append({"post": p, "numbers": {k: v for k, v in numbers.items() if v is not None}, "extra": extra, "remote_id": vid})
         return out, notes
 
@@ -545,6 +550,75 @@ class Bluesky(Collector):
 COLLECTORS: dict[str, Collector] = {c.network: c for c in (YouTube(), Facebook(), Bluesky())}
 
 
+def _fb_texts() -> dict[str, str]:
+    """Each reel's Facebook post text, from the render manifests on the data disk (fast; the drafts may sit on a
+    synced drive). {slug: text}."""
+    from studio.config import DATA
+
+    out: dict[str, str] = {}
+    for m in (DATA / "renders").glob("story-*/manifest.json"):
+        try:
+            man = json.loads(m.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        ch = next((c for c in man.get("channels") or [] if c.get("name") == "facebook"), None)
+        if ch and str(ch.get("post") or "").strip():
+            out[m.parent.name.removeprefix("story-")] = str(ch["post"]).strip()
+    return out
+
+
+def match_reel(description: str, texts: dict[str, str]) -> str | None:
+    """The reel a network post belongs to: the one whose post text is exactly the description, else the one reel whose
+    first line is the description's first line. Two candidates is no match (never a guess). Pure, for tests."""
+    d = (description or "").strip()
+    if not d:
+        return None
+    exact = [s for s, t in texts.items() if t == d]
+    if len(exact) == 1:
+        return exact[0]
+    first = d.split("\n")[0].strip()
+    line = [s for s, t in texts.items() if t.split("\n")[0].strip() == first]
+    return line[0] if len(line) == 1 and not exact else None
+
+
+def discover_facebook(texts: dict[str, str] | None = None) -> list[str]:
+    """Reels on the Page that the posting log does not know (posted by hand, or a row lost when a booking was replaced)
+    are added to the log as posted, so they are measured. 16 Nov: the one reel with 100 plays was not in the log, and
+    Results said Facebook got nothing. Returns notes: what was added, and what could not be matched to a reel."""
+    from studio import posting
+    from studio.connectors.facebook import GRAPH, _load
+
+    creds = _load() or {}
+    token, page = creds.get("token"), creds.get("page_id")
+    if not token or not page:
+        return []
+    status, _, body = _http("GET", f"{GRAPH}/{page}/video_reels?" + urllib.parse.urlencode(
+        {"access_token": token, "fields": "id,description,permalink_url,published,status", "limit": 50}))
+    if status != 200:
+        return [_scrub(f"Facebook: could not list the Page's reels ({status})")]
+    known = {str(p.get("remote_id") or "") for p in _posts() if p["network"] == "facebook"}
+    known |= {facebook_id(p) or "" for p in _posts() if p["network"] == "facebook"}
+    texts = _fb_texts() if texts is None else texts
+    notes, unmatched = [], 0
+    for r in _json(body).get("data", []):
+        vid = str(r.get("id") or "")
+        if not vid or vid in known or not r.get("published"):
+            continue
+        out_at = ((r.get("status") or {}).get("publishing_phase") or {}).get("publish_time")
+        slug = match_reel(r.get("description") or "", texts)
+        when = _when(out_at)
+        if not slug or not when:
+            unmatched += 1
+            continue
+        url = "https://www.facebook.com" + r["permalink_url"] if str(r.get("permalink_url", "")).startswith("/") else (r.get("permalink_url") or f"https://www.facebook.com/reel/{vid}/")
+        posting.record(slug, "facebook", "posted", when.astimezone().isoformat(timespec="minutes"), remote_id=vid, url=url,
+                       note="found on the Page; not in the posting log before")
+        notes.append(f"Facebook: added {slug} (reel {vid}), found on the Page but missing from the posting log.")
+    if unmatched:
+        notes.append(f"Facebook: {unmatched} reel{'s' if unmatched != 1 else ''} on the Page could not be matched to a reel here.")
+    return notes
+
+
 # ---------- collect ----------
 
 def _state_path() -> Path:
@@ -586,11 +660,17 @@ def collect(req: dict | None = None) -> dict:
     if timer and time.time() - float(st.get("last_run", 0)) < TIMER_GAP_S:
         return {"ran": False, "why": "checked less than an hour ago", "lastRun": st.get("last_at")}
     only = {int(x) for x in req.get("post_ids") or [] if str(x).isdigit()}
+    found: list[str] = []
+    if not only and COLLECTORS["facebook"].ready()[0]:
+        try:
+            found = discover_facebook()
+        except Exception as err:  # finding missed reels never stops the reading itself
+            found = [_scrub(f"Facebook: could not look for reels missing from the log ({type(err).__name__})")]
     posts = [p for p in live_posts(now) if not only or p["id"] in only]
     have: dict[int, list[dict]] = {}
     for r in readings():
         have.setdefault(r["post_id"], []).append(r)
-    stored, skipped, problems, manual, notes = [], [], [], [], []
+    stored, skipped, problems, manual, notes = [], [], [], [], list(found)
     by_net: dict[str, list[dict]] = {}
     for p in posts:
         mine = have.get(p["id"], [])
@@ -621,7 +701,11 @@ def collect(req: dict | None = None) -> dict:
             continue
         notes.extend(net_notes)
         for g in got:
-            row = store(g["post"], g["numbers"], "api", at=now, extra=g.get("extra"), remote_id=g.get("remote_id"))
+            try:
+                row = store(g["post"], g["numbers"], "api", at=now, extra=g.get("extra"), remote_id=g.get("remote_id"))
+            except PerfError as err:  # one post's odd number never stops the rest of the read
+                problems.append({"network": net, "error": _scrub(f"{g['post'].get('slug')}: {err}"), "code": err.code})
+                continue
             stored.append({k: row[k] for k in ("post_id", "slug", "network", "checkpoint", "age_h", *[n for n in NUMBERS if row.get(n) is not None])})
     upcoming = [p for p in _posts() if p["network"] != "all" and p["status"] in LIVE and (_when(p.get("at")) or now) > now]
     st.update(last_run=time.time(), last_at=now.isoformat(timespec="seconds"))

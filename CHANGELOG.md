@@ -2,6 +2,56 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.17.0 (2026-11-17)
+
+### Docs
+- **Every page, in motion.** A GIF of each page (Reels, Review, the reel editor, Posting, Results, Footage, Accounts,
+  the setup wizard and the DO NOT CLICK tour), each in a 90s program window, in the README, the npm README, the user
+  guide and the Japanese README. `node scripts/docs-gifs.mjs` records them again from a running studio; it only
+  opens, scrolls and plays pages, and masks email addresses.
+
+### Added
+- **Instagram Stories.** Each reel booked on YouTube can also go out as an Instagram Story (shown for 24 hours) at the
+  same time, through the Instagram account linked to the Facebook Page. It uses the Facebook connection: the
+  Facebook sign-in now also asks for `instagram_basic` and `instagram_content_publish`, and the Facebook card in
+  Accounts shows whether stories are on, with a "Connect again with Instagram" button when they are not. Stories
+  cannot be scheduled through Meta's API, so the studio queues each one and sends it at its time (like Bluesky); a
+  story whose YouTube booking moves or is replaced is taken back. A story carries no caption; it uses the reel's 9:16
+  Instagram file (else TikTok's or the Shorts'). `python -m studio publish --stories` queues them by hand; the
+  server runs it once an hour.
+
+### Changed
+- **Facebook posts every other day, and never the same theme within 3 days.** Eight near-identical reels a day apart
+  were shown to nobody but one (the Page itself has no limits). Spacing and variety are the change being tested; the
+  cause is not proven. Other networks keep one post a day.
+
+- **Reels: the Studio Monitor shows the coming week.** A "Next 7 days on the networks" grid (one row per network, a
+  coloured block on each day it posts; hover for the time and reel) fills the space beside the reels waiting for
+  review. "Next out" lists every post of the next time slot under one time header, not the first three.
+- **Posting: each calendar day says what goes out.** Its post times and the reel it uses on the most networks, on one
+  line; past weeks with nothing in them are left out of the current month. "Needs a look" names the reel by its
+  headline and network instead of its file id.
+- **Reel cards show where each reel is booked or out at all times**; the buttons appear on hover over the foot of the
+  card instead of leaving an empty block under every card.
+- **Reels group by the day they were made** (Today, Yesterday, Sat 14 Nov…) for the last week, then by month: by week,
+  216 of 240 reels sat in one "This week" group. The button reads "When made".
+- **"Not posting" says why**: Rejected in review, Replaced by a new cut, or Set aside. Face consent is a badge on the
+  picture (explained on hover), shown only where the reel can still go out.
+- **Results compares networks side by side**: under the bars, a table of every network with posts, views per post,
+  reactions and its best post, most views per post first.
+- **Review uses the full width**: a bigger player, the clips stretched across the row, and "Approving books it on"
+  with the networks it will go to.
+
+### Fixed
+- **Results "Next post" and the Monitor left out posts going out at the same moment.** YouTube and Instagram Story
+  times are written 18:00+08:00, the others 19:00+09:00; they are now compared as moments, not as text.
+- **Facebook reels missing from the posting log are counted.** Reading the numbers now lists the Page's reels, adds
+  any the log does not know (matched to a reel by its exact post text, or by a first line only one reel has; never a
+  guess), and measures them. The one reel with 100 plays had been left out, so Results said Facebook reached nobody.
+- **One odd number no longer stops the hourly reading.** A Short watched more than 100 % on average (people loop it)
+  is stored as 100 with the real figure kept beside it, and any reading that cannot be stored is reported for that
+  post while the rest are saved.
+
 ## 0.16.0 (2026-11-16)
 
 ### Changed

@@ -14,7 +14,19 @@ Approving a reel stays a person's job in the studio. Agents and scripts can make
 
 ![You watch the reel, press Approve, and it is booked on the posting calendar](https://raw.githubusercontent.com/kensaurus/lazycow-studio/main/docs/img/approve.gif)
 
-[Watch the 40-second demo](https://github.com/kensaurus/lazycow-studio/blob/main/docs/media/lazycow-demo.mp4) · [See the studio's pages](https://github.com/kensaurus/lazycow-studio#how-it-works)
+[Watch the 40-second demo](https://github.com/kensaurus/lazycow-studio/blob/main/docs/media/lazycow-demo.mp4) · [See the studio's pages](https://github.com/kensaurus/lazycow-studio#every-page-in-motion)
+
+## Every page, in motion
+
+Recorded in the author's own studio (everyone on camera agreed). Each GIF opens, scrolls and plays a page; none presses Approve.
+
+| | |
+|:--|:--|
+| ![Reels: the Studio Monitor and a 7-day grid of every network, then every reel by the day it was made](https://raw.githubusercontent.com/kensaurus/lazycow-studio/main/docs/img/pages/reels.gif) **Reels.** Reels by stage, the next posts, a 7-day grid of every network, every reel by the day it was made. | ![Review: a reel plays beside its clips and words](https://raw.githubusercontent.com/kensaurus/lazycow-studio/main/docs/img/pages/review.gif) **Review.** Each reel beside its clips and words, and the networks Approve books it on. |
+| ![The reel editor: library, player, properties and timeline](https://raw.githubusercontent.com/kensaurus/lazycow-studio/main/docs/img/pages/editor.gif) **The reel editor.** Library, player, properties and a timeline of words, clips, music and effects. | ![Posting: the calendar with each day's times and headline](https://raw.githubusercontent.com/kensaurus/lazycow-studio/main/docs/img/pages/posting.gif) **Posting.** Every booking on a calendar, filtered by network. |
+| ![Results: views by network and every post's numbers](https://raw.githubusercontent.com/kensaurus/lazycow-studio/main/docs/img/pages/results.gif) **Results.** Views by network, networks showing posts to nobody, views per post, every post. | ![Footage: where clips come from, used and unused](https://raw.githubusercontent.com/kensaurus/lazycow-studio/main/docs/img/pages/footage.gif) **Footage.** Drive folders, Google Photos picks and a Google Form; what is still unused. |
+| ![Settings › Accounts: each network and the one step left](https://raw.githubusercontent.com/kensaurus/lazycow-studio/main/docs/img/pages/accounts.gif) **Accounts.** Each network, how it gets posted, and the one step left. | ![The InstallShield-style setup wizard](https://raw.githubusercontent.com/kensaurus/lazycow-studio/main/docs/img/pages/setup.gif) **Setup.** A 1998 InstallShield-style wizard, step by step. |
+| ![The DO NOT CLICK 1999 pop-up tour](https://raw.githubusercontent.com/kensaurus/lazycow-studio/main/docs/img/pages/popups.gif) **DO NOT CLICK.** The opt-in 1999 pop-up tour of every page. Esc stops it. | More in the [user guide](https://github.com/kensaurus/lazycow-studio/blob/main/docs/user-guide.md#a-tour-page-by-page). |
 
 ## Install the studio
 

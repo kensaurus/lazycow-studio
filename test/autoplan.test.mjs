@@ -41,6 +41,23 @@ test("plans from today, one a day per network, each within its own limit", () =>
   for (const n of ["x", "bluesky"]) assert.equal(new Set(by(n).map((p) => p.slug)).size, by(n).length, `${n}: never the same reel twice`);
 });
 
+test("Facebook books every other day and never a theme it had within 3 days (16 Nov: one of 8 daily reels was shown)", () => {
+  const themes = ["aerial", "carstay", "fire", "autumn", "aerial", "connect", "office", "aerial", "warm", "pov"];
+  const reels = themes.map((t, i) => ({ slug: `${t}-11${10 + i}`, headline: `h${i}`, networks: ["facebook"] }));
+  const r = planAhead({ reels, networks: ["facebook"], posts: [], now: NOW, aheadDays: 14 });
+  const days = r.plan.map((p) => p.day);
+  assert.ok(days.length >= 5, `about half the days (${days.length})`);
+  for (let i = 1; i < days.length; i++) assert.ok(Date.parse(days[i]) - Date.parse(days[i - 1]) >= 2 * 86400e3, `${days[i - 1]} then ${days[i]}`);
+  for (let i = 0; i < r.plan.length; i++) for (let j = i + 1; j < r.plan.length; j++) {
+    const gap = (Date.parse(r.plan[j].day) - Date.parse(r.plan[i].day)) / 86400e3;
+    if (gap <= 3) assert.notEqual(r.plan[i].slug.split("-")[0], r.plan[j].slug.split("-")[0], `${r.plan[i].slug} and ${r.plan[j].slug}`);
+  }
+  assert.ok(r.skipped.some((s) => s.why === "Facebook posts every other day"));
+  // Other networks keep one a day.
+  const x = planAhead({ reels: reels.map((p) => ({ ...p, networks: ["x"] })), networks: ["x"], now: NOW, aheadDays: 5 });
+  assert.equal(x.plan.length, 5);
+});
+
 test("days that already hold a post and reels a network already had are skipped", () => {
   const reels = [{ slug: "a", headline: "A", networks: ["x"] }, { slug: "b", headline: "B", networks: ["x"] }, { slug: "c", headline: "C", networks: ["x"] }];
   const posts = [{ slug: "a", network: "x", status: "scheduled", at: "2026-11-11T19:00+09:00" }];

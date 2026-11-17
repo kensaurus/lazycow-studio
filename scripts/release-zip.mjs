@@ -33,9 +33,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   const file = join(out, zipName(version));
   // Reproducible: the same files give the same bytes whatever commit carries them (a fixed time, the tree not the
   // commit). packages/ stays out: the npm package carries this zip's SHA-256 (scripts/build-packages.mjs), so the zip
-  // cannot carry the package, and the studio does not need it.
+  // cannot carry the package, and the studio does not need it. docs/img/pages (the page GIFs, about 13 MB) stays out
+  // too: they are for GitHub, npm and the website, and the download should not grow by a quarter for pictures of itself.
   execFileSync("git", ["-C", from, "archive", "--format=zip", `--prefix=${folderName(version)}/`, "--mtime=2026-01-01T00:00:00Z",
-    "-o", file, "HEAD^{tree}", "--", ".", ":(exclude)packages"]);
+    "-o", file, "HEAD^{tree}", "--", ".", ":(exclude)packages", ":(exclude)docs/img/pages"]);
   const sha = createHash("sha256").update(readFileSync(file)).digest("hex");
   console.log(`${file}\nSHA-256 ${sha}`);
 }

@@ -1259,8 +1259,15 @@ async function tickPosts() {
     const rows = await ask({ cmd: "posts" });
     const now = Date.now();
     if (rows.some((r) => r.status === "queued" && r.at && Date.parse(r.at) <= now)) startTask("post-due", "post", ["publish", "--due"]);
+    // Once an hour: an Instagram Story beside every reel booked on YouTube (py/studio/publish.py stories_from_schedule;
+    // the owner, 16 Nov). It queues nothing until Instagram is reachable through the Facebook connection.
+    if (now - tickPosts.stories > 3600e3 && jobs.get("post-stories")?.status !== "running") {
+      tickPosts.stories = now;
+      startTask("post-stories", "post", ["publish", "--stories"]);
+    }
   } catch { /* the helper is starting or busy; next minute */ }
 }
+tickPosts.stories = 0;
 setInterval(tickPosts, 60_000);
 /* The folders and settings a Python job needs to act for a project that is not the open one: the same overlay this
    process made at start for its own project (null = the main project, as .env describes it). */

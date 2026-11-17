@@ -85,10 +85,22 @@ def _module(net: str):
     return reg[net]
 
 
+# A network with no files of its own takes another channel's: an Instagram Story is the reel's 9:16 Instagram cut
+# (else TikTok's or the Shorts'), and a story carries no caption.
+BORROW = {"instagram-story": ("instagram", "tiktok", "youtube-shorts")}
+
+
 def file_for(slug: str, net: str) -> tuple[Path, str]:
     """The network's video (the first full-size one; a lighter "_web" copy only when nothing else fits) and post text."""
     from studio.reels import CHANNELS, _channel_info
 
+    if net in BORROW:
+        chans = {c["name"]: c for c in _channel_info(slug)}
+        src = next((n for n in BORROW[net] if chans.get(n, {}).get("videos")), None)
+        if not src:
+            raise ValueError(f"{slug} has no 9:16 file for {net} yet: open the reel's post panel and press Prepare files")
+        video, _ = file_for(slug, src) if chans[src]["post"].strip() else (Path(chans[src]["dir"]) / chans[src]["videos"][0]["file"], "")
+        return video, ""
     ch = next((c for c in _channel_info(slug) if c["name"] == net), None)
     if not ch or not ch["videos"]:
         raise ValueError(f"{slug} has no {net} file yet: open the reel's post panel and press Prepare files")
@@ -192,6 +204,37 @@ def replace(post_id: int) -> dict:
         out = youtube.upload(slug, at=when.astimezone().strftime("%Y-%m-%dT%H:%M"), force=True)
         return {**out, "network": net, "slug": slug, "replaced": post_id}
     raise ValueError(f"{net} is booked in your Chrome: use Replace on the Posting page (the helper swaps it there)")
+
+
+STORY_SOURCE = "youtube"  # the network whose daily bookings the stories follow (one reel a day at 19:00)
+
+
+def stories_from_schedule(now: datetime | None = None) -> dict:
+    """Queue an Instagram Story beside every reel booked ahead on YouTube, at the same time, once. 16 Nov, the owner:
+    "start the scheduled reels on instagram too ... as instagram story (that last a day)". Stories are queued (the API
+    cannot hold a time) and sent by run_due; a reel sent back to review waits there, as every queued post does."""
+    now = now or _now()
+    st = _module("instagram-story").status()
+    if not st.get("connected"):
+        return {"queued": 0, "stories": [], "why": st.get("error") or "Instagram Stories are not connected"}
+    rows = posting.posts()
+    held = {(r["slug"], r["at"]) for r in rows if r["network"] == STORY_SOURCE and r["status"] in ("scheduled", "queued", "planned", "posted")}
+    # A story still waiting whose YouTube booking was moved or replaced is taken back: it follows the schedule.
+    dropped = [r["id"] for r in rows if r["network"] == "instagram-story" and r["status"] == "queued" and (r["slug"], r["at"]) not in held]
+    for pid in dropped:
+        posting.retire(pid)
+    rows = [r for r in rows if r["id"] not in dropped]
+    have = {(r["slug"], r["at"]) for r in rows if r["network"] == "instagram-story" and r["status"] not in ("replaced", "dropped")}
+    added = []
+    for r in rows:
+        when = _when(r.get("at")) if r.get("at") else None
+        if r["network"] != STORY_SOURCE or r["status"] not in ("scheduled", "queued", "planned") or not when or when - now < SOON:
+            continue
+        if (r["slug"], r["at"]) in have:
+            continue
+        added.append({"id": posting.queue(r["slug"], "instagram-story", r["at"]), "slug": r["slug"], "at": r["at"]})
+        have.add((r["slug"], r["at"]))
+    return {"queued": len(added), "stories": added, "dropped": len(dropped)}
 
 
 def run_due() -> list[dict]:

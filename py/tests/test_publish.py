@@ -160,3 +160,48 @@ def test_replace_refuses_an_unapproved_reel_or_a_post_about_to_go_out(net, monke
     soon = posting.record("pub-z2", "facebook", "scheduled", _future(hours=0.05), "998", "")
     with pytest.raises(ValueError, match="more than a few minutes"):
         publish.replace(soon)
+
+
+def test_an_instagram_story_borrows_the_reels_9x16_file_and_sends_no_caption(monkeypatch, tmp_path):
+    """16 Nov, the owner: post the scheduled reels to Instagram as stories (24 hours), not as feed posts."""
+    from studio import reels
+
+    d = tmp_path / "instagram"
+    d.mkdir()
+    (d / "story.mp4").write_bytes(b"x")
+    monkeypatch.setattr(reels, "_channel_info", lambda slug: [
+        {"name": "instagram", "dir": str(d), "videos": [{"file": "story.mp4", "mb": 1.0}], "post": "caption"},
+        {"name": "tiktok", "dir": str(d), "videos": [], "post": ""}])
+    video, text = publish.file_for("st-a", "instagram-story")
+    assert video == d / "story.mp4" and text == ""
+    monkeypatch.setattr(reels, "_channel_info", lambda slug: [])
+    with pytest.raises(ValueError):
+        publish.file_for("st-a", "instagram-story")
+
+
+def test_stories_follow_the_youtube_schedule_once_and_drop_when_it_moves(monkeypatch):
+    class Story(Fake):
+        pass
+
+    on = {"connected": True}
+    story = Story(can_schedule=False)
+    story.status = lambda: {"connected": on["connected"], "account": "@x", "error": None if on["connected"] else "not linked"}
+    monkeypatch.setattr(publish, "_registry", lambda: {"instagram-story": story})
+    soon = (datetime.now(timezone.utc) + timedelta(days=2)).astimezone().isoformat(timespec="minutes")
+    yt = posting.record("st-yt", "youtube", "scheduled", soon)
+    past = posting.record("st-old", "youtube", "scheduled", (datetime.now(timezone.utc) - timedelta(hours=1)).astimezone().isoformat(timespec="minutes"))
+
+    def mine():
+        return [p for p in posting.posts() if p["network"] == "instagram-story" and p["slug"] in ("st-yt", "st-old")]
+
+    on["connected"] = False
+    assert publish.stories_from_schedule()["queued"] == 0 and not mine(), "nothing until Instagram is reachable"
+    on["connected"] = True
+    publish.stories_from_schedule()
+    publish.stories_from_schedule()
+    got = mine()
+    assert [(p["slug"], p["at"], p["status"]) for p in got] == [("st-yt", soon, "queued")], "once, same time, never for a past booking"
+    posting.settle(yt, "replaced", note="moved")
+    out = publish.stories_from_schedule()
+    assert out["dropped"] == 1 and not [p for p in mine() if p["status"] == "queued"]
+    assert past
