@@ -6,8 +6,9 @@
  *           is wrong; it is pure and tested. A store merges those with one-off events (a version that could not be
  *           used, a project switch), keeps first/last seen, drops a checked problem once its cause is gone, and lets a
  *           person dismiss what may be dismissed.
- * LEVELS: red = something will not happen (a post, a render) until it is fixed; amber = it happens, but worse than it
- *         could; info = worth knowing. A red problem about the future cannot be dismissed, only fixed.
+ * LEVELS: red = broken: something will not happen (a post, a render) until it is fixed, or is about to; amber = it
+ *         will become a problem (a sign-in that ends in two weeks) or happens worse than it could; info = worth
+ *         knowing. A red problem about the future cannot be dismissed, only fixed (a sign-in, red or amber, neither).
  * Found 13 Nov: a reel left unapproved by a failed "Use the new version", 13 long videos that repeated days, and a
  * project switch, all of which the studio never showed.
  */
@@ -128,7 +129,10 @@ export function findProblems({ posts = [], reviews = [], parts = [], connections
     const days = Math.max(0, Math.ceil((end - now) / DAY));
     if (!after.length && end - now > 3 * DAY) continue;
     out.push({
-      id: `signin:${n}`, level: after.length || end - now < DAY ? "red" : "amber",
+      // Red only once it is broken or about to be (signed out, or 3 days left with posts booked after it, or a day left):
+      // two weeks ahead it is amber, a heads-up (owner, 17 Nov: "Bluesky signs out in 14 days" was red). Either way it
+      // is about the future and cannot be dismissed, only fixed.
+      id: `signin:${n}`, level: end <= now || end - now < DAY || (after.length && end - now <= 3 * DAY) ? "red" : "amber",
       title: end <= now ? `${netName(n)} is signed out` : `${netName(n)} signs out in ${days} day${days === 1 ? "" : "s"}`,
       detail: `${end <= now ? "The sign-in ended" : "The sign-in ends"} ${when(c.until)}.${after.length ? ` ${after.length} booked post${after.length === 1 ? "" : "s"} after that will not go out until you sign in again.` : ""} Sign in again on Settings › Accounts: it takes a minute.${n === "bluesky" ? " Signing in with an App password instead (Bluesky › Settings › Privacy and security › App passwords) does not run out." : ""}`,
       fix: { label: `Sign in to ${netName(n)} again`, href: "#/accounts" }, dismissable: false,

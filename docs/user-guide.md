@@ -61,6 +61,10 @@ flowchart LR
 
 The top bar has five sections, in the order work moves: **Footage**, **Reels**, **Posting**, **Results** and **Settings**. Keys 1 to 5 open them. A section with more than one page shows its pages as tabs.
 
+Under the top bar, on every page, **What needs you** says in one row what to do, worst first, each with one button that fixes it. Red means something is broken: a post or a render will not happen until you fix it. Amber means it will become a problem, for example a sign-in that ends in a few days. A plain item is a to-do, such as reels waiting for review. **All N** opens the whole list in place, with each item's detail; × hides the row until something new comes up. When nothing needs you, it says so, and how posting runs by itself.
+
+The maps, the lanes and the other graphics move a little: footage and posts flow along the wires, dots breathe, entrances play once. **Settings › Keys & AI › This studio › Motion on the graphics** sets it: **Auto** follows your system's reduced-motion setting, **On** moves them anyway, **Reduced** keeps everything still. When Auto keeps them still, a note above the first graphic says so, with **turn them on**.
+
 ### Footage
 
 ![Footage: where clips come from, then every clip and photo grouped by where it came from, marked used or unused, filtered to videos](img/pages/footage.gif)
@@ -73,13 +77,14 @@ Every photo and video the studio can use, with its tags. **Add footage** holds e
 
 ![Reels: the reels waiting for review beside the Studio Monitor (reels by stage, work running now, the next posts, a 7-day grid of every network), then every reel](img/pages/reels.gif)
 
-The page opens on the reels waiting for you and the **Studio Monitor**: how many reels are at each stage, what is being made now, every post of the next time slot, and **Next 7 days on the networks** (a block on each day a network posts; hover a block for the time and the reel). Below, every reel. **Group by** sorts them by kind, by stage, or by **When made** (today, yesterday, then each day of the last week, then by month). A card shows where the reel is booked or out; hover it for **Post**, **New version**, **Other opening** and **Don't post**. A reel that is not posting says why: rejected in review, replaced by a new cut, or set aside. A person badge means someone can be recognised and has not agreed yet.
+The page opens on the reels waiting for you and the **Studio Monitor**: how many reels are at each stage, what is being made now, every post of the next time slot, and **Next 7 days on the networks**: one row per network, one cell per day, filled by its state (solid = booked on the site, hatched = the studio sends it, amber outline = a reminder, red = failed or missing, green = out, dashed = an empty slot that network posts in). Point at a cell for its posts; click it to open that network and day on **Posting**. Below, every reel. **Group by** sorts them by kind, by stage, or by **When made** (today, yesterday, then each day of the last week, then by month). A card shows where the reel is booked or out; hover it for **Post**, **New version**, **Other opening** and **Don't post**. A reel that is not posting says why: rejected in review, replaced by a new cut, or set aside. A person badge means someone can be recognised and has not agreed yet.
 
 ![Reels › Make reels: pick themes, then make them; the reels waiting for review below](img/make-reels.webp)
 
 | Tab | What it is for |
 |:--|:--|
 | **All reels** | Every reel, with its words, its state and its booked time |
+| **Today** | What goes out today (time, network, reel, state), what waits for you, what finished overnight, this week's views against last week's, and the footage runway in one line. Every row opens its place. |
 | **Being made** | Reels that render now, and those waiting their turn |
 | **To review** | Reels waiting for your yes or no. **Start reviewing** opens the first one. |
 | **Words** | The word bank: every approved headline and line, and how often reels repeat them |
@@ -112,13 +117,18 @@ The draw rarely repeats what the last four reels used. Night and fire reels keep
 
 ### Posting
 
-![Posting: "Before these go out", then the calendar with each day's post times and headline; the Instagram Story and YouTube filters](img/pages/posting.gif)
+![Posting: the calendar with each day's post times and headline; the Instagram Story and YouTube filters](img/pages/posting.gif)
+
+**Posting › Week** opens first: one row per network, one column per day, today in yellow, holidays and events over their day. Each post is a chip with its time and reel: solid = booked on the site, hatched = the studio sends it, amber outline = a reminder, red = failed or missing, green = out, and a dashed box is an empty slot from that network's posting times.
+
+- **Move a post**: drag a hatched or outlined chip to another day of its row (the same time of day). It moves at once; **Undo** in the note moves it back. A post booked on the site itself says why it does not move (move it there). Keyboard: arrow keys move between cells, Enter opens a post, Alt+← and Alt+→ move the focused post a day.
+- **Book a reel**: drag an approved reel from **Approved, waiting** beside the lanes onto an empty slot (or press the reel, then a green slot). A card says what will happen (for example "Booked on TikTok through your Chrome"), and nothing is booked until you press **Book it**. The rules of **Plan posts** apply: one post per network a day, how far ahead each site takes bookings, no reel twice on one network, no people on Google Maps.
 
 *Posting › Calendar. Each icon is one booked post. A solid border means the network holds it; a dashed border means the studio sends it. Each day shows its post times and the reel it uses on the most networks; past weeks with nothing in them are left out.*
 
 | Tab or link | What it is for |
 |:--|:--|
-| **Calendar** and **List** | Every booked post by day. Filter by network with the row of network buttons. |
+| **Week**, **Calendar** and **List** | Every booked post by day: the week as lanes, a month, or a list. Filter by network with the row of network buttons. |
 | **All reels** | One square per network for each reel: posted, booked, a reminder, or not yet |
 | **Sent** | What is out |
 | **Versions** | Better cuts of booked reels, side by side with the live ones |
@@ -126,7 +136,7 @@ The draw rarely repeats what the last four reels used. Night and fire reels keep
 | **Research** | Ideas and trends, events nearby, your website against your reels, broken links (needs a Firecrawl key) |
 | **Plan posts** | Books every approved reel that is not booked yet |
 
-The top of the page also shows **Runs by itself**, the swap of older bookings, and booked reels whose sound is off the level (**Fix their sound**).
+Under the schedule: the swap of older bookings, booked reels whose sound is off the level (**Fix their sound**), better versions, and **Runs by itself**. What needs a look among them is also in **What needs you** at the top.
 
 ### Results
 
@@ -140,12 +150,14 @@ The top says how many people saw your posts this week and on which networks. **P
 
 ![Settings › Accounts: each network grouped by what is left to do, one button on each card](img/pages/accounts.gif)
 
+Under the map, **Needs one step** is one row per network with one main button: **Open … in my Chrome**, **Connect**, or, for a sign-in that ends before posts booked after it, **Add app password** (its form opens in the row; **Sign in again instead** is the other way). Its badge then says **Connected · expires 1 Dec**. **Ready** is one small card per network: its account, how it posts and one line; **How to post here · Settings** folds the playbook, the on/off switch and **Disconnect**.
+
 The Facebook card also says whether **Instagram Stories** are on: every reel booked on YouTube then goes out as a story (shown for 24 hours) at the same time. They use the Facebook connection; **Connect again with Instagram** asks for the two Instagram permissions.
 
 | Tab | What it is for |
 |:--|:--|
-| **Accounts** | **How each network gets its post**: a map with the project in the middle, the three ways a post leaves the studio (the studio posts it, your Chrome posts it, you post it from a reminder) and each network on its way, with its next booking and when its sign-in ends. A pulse moving out along a line means posts go out that way; a dashed, still line and an amber dot mean one step is left. Click a network for its details, **Show its card** or **See its posts**. Under the map, each network: on or off for this project, connected or not, and a button for anything that needs one step |
-| **Keys & AI** | Your AI keys and spending limits, **This project** (your name, link and words), the **Chrome link**, **YouTube: Google account and app**, and **Use with Claude or Cursor** |
+| **Accounts** | **How each network gets its post**: a map with the project in the middle, the three ways a post leaves the studio (the studio posts it, your Chrome posts it, you post it from a reminder) and each network on its way, with its next booking and when its sign-in ends. A pulse moving out along a line means posts go out that way; a dashed, still line and an amber dot mean one step is left. Click a network for its details, **Show its card** or **See its posts**. The middle counts every booking still to go out, as Posting does, and says how many are Instagram Stories. Under the map, each network: on or off for this project, connected or not, and a button for anything that needs one step |
+| **Keys & AI** | Your AI keys and spending limits, **This studio** (motion on the graphics: Auto, On or Reduced), **This project** (your name, link and words), the **Chrome link**, **YouTube: Google account and app**, and **Use with Claude or Cursor** |
 
 ![Settings › Keys & AI: AI keys, the spending limits per reel, per day and in total, and what has been spent](img/keys-ai.webp)
 
@@ -153,7 +165,7 @@ The Facebook card also says whether **Instagram Stories** are on: every reel boo
 
 1. **Reels › To review**: play each reel, then press **Approve** or **Reject** (say why).
 2. **Posting › Versions**: compare any better cuts, and choose (see [Versions of a booked reel](#versions-of-a-booked-reel)).
-3. **Posting › Calendar**: check the coming days. A red post failed. Open it to see why, fix the cause (usually a sign-in), and book it again.
+3. **Posting › Week**: check the coming days. A red post failed. Open it to see why, fix the cause (usually a sign-in), and book it again.
 4. **Settings › Accounts**: anything under **Needs one step** has one button. Press it.
 
 If **Runs by itself** is off, also press **Posting › Plan posts › Everything** once a week. TikTok accepts bookings only 10 days ahead.
@@ -461,21 +473,21 @@ Each shot in `manifest.json` records what was done: `shots[].color` (measured va
 
 ## When something goes wrong
 
-First look for the **red or amber button** next to the bell (and the strip under the top bar). It lists what went wrong
-and stays until it is fixed, even if the page was closed when it happened.
+First look at **What needs you** under the top bar, and the **red or amber button** next to the bell. They list what went
+wrong and stay until it is fixed, even if the page was closed when it happened.
 
 | Colour | Means | For example |
 |:--|:--|:--|
-| Red | Something will not happen until you fix it | a booked reel that is not approved; a post that did not go out, or was not seen live hours after its time; a sign-in (Bluesky's lasts about two weeks) that ends before posts booked after it; a job that stopped with an error |
-| Amber | It works, but not as well as it could | a network whose measured posts reached nobody yet (a new or restricted account, or a number the studio cannot read); a network booked through your Chrome that nobody has checked is signed in (LINE, Pinterest: press **Open … in my Chrome**, then **I'm signed in**); long videos that repeat days or vary a lot in length |
+| Red | Broken: something will not happen until you fix it | a booked reel that is not approved; a post that did not go out, or was not seen live hours after its time; a sign-in that has ended, ends within a day, or ends within 3 days with posts booked after it; a job that stopped with an error |
+| Amber | It will become a problem, or works worse than it could | a sign-in (Bluesky's lasts about two weeks) that ends within two weeks with posts booked after it; a network whose measured posts reached nobody yet (a new or restricted account, or a number the studio cannot read); a network booked through your Chrome that nobody has checked is signed in (LINE, Pinterest: press **Open … in my Chrome**, then **I'm signed in**); long videos that repeat days or vary a lot in length |
 
 The list is grouped by cause (making stopped, posts that did not go out, sign-ins, networks not showing your posts,
 project notes). A bar at the top shows every problem in its group's colour; click a group to jump to it. Each group
 says in one line what fixes all of it.
 
 Each one has a **Fix** button that opens the right page, and some have a second one that opens the network itself
-(**Look on Google Maps**, **Open TikTok Studio**). On **Posting**, the same things lead the panel above the calendar,
-with **Book again**, **It is out** and **Set aside** for a post that was not seen. Red problems about the future cannot
+(**Look on Google Maps**, **Open TikTok Studio**). On **Posting**, the panel under the schedule has **Book again**,
+**It is out** and **Set aside** for a post that was not seen. Problems about the future (a sign-in, red or amber) cannot
 be dismissed, only fixed; the strip's × hides it until something new goes wrong (the button stays), and it moves out
 of the way while you scroll.
 
