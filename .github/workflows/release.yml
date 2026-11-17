@@ -42,6 +42,7 @@ jobs:
           got=$(sha256sum "/tmp/rel/Lazycow-Studio-$v.zip" | cut -d' ' -f1)
           test "$want" = "$got" || { echo "release zip SHA-256 $got, package expects $want"; exit 1; }
       - name: Publish to npm
+        id: npm_publish
         working-directory: packages/lazycow
         run: |
           v=$(node -p "require('./package.json').version")
@@ -51,4 +52,50 @@ jobs:
         run: |
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
           ./mcp-publisher login github-oidc
+          # The registry checks npm, which can take a minute to show a new version (0.18.0 failed here once).
+          v=$(node -p "require('./package.json').version")
+          for i in $(seq 1 30); do npm view "lazycow@$v" version >/dev/null 2>&1 && break; sleep 10; done
           ./mcp-publisher publish
+
+      # Slack: a published release → #releases, a failed one → #alerts. Posts only from the public repository
+      # (kensaurus/lazycow-studio), where npm trusted publishing lives; the private source repository carries the same
+      # file through the public export and stays quiet. Skips when the secret is empty, never fails the release, never
+      # echoes the webhook URL.
+      - name: Tell Slack how the release went
+        if: ${{ !cancelled() && github.repository == 'kensaurus/lazycow-studio' }}
+        continue-on-error: true
+        env:
+          JOB_STATUS: ${{ job.status }}
+          SLACK_RELEASES_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
+          SLACK_ALERTS_URL: ${{ secrets.SLACK_ALERTS_WEBHOOK_URL }}
+          APP_NAME: Lazycow Studio
+          VERSION: ${{ github.event.release.tag_name }}
+          # True only when the npm publish step never ran: npm still has the previous version.
+          FAIL_NOTE: ${{ steps.npm_publish.outcome == 'skipped' && 'Nothing was published; npm still has the previous version.' || '' }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ "$JOB_STATUS" = "success" ]; then SLACK_URL="$SLACK_RELEASES_URL"; else SLACK_URL="$SLACK_ALERTS_URL"; fi
+          [ -n "$SLACK_URL" ] || exit 0
+          export SLACK_URL
+          export SUBJECT="$(git log -1 --format=%s 2>/dev/null | cut -c1-100)"
+          export SHORT_SHA="${GITHUB_SHA::7}"
+          node -e '
+            const e = process.env;
+            let host = "";
+            try { host = new URL(e.SLACK_URL).hostname; } catch {}
+            if (host !== "hooks.slack.com") { console.error("Slack webhook is not a hooks.slack.com URL; skipped"); process.exit(1); }
+            const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            const ok = e.JOB_STATUS === "success";
+            const ver = e.VERSION || e.SHORT_SHA;
+            const headline = ok ? `🚀 ${ver} is out on npm and the MCP Registry` : "🔴 Release failed";
+            const detail = ok ? esc(e.SUBJECT) : (e.FAIL_NOTE || "Open the run to see which step failed.");
+            const facts = ok ? `production · ${esc(e.WORKFLOW_NAME)}` : `production · ${esc(e.WORKFLOW_NAME)} · ${esc(ver)}`;
+            const blocks = [
+              { type: "section", text: { type: "mrkdwn", text: `*${esc(e.APP_NAME)}* · ${headline}` + (detail ? `\n${detail}` : "") } },
+              { type: "context", elements: [{ type: "mrkdwn", text: facts }] },
+              { type: "actions", elements: [{ type: "button", text: { type: "plain_text", text: "Open the run" }, url: e.RUN_URL }] }
+            ];
+            process.stdout.write(JSON.stringify({ text: `${e.APP_NAME} · ${headline}`, attachments: [{ color: ok ? "#2eb67d" : "#e01e5a", blocks }] }));
+          ' > "$RUNNER_TEMP/slack.json" || exit 0
+          curl -fsS --max-time 10 -o /dev/null -H 'Content-Type: application/json' --data @"$RUNNER_TEMP/slack.json" "$SLACK_URL"

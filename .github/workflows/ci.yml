@@ -112,3 +112,20 @@ jobs:
           uv pip sync ${{ matrix.torch }} --require-hashes ${{ matrix.lock }}
           uv pip install "pytest>=8.0"
       - run: python -m pytest -q
+
+  # The branch protection on the public repository requires checks named "npm test" and "pytest". With the OS matrix
+  # the jobs are named per system, so these two report one result each: green only when every system passed.
+  node-all:
+    name: npm test
+    needs: node
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - run: test "${{ needs.node.result }}" = "success"
+  python-all:
+    name: pytest
+    needs: python
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - run: test "${{ needs.python.result }}" = "success"
