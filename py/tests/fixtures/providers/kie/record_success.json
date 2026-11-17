@@ -1,0 +1,3 @@
+{"code": 200, "msg": "success", "data": {"taskId": "task_kie_123", "model": "elevenlabs/text-to-speech-turbo-2-5", "state": "success",
+ "param": "{}", "resultJson": "{\"resultUrls\":[\"https://tempfile.aiquickdraw.com/k/line.mp3\"]}", "failCode": "", "failMsg": "",
+ "costTime": 3, "completeTime": 1763340003000, "createTime": 1763340000000, "creditsConsumed": 2.4}}

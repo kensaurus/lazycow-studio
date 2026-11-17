@@ -1,0 +1,2 @@
+{"id": "p7x2k", "status": "succeeded", "output": "https://replicate.delivery/xezq/abc/output.mp3", "error": null,
+ "metrics": {"predict_time": 9.1, "total_time": 10.4}, "urls": {"get": "https://api.replicate.com/v1/predictions/p7x2k"}}

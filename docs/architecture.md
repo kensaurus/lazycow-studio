@@ -268,14 +268,19 @@ The studio's **Results › Log** page lists the local models too (`LOCAL_MODELS`
 | Suggested new lines for the word bank (saved as "suggested"; a person approves each) | OpenRouter, `google/gemini-3.8-flash` | `py/studio/wording.py` (`suggest_lines`), `research.py` (`_llm`) | `OPENROUTER_API_KEY`, else the reviewer key | `openrouter.edlModel` in `shared/spec.json` (update `usdPerMInput` and `usdPerMOutput` with it), or `STUDIO_LLM_MODEL` on [your own server](#use-your-own-llm) |
 | Post angles in **Ideas** (research) | OpenRouter, same model | `py/studio/research.py` (`_llm_angles`) | same | same |
 | Older paid tagging and tag check (command line only, off by default) | OpenRouter, `openrouter.tagModel` (`google/gemini-3.8-flash`) | `py/studio/tag.py`, `tagcheck.py` | `OPENROUTER_API_KEY`, or the reviewer key with `STUDIO_PAID_TAGGING=on` | `openrouter.tagModel` in `shared/spec.json` |
-| Sharpen and upscale | fal.ai, `fal-ai/topaz/upscale/video` | `py/studio/ai.py` | `FAL_KEY` | in code (`TOOLS`) |
-| Slow motion | fal.ai, `fal-ai/rife/video` | `py/studio/ai.py` | `FAL_KEY` | in code |
-| Living photo (a slow camera move on a still; labelled as AI) | fal.ai, `fal-ai/kling-video/v2.5-turbo/pro/image-to-video` | `py/studio/ai.py` | `FAL_KEY` | in code |
-| Sound for silent shots | fal.ai, `fal-ai/mmaudio-v2` | `py/studio/ai.py` | `FAL_KEY` | in code |
-| Headline behind the subject (cut-out of the opening shot) | fal.ai, `fal-ai/birefnet/v2/video` | `py/studio/ai.py` | `FAL_KEY` | in code |
-| Music for one reel; music bed of a long video | fal.ai, `fal-ai/stable-audio-25/text-to-audio` | `py/studio/ai.py`, `vlog.py` (`music_beds`) | `FAL_KEY` | in code. Without a key, long videos use free CC0 tracks. |
-| Japanese voice reading the approved words (labelled as AI) | fal.ai, `fal-ai/minimax/speech-02-hd` | `py/studio/ai.py` | `FAL_KEY` | in code |
+| Sharpen and upscale | fal.ai, `topaz/upscale/video/precision` (was `fal-ai/topaz/upscale/video`, which fal's catalogue no longer lists) | `py/studio/ai.py` | `FAL_KEY` | per project in **Settings › AI** (`POST /api/ai/select`): Replicate `topazlabs/video-upscale`, kie.ai `topaz/video-upscale`, fal SeedVR2 |
+| Slow motion | fal.ai, `fal-ai/rife/video` | `py/studio/ai.py` | `FAL_KEY` | Settings › AI: fal FILM |
+| Living photo (a slow camera move on a still; labelled as AI) | fal.ai, `fal-ai/kling-video/v2.5-turbo/pro/image-to-video` | `py/studio/ai.py` | `FAL_KEY` | Settings › AI: Kling 2.6 on Replicate or kie.ai |
+| Sound for silent shots | fal.ai, `fal-ai/mmaudio-v2` | `py/studio/ai.py` | `FAL_KEY` | Settings › AI: ElevenLabs sound effects v3, Stable Audio 2.5 (both from a description of the shot) |
+| Headline behind the subject (cut-out of the opening shot) | fal.ai, `fal-ai/birefnet/v2/video` | `py/studio/ai.py` | `FAL_KEY` | Settings › AI: Bria on Replicate |
+| Music for one reel; music bed of a long video | fal.ai, `fal-ai/stable-audio-25/text-to-audio` | `py/studio/ai.py`, `vlog.py` (`music_beds`) | `FAL_KEY` | Settings › AI: Stable Audio 2.5 direct from Stability or on Replicate (kie.ai's Suno only knowingly: unofficial). The credit line follows the choice. Without the music provider's key, long videos use free CC0 tracks. |
+| Japanese voice reading the approved words (labelled as AI) | fal.ai, `fal-ai/minimax/speech-02-hd` | `py/studio/ai.py` | `FAL_KEY` | Settings › AI: ElevenLabs `eleven_v3`, `eleven_multilingual_v2`, `eleven_flash_v2_5` with a voice from its list (`ELEVENLABS_API_KEY`); MiniMax Speech 2.8 Turbo on Replicate; ElevenLabs through kie.ai |
 | Gap fill (experimental, command line only, a dry run unless `--confirm`) | OpenRouter, `bytedance/seedance-2.0` | `py/studio/extras.py` (`gap_fill`) | `OPENROUTER_API_KEY` | in code |
+
+Every paid model above is an entry in `shared/ai-providers.json` (`py/studio/providers/registry.py`), not code. A project picks
+per job in **Settings › AI**, saved in `<data>/workflow.json`; without one, the defaults in this table. Keys: `FAL_KEY`,
+`ELEVENLABS_API_KEY`, `STABILITY_API_KEY`, `REPLICATE_API_TOKEN`, `KIE_API_KEY`. Prices, the four protocols and the rules
+(closed capability list, no text-to-video, commercial licences only): `docs/ai-api.md`, "The provider registry".
 
 - **Together AI**: Settings checks and saves a `TOGETHER_API_KEY` and the Log shows its balance, but no tool calls it today.
 - **Firecrawl** (`FIRECRAWL_API_KEY`) is web search and page reading for **Ideas**, not a model (`py/studio/research.py`, `docs/research-api.md`).

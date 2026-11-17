@@ -267,6 +267,10 @@ paths:
                 fal_key: { type: string, maxLength: 400, writeOnly: true }
                 openrouter_key: { type: string, maxLength: 400, writeOnly: true }
                 together_key: { type: string, maxLength: 400, writeOnly: true }
+                keys:
+                  type: object
+                  description: "{provider: key} for any provider in GET /api/ai/providers (e.g. elevenlabs, stability, replicate, kie): each checked with the provider's free call, then saved in .env under its keyEnv. Never echoed; an empty string removes it."
+                  additionalProperties: { type: string, maxLength: 400, writeOnly: true }
                 ai_reel_cap_usd: { type: number }
                 ai_total_cap_usd: { type: number }
                 daily_usd_budget: { type: number }
@@ -1841,7 +1845,7 @@ paths:
                 upload: { type: array, items: { type: integer, minimum: 1 } }
       responses:
         "200":
-          description: The saved settings, or `{ started: [{ n, at }], settings }`.
+          description: "The saved settings, or `{ started: [{ n, at }], settings }`."
           content:
             application/json: { schema: { type: object, additionalProperties: true } }
         "400": { $ref: "#/components/responses/BadRequest" }
@@ -3001,7 +3005,7 @@ paths:
     get:
       tags: [AI]
       operationId: getOwnLlm
-      summary: Your own OpenAI-compatible model server (Ollama, LM Studio, vLLM, OpenAI, Groq, OpenRouter) as set, and presets for the Settings form. Never returns the key. Save it with POST /api/settings `{llm: {base_url, model, vision_model?, api_key?}}`; an empty base_url removes it.
+      summary: "Your own OpenAI-compatible model server (Ollama, LM Studio, vLLM, OpenAI, Groq, OpenRouter) as set, and presets for the Settings form. Never returns the key. Save it with POST /api/settings `{llm: {base_url, model, vision_model?, api_key?}}`; an empty base_url removes it."
       responses:
         "200":
           description: Presets and the current setting.
@@ -3027,6 +3031,165 @@ paths:
                       model: { type: string }
                       visionModel: { type: string }
                       hasKey: { type: boolean }
+  /api/ai/providers:
+    get:
+      tags: [AI]
+      operationId: getAiProviders
+      summary: The AI provider registry (shared/ai-providers.json) for Settings › AI. Each capability (voice, music, sfx, upscale, slowmo, img2video, bg-cut, llm, vision) with its label rule and this project's choice; each provider with its protocol, whether a key is saved (never the key) and its models with licence, risk and price (the price chain, without asking anyone); the prices you entered. Free.
+      responses:
+        "200":
+          description: The registry view (docs/ai-api.md, "The provider registry").
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  asOf: { type: string, description: "The date the registry's list prices were read." }
+                  staleDays: { type: integer, description: "A list price older than this is shown with a warning." }
+                  capabilities:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      additionalProperties: true
+                      properties:
+                        labelRequired: { type: boolean }
+                        what: { type: string }
+                        output: { type: string }
+                        deadline: { type: integer, description: "Seconds a call may take before it is given up." }
+                        tools: { type: array, items: { type: string } }
+                        block: { $ref: "#/components/schemas/AiBlock" }
+                  providers:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        protocol: { type: string, enum: [fal_queue, async_task, sync_http, openai_chat] }
+                        keyEnv: { type: string, nullable: true }
+                        hasKey: { type: boolean }
+                        keyHint: { type: string, nullable: true }
+                        dashboard: { type: string, nullable: true }
+                        core: { type: boolean }
+                        free: { type: boolean }
+                        terms: { type: string, nullable: true }
+                        freeModels: { type: array, items: { type: string } }
+                        voices: { type: boolean, description: "GET /api/ai/voices lists this provider's voices." }
+                        models:
+                          type: array
+                          items:
+                            type: object
+                            additionalProperties: true
+                            properties:
+                              id: { type: string }
+                              capability: { type: string }
+                              label: { type: string }
+                              default: { type: boolean }
+                              licence: { type: string }
+                              risk: { type: string, nullable: true }
+                              voiceRequired: { type: boolean }
+                              price: { $ref: "#/components/schemas/AiPrice" }
+                  prices: { type: object, additionalProperties: true, description: "Prices you entered, by \"provider:model\"." }
+                  workflow: { type: object, properties: { exists: { type: boolean }, template: { nullable: true } } }
+                  units: { type: array, items: { type: string } }
+        default: { $ref: "#/components/responses/CodedError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/ai/select:
+    post:
+      tags: [AI]
+      operationId: selectAiProvider
+      summary: Pick one capability's provider and model (and voice) for this project, saved in <data>/workflow.json. {reset true} goes back to the default; {on false} switches the capability off. Refused (licence, 409) for a model with a non-commercial licence; a model marked risky needs acceptRisk true (else risk, 409); a voice model without a default voice needs a voice (no_voice).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [capability]
+              properties:
+                capability: { type: string, enum: [voice, music, sfx, upscale, slowmo, img2video, bg-cut, llm, vision] }
+                provider: { type: string }
+                model: { type: string }
+                voice: { type: string }
+                on: { type: boolean }
+                reset: { type: boolean }
+                acceptRisk: { type: boolean }
+      responses:
+        "200":
+          description: The capability's choice now, and warnings (no key yet, no price, licence not checked live).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  capability: { type: string }
+                  block: { $ref: "#/components/schemas/AiBlock" }
+                  warnings: { type: array, items: { type: string } }
+        default: { $ref: "#/components/responses/CodedError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/ai/price:
+    post:
+      tags: [AI]
+      operationId: saveAiPrice
+      summary: A price you entered for a model (the price chain's third step, after the provider's price API and the registry's list price); usd null removes it. A model with no price at all is refused when it would run (no_price), since the limits need a number.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, model, usd]
+              properties:
+                provider: { type: string }
+                model: { type: string }
+                usd: { type: number, nullable: true, minimum: 0, maximum: 1000 }
+                unit: { type: string, description: "One of units in GET /api/ai/providers, e.g. seconds, 1000 characters, generations." }
+      responses:
+        "200":
+          description: Saved (or removed), with the price the chain now gives.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  provider: { type: string }
+                  model: { type: string }
+                  removed: { type: boolean }
+                  price: { $ref: "#/components/schemas/AiPrice" }
+        default: { $ref: "#/components/responses/CodedError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/ai/voices:
+    get:
+      tags: [AI]
+      operationId: getAiVoices
+      summary: The voices a provider offers the saved key (ElevenLabs GET /v2/voices), for the voice block's picker. Free.
+      parameters:
+        - { name: provider, in: query, required: false, schema: { type: string, default: elevenlabs } }
+        - { name: search, in: query, required: false, schema: { type: string } }
+        - { name: next, in: query, required: false, schema: { type: string }, description: "The next page token from the last answer." }
+      responses:
+        "200":
+          description: Voices.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  provider: { type: string }
+                  voices:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        labels: { type: object, additionalProperties: true }
+                        preview: { type: string, nullable: true }
+                  next: { type: string, nullable: true }
+        default: { $ref: "#/components/responses/CodedError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/ai:
     get:
       tags: [AI]
@@ -3057,7 +3220,7 @@ paths:
     get:
       tags: [AI]
       operationId: getAiCredits
-      summary: Per provider (fal, openrouter, together, firecrawl) whether a key is saved, what the studio spent with it, and what the provider says is left. Read-only; cached 10 minutes.
+      summary: Per provider (every provider in the registry with a key, and firecrawl) whether a key is saved, what the studio spent with it, and what the provider says is left. Read-only; cached 10 minutes.
       parameters:
         - { name: fresh, in: query, required: false, schema: { type: string, enum: ["1"] }, description: Ask the providers again instead of using the cache. }
       responses:
@@ -4189,6 +4352,29 @@ components:
         reel: { type: number }
         total: { type: number }
         daily: { type: number }
+    AiBlock:
+      type: object
+      description: One capability's choice for this project (workflow.json), or the registry's default.
+      properties:
+        capability: { type: string }
+        on: { type: boolean }
+        provider: { type: string, nullable: true }
+        model: { type: string, nullable: true }
+        voice: { type: string, nullable: true }
+        source: { type: string, enum: [workflow, default] }
+        warning: { type: string }
+    AiPrice:
+      type: object
+      description: "The price chain: the provider's price API (live), else the registry's list price (source, asOf; stale after 90 days, with a warning), else a price you entered; usd null with code no_price when none is known."
+      properties:
+        usd: { type: number, nullable: true }
+        unit: { type: string, nullable: true }
+        source: { type: string }
+        asOf: { type: string }
+        stale: { type: boolean }
+        warning: { type: string }
+        live: { type: boolean }
+        code: { type: string, enum: [no_price] }
     AiRequest:
       type: object
       required: [slug, tools]

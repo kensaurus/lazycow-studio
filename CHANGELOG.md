@@ -2,6 +2,39 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.20.0 (2026-11-17)
+
+### Added
+- **Choose the AI service for each job.** Voice, music, sound effects, upscale, slow motion, living photo,
+  background cut-out, writing and vision are blocks, each with a service and a model, kept in
+  `shared/ai-providers.json` instead of code.
+  - **New beside fal.ai:** ElevenLabs (Japanese voice v3, multilingual, flash; sound effects), Stability (Stable
+    Audio 2.5), Replicate (Topaz, Kling 2.6, Bria cut-out, MiniMax speech, Stable Audio) and kie.ai (flagged:
+    its Suno music is unofficial and needs your consent).
+  - **Writing:** any model by name on OpenRouter, Together or your own server.
+  - **Choices** are per project (`<data>/workflow.json`). With none made, everything runs as before.
+  - **Prices** come from the service's own price list, else a dated list price, else one you type; without a price
+    nothing runs, so the spending limits keep working.
+  - **AI labels** belong to the job, not the service. Text-to-video can never be added.
+  - **Routes:** `GET /api/ai/providers`, `POST /api/ai/select`, `POST /api/ai/price`, `GET /api/ai/voices`, and
+    `POST /api/settings {keys}`. The Settings screen for it comes next.
+- **The graphics move.**
+  - **Maps:** they draw in, and footage and posts flow along the healthy wires.
+  - **Dots:** they breathe, amber ones pulse, red ones ping.
+  - **Results:** the bands grow in and their numbers count up.
+  - **Problems and the reel journey:** the problems bar and the journey fill as they appear.
+  - **Playback:** entrances play once per visit, loops stop off screen and in a hidden tab (under 0.5% of a core),
+    and everything stays still when your system asks for reduced motion.
+
+### Changed
+- Results: "Not shown to anyone" is one line under the flow (with "why?") instead of half the page; the flow and table
+  take the full width, and no page scrolls sideways at 390–1920 px.
+
+### Fixed
+- **Sharpen (upscale) works again.** fal retired `fal-ai/topaz/upscale/video`; it now uses
+  `topaz/upscale/video/precision`, priced at about $0.02 a second at 1080p.
+- `docs/openapi.yaml` is valid YAML again.
+
 ## 0.19.0 (2026-11-17)
 
 ### Added

@@ -1,0 +1,5 @@
+{"voices": [{"voice_id": "jpVoice01abc", "name": "Aiko", "category": "professional", "labels": {"language": "ja", "gender": "female", "accent": "standard"},
+             "preview_url": "https://storage.example/aiko.mp3", "description": "calm narrator"},
+            {"voice_id": "jpVoice02def", "name": "Kenta", "category": "premade", "labels": {"language": "ja", "gender": "male"},
+             "preview_url": null}],
+ "has_more": true, "total_count": 41, "next_page_token": "tok_2"}
