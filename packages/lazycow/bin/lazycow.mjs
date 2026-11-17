@@ -62,7 +62,10 @@ try {
       const dir = flag("--dir"), zip = flag("--zip"), force = !!flag("--force");
       // Step 1: the doctor, before anything is downloaded. A local --zip needs no download hosts.
       const { doctor } = await import("../lib/doctor.mjs");
-      const { install, defaultDir } = await import("../lib/install.mjs");
+      const { install, defaultDir, precheck } = await import("../lib/install.mjs");
+      // A full folder or a wrong local zip is said first: the machine check would hide it behind its own verdict.
+      try { await precheck({ dir: typeof dir === "string" ? dir : undefined, zip: typeof zip === "string" ? zip : undefined }); }
+      catch (e) { process.stderr.write(`${e.message}\n`); process.exit(1); }
       const { result } = await doctor({ dir: typeof dir === "string" ? dir : defaultDir(), offline: typeof zip === "string", out: process.stderr });
       if (result.verdict === "BLOCKED" && !force) {
         process.stderr.write("Nothing was downloaded. Fix the above and run this again, or install anyway with: npx lazycow install --force\n");

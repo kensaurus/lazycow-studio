@@ -70,7 +70,13 @@ function unzip(zip, into) {
  * @param {{ dir?: string, zip?: string, yes?: boolean, noStart?: boolean, url?: string }} opts
  * @returns {Promise<{ dir: string, sha256: string, started: boolean }>}
  */
-export async function install(opts = {}) {
+/**
+ * What can be refused at once, before the machine check and before any download: Lazycow already in the folder, a
+ * folder that is not empty, a local --zip that is not this release. (17 Nov: on a small CI Mac the doctor answered
+ * BLOCKED first, so a wrong zip was reported as a slow machine.)
+ * @param {{ dir?: string, zip?: string }} opts
+ */
+export async function precheck(opts = {}) {
   const dir = resolve(opts.dir || defaultDir());
   if (existsSync(join(dir, "package.json"))) {
     let name = "";
@@ -80,6 +86,20 @@ export async function install(opts = {}) {
   if (existsSync(dir) && statSync(dir).isDirectory() && readdirSync(dir).length) {
     throw new Error(`${dir} is not empty. Choose an empty or new folder: npx lazycow install --dir "<folder>"`);
   }
+  if (opts.zip) await checkZip(resolve(opts.zip));
+  return dir;
+}
+
+async function checkZip(zip) {
+  const got = await sha256File(zip);
+  if (got !== RELEASE.sha256) {
+    throw new Error(`The download does not match this release (SHA-256 ${got}, expected ${RELEASE.sha256}). Nothing was installed.`);
+  }
+  return got;
+}
+
+export async function install(opts = {}) {
+  const dir = await precheck({ dir: opts.dir });
 
   const work = join(tmpdir(), `lazycow-${RELEASE.version}-${process.pid}`);
   mkdirSync(work, { recursive: true });
@@ -90,10 +110,7 @@ export async function install(opts = {}) {
       say(`Downloading Lazycow Studio ${RELEASE.version} from ${url}`);
       await download(url, zip);
     }
-    const got = await sha256File(zip);
-    if (got !== RELEASE.sha256) {
-      throw new Error(`The download does not match this release (SHA-256 ${got}, expected ${RELEASE.sha256}). Nothing was installed.`);
-    }
+    const got = await checkZip(zip);
     say(`SHA-256 ok: ${got}`);
 
     const unpacked = join(work, "unpacked");
