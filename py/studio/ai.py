@@ -20,7 +20,14 @@ OVERVIEW: Every paid call goes through charge(): it prices the call first from t
           Text-to-video of places is not offered: nothing here makes a scene that was not filmed.
 DEPENDENCIES: Python stdlib, ffmpeg (studio build), cv2 (photo resize), studio.config, studio.db,
               studio.guard, studio.projects, studio.reels (shot windows), studio.research (approved facts)
-USAGE: python -m studio.ai <status|estimate|run|review|last-review|check-key|save-key|save-caps>
+          Which service does each job is data, not code: shared/ai-providers.json (studio.providers.registry) lists the
+          providers, their models per capability (voice, music, sfx, upscale, slowmo, img2video, bg-cut, llm, vision),
+          keys, list prices and how to call them (four protocol adapters in studio/providers/). A project picks per
+          capability in <data>/workflow.json (`select`); with no file, every tool uses the registry's defaults (fal).
+          Price chain: the provider's price API (fal, OpenRouter), else the registry's list price (warned after 90 days),
+          else a price you entered (`save-price`), else the call is refused (code no_price): the limits need a number.
+USAGE: python -m studio.ai <status|estimate|run|review|last-review|check-key|save-key|save-caps|credits|save-llm|
+       llm-presets|providers|select|save-price|voices>
        (request JSON on stdin) prints one line: RESULT {"ok": true, "data": {...}}
                                              or RESULT {"ok": false, "error": "...", "code": "...", "status": 4xx|5xx}
        `run` also prints STAGE n/N and PROGRESS lines for the studio's job view.
@@ -48,71 +55,60 @@ import math
 import os
 import re
 import shutil
-import socket
 import subprocess
 import sys
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 from datetime import date, datetime
 from pathlib import Path
 
 from studio.config import DATA, RANCH, ROOT, SPEC, _parse_env, daily_budget, ffmpeg_bin, ffprobe_bin, openrouter_key
+from studio.providers import async_task, base, fal_queue, normalise, openai_chat, registry, sync_http
+from studio.providers import http as phttp
+from studio.providers.http import AiError, _call  # noqa: F401 - re-exported: tests patch ai._call, every provider call goes through it
 
 HOME = DATA / "ai"
 ENV_FILE = ROOT / ".env"
+WORKFLOW = DATA / "workflow.json"   # this project's choice of provider per capability (missing: the registry's defaults)
 FAL_QUEUE = "https://queue.fal.run"
 FAL_PRICING = "https://api.fal.ai/v1/models/pricing"
 FAL_TOKEN = "https://rest.fal.ai/storage/auth/token?storage_type=fal-cdn-v3"
 OPENROUTER = "https://openrouter.ai/api/v1"
 TOGETHER = "https://api.together.xyz/v1"
 PRICE_TTL = 24 * 3600
-POLL = 3.0                      # seconds between fal status checks (tests set 0)
+POLL = 3.0                      # seconds before the first status check, growing to 15 s (tests set 0)
 FAL_TIMEOUT = 20 * 60
-REVIEW_MODEL = "google/gemini-3.8-flash"   # video + audio in, $0.825 / $4.125 per M tokens (OpenRouter, 2026-11-09)
 REEL_CAP, TOTAL_CAP = 2.0, 20.0
 PURPOSE = "ai-"                 # spend rows of this module: purpose "ai-<tool>"
+_sleep = time.sleep             # tests swap it (Retry-After waits)
 
-# The key names in .env. The reviewer's OpenRouter key keeps its parked name so the old tagging stays off.
-KEY_NAMES = {"fal": "FAL_KEY", "openrouter": "OPENROUTER_API_KEY_PARKED", "together": "TOGETHER_API_KEY"}
-PROVIDER_NAMES = {"fal": "fal.ai", "openrouter": "OpenRouter", "together": "Together AI"}
 
-TOOLS = {
-    # tool: (provider, endpoint/model, label_required, what it does)
-    "review": ("openrouter", REVIEW_MODEL, False, "watches the rendered reel and suggests fixes (nothing is applied)"),
-    "slowmo": ("fal", "fal-ai/rife/video", False, "smooth slow motion on chosen shots (new in-between frames from the real ones)"),
-    "sharpen": ("fal", "fal-ai/topaz/upscale/video", False, "sharpens and upscales soft or low-resolution clips"),
-    "music": ("fal", "fal-ai/stable-audio-25/text-to-audio", False, "instrumental music made for this reel from its mood and tempo"),
-    "voice": ("fal", "fal-ai/minimax/speech-02-hd", True, "a Japanese AI voice reads the reel's approved words"),
-    "living": ("fal", "fal-ai/kling-video/v2.5-turbo/pro/image-to-video", True, "a real still gets a slow camera move (nothing added)"),
-    # MMAudio V2 (fal): sound made from the picture itself, for shots that have none (a photo, a slow-motion or 360 shot,
-    # a clip filmed without sound). Ambience only: the prompt rules out music and voices.
-    "foley": ("fal", "fal-ai/mmaudio-v2", False, "natural sound (wind, fire, steps, water) made from the picture of shots that have none"),
-    # BiRefNet v2 video (fal): the opening shot's subject is cut out, so the headline sits behind it (depth). Nothing is
-    # added or changed in the picture: the cut-out is the shot's own pixels drawn again over the words.
-    "behind": ("fal", "fal-ai/birefnet/v2/video", False, "the headline sits behind the subject of the opening shot (a cut-out of the shot's own picture)"),
-}
+def _registry_constants():
+    """The module's old constants, now read from shared/ai-providers.json (registry), so nothing here names a model."""
+    reg = registry.load()
+    caps_ = reg["capabilities"]
+    tools = {}
+    for tool, t in reg["tools"].items():
+        pid, mid = registry.default_model(t["capability"])
+        tools[tool] = (pid, mid, caps_[t["capability"]]["labelRequired"], t["what"])
+    # The key names in .env. The reviewer's OpenRouter key keeps its parked name so the old tagging stays off.
+    # Your own model server's key is saved with its address (save_llm), not here.
+    keys = {pid: p["keyEnv"] for pid, p in reg["providers"].items() if p.get("keyEnv") and p.get("settings") != "llm"}
+    names = {pid: p.get("name") or pid for pid, p in reg["providers"].items()}
+    fallback = {mid: (m["price"]["usd"], m["price"]["unit"]) for mid, m in reg["providers"]["fal"]["models"].items() if m.get("price")}
+    return tools, keys, names, fallback
+
+
+TOOLS, KEY_NAMES, PROVIDER_NAMES, FALLBACK_PRICES = _registry_constants()
+# tool: (provider, endpoint/model, label_required, what it does), the registry's default per tool's capability
+REVIEW_MODEL = TOOLS["review"][1]   # video + audio in, $0.825 / $4.125 per M tokens (OpenRouter, 2026-11-09)
 ORDER = ["review", "sharpen", "slowmo", "living", "foley", "behind", "music", "voice"]
 BEHIND_LOOKS = (None, "ember")  # looks whose opening shot moves the plain way, so the cut-out stays on its subject
 FOLEY_NEGATIVE = "music, melody, singing, speech, voices, talking, narration, synthesizer, beeps, distortion"
 FOLEY_QUIET_DB = -50.0   # a shot whose own sound stays under this (mean volume) counts as silent
-# Measured from fal's pricing API on 2026-11-09; used only when the live table cannot be read.
-FALLBACK_PRICES = {
-    "fal-ai/rife/video": (0.0013, "seconds"),
-    "fal-ai/film/video": (0.0013, "seconds"),
-    "fal-ai/topaz/upscale/video": (0.01, "seconds"),
-    "fal-ai/seedvr/upscale/video": (0.001, "megapixels"),
-    "fal-ai/stable-audio-25/text-to-audio": (0.2, "audios"),
-    "fal-ai/minimax-music/v2": (0.03, "generations"),
-    "fal-ai/minimax/speech-02-hd": (0.1, "1000 characters"),
-    "fal-ai/elevenlabs/tts/eleven-v3": (0.1, "1000 characters"),
-    "fal-ai/kling-video/v2.5-turbo/pro/image-to-video": (0.07, "seconds"),
-    "fal-ai/mmaudio-v2": (0.001, "seconds"),
-    "fal-ai/birefnet/v2/video": (0.000575, "compute seconds"),
-}
-FALLBACK_MODELS = {REVIEW_MODEL: {"prompt": 0.000000825, "completion": 0.000004125, "video": True}}
-VOICE_ID = "Japanese_CalmLady"
+_rv = registry.model("openrouter", REVIEW_MODEL)["price"]
+FALLBACK_MODELS = {REVIEW_MODEL: {"prompt": _rv["usd"], "completion": _rv["completion"], "video": True}}
+VOICE_ID = registry.model(*TOOLS["voice"][:2]).get("voiceDefault") or "Japanese_CalmLady"
 LIVING_SECONDS = 5
 LIVING_PROMPT = ("Very slow, steady camera push-in on this exact photograph. Keep every object, person, the sky and the light "
                  "exactly as they are. Nothing new appears: no people, no animals, no text, no rain, no snow, no fog, no fire, "
@@ -124,15 +120,7 @@ LABEL_NOTE = ("This reel has AI-made content (an AI voice or an AI-moved photo).
               "Instagram and Facebook show 'AI info'. Say it in plain words if asked; no AI hashtags needed.")
 
 
-class AiError(RuntimeError):
-    """A plain sentence for a person, a short code for the page, and the HTTP status the studio answers with.
-    `charged`: the provider billed the call even though it failed (keep the estimate in the ledger)."""
-
-    def __init__(self, message: str, code: str, status: int = 400, charged: bool = False):
-        super().__init__(message)
-        self.code = code
-        self.status = status
-        self.charged = charged
+# AiError lives in studio.providers.http (every adapter raises it) and is imported above, so ai.AiError is the same class.
 
 
 # ---------- keys, caps ----------
@@ -160,15 +148,24 @@ def reviewer_key() -> str:
 
 
 def key_for(provider: str) -> str:
-    return {"fal": fal_key, "openrouter": reviewer_key, "together": together_key}[provider]()
+    """The provider's key: its keyEnv in the registry, then the names it also reads (OpenRouter: OPENROUTER_API_KEY)."""
+    for name in registry.key_envs().get(provider) or []:
+        v = _env(name)
+        if v:
+            return v
+    return ""
 
 
 def _scrub(text) -> str:
+    """Every registry key value (and the names they also read) removed from a message, then anything key-shaped."""
     text = str(text)
-    for k in (fal_key(), reviewer_key(), together_key()):
-        if k and len(k) >= 8:
-            text = text.replace(k, "…")
+    for names in registry.key_envs().values():
+        for name in names:
+            k = _env(name)
+            if k and len(k) >= 8:
+                text = text.replace(k, "…")
     text = re.sub(r"sk-or-[A-Za-z0-9_-]{8,}", "sk-or-…", text)
+    text = re.sub(r"\b(r8|sk)_[A-Za-z0-9]{20,}", r"\1_…", text)   # Replicate, ElevenLabs
     text = re.sub(r"[0-9a-f]{8}-[0-9a-f-]{27,}:[0-9a-f]{16,}", "…", text)
     return re.sub(r"(Key|Bearer)\s+[A-Za-z0-9:_.-]{12,}", r"\1 …", text)
 
@@ -259,72 +256,30 @@ def charge(provider: str, model: str, tool: str, slug: str, estimate: float, cal
 
 # ---------- HTTP ----------
 
-def _tls():
-    try:
-        import ssl
-
-        import certifi
-
-        return ssl.create_default_context(cafile=certifi.where())
-    except Exception:
-        return None
-
-
-def _call(method: str, url: str, *, data: bytes | None = None, headers: dict | None = None, timeout: int = 60):
-    """One HTTP request -> (status, headers, body). An HTTP error status is an answer, not an exception."""
-    req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
-    try:
-        with urllib.request.urlopen(req, timeout=timeout, context=_tls()) as r:
-            return r.status, dict(r.headers), r.read()
-    except urllib.error.HTTPError as err:
-        return err.code, dict(err.headers or {}), err.read()
-
+# The HTTP layer is studio.providers.http (_call, _http, _provider_error, download). These wrappers keep the names
+# here and send every request through this module's _call, so a test that patches ai._call (or ai._http) answers
+# every provider's calls, whichever adapter makes them.
 
 def _http(method: str, url: str, who: str = "the AI service", **kw):
-    try:
-        return _call(method, url, **kw)
-    except (socket.timeout, TimeoutError) as err:
-        raise AiError(f"{who} took too long to answer. Try again in a minute.", "timeout", 504) from err
-    except OSError as err:
-        if "timed out" in str(getattr(err, "reason", err)):
-            raise AiError(f"{who} took too long to answer. Try again in a minute.", "timeout", 504) from err
-        raise AiError(f"Could not reach {who}. Check the internet connection, then try again.", "network", 503) from err
+    return phttp._http(method, url, who, transport=_call, **kw)
 
 
 def _json(body: bytes):
-    try:
-        return json.loads(body.decode("utf-8") or "{}")
-    except (ValueError, UnicodeDecodeError):
-        return {}
+    return phttp._json(body)
 
 
 def _said(body) -> str:
-    if isinstance(body, dict):
-        d = body.get("detail") or body.get("error") or body.get("message") or ""
-        if isinstance(d, list):
-            d = "; ".join(str(x.get("msg") if isinstance(x, dict) else x) for x in d[:3])
-        if isinstance(d, dict):
-            d = d.get("message") or json.dumps(d)[:200]
-        return _scrub(str(d))[:240]
-    return ""
+    return phttp._said(body, _scrub)
 
 
 def _provider_error(provider: str, status: int, body, headers: dict | None = None) -> AiError:
-    name = PROVIDER_NAMES[provider]
-    said = _said(body)
-    low = said.lower()
-    if status in (401, 403) and not ("balance" in low or "credit" in low):
-        return AiError(f"{name} did not accept the key. Paste a fresh key in Settings › AI.", "bad_key", 400)
-    if status == 402 or "exhausted balance" in low or "insufficient" in low and ("credit" in low or "balance" in low):
-        return AiError(f"{name} says the account is out of credit. Top it up on {name}'s billing page, then try again.", "no_credits", 402)
-    if status == 429:
-        wait = (headers or {}).get("Retry-After") or (headers or {}).get("retry-after")
-        return AiError(f"{name} says too many requests right now. Wait {wait or 'a minute'}{' seconds' if wait else ''}, then try again.", "rate_limited", 429)
-    if status in (408, 504):
-        return AiError(f"{name} took too long to answer. Try again in a minute.", "timeout", 504)
-    if 400 <= status < 500:
-        return AiError(f"{name} could not use that request: {said or f'HTTP {status}'}.", "bad_input", 400)
-    return AiError(f"{name} had a problem on its side ({said or f'HTTP {status}'}). Try again in a few minutes.", "upstream", 502)
+    return phttp._provider_error(PROVIDER_NAMES.get(provider, provider), status, body, headers, _scrub)
+
+
+def _ctx(provider: str, key: str | None = None) -> base.Ctx:
+    """What an adapter needs for one provider: its registry entry, its key, this module's HTTP and sleep."""
+    return base.Ctx(pid=provider, provider=registry.provider(provider), http=_http, key=key_for(provider) if key is None else key,
+                    sleep=_sleep, poll=POLL, scrub=_scrub)
 
 
 # ---------- prices ----------
@@ -364,9 +319,10 @@ def fal_prices(endpoints: list[str]) -> dict:
     for e in endpoints:
         if e in fresh:
             out[e] = fresh[e]
-        elif e in FALLBACK_PRICES:
-            p, u = FALLBACK_PRICES[e]
-            out[e] = {"unit_price": p, "unit": u, "source": "fal pricing measured 2026-11-09 (live table unavailable)"}
+        else:
+            listed = list_price("fal", e)
+            if listed:
+                out[e] = {**listed, "source": listed["source"] + " (live table unavailable)"}
     return out
 
 
@@ -406,7 +362,131 @@ def quantity(unit: str, *, seconds: float = 0, chars: int = 0, megapixels: float
         return megapixels
     if u.startswith("minute"):
         return seconds / 60
+    if u.startswith("unit"):  # a provider's own unit by duration (fal's Topaz): seconds already scaled by unitsPerSecond
+        return seconds
     return 1.0  # generations, audios, images, videos, requests
+
+
+UNITS = ("seconds", "compute seconds", "units", "minutes", "1000 characters", "characters", "megapixels", "generations", "audios",
+         "videos", "images", "requests")
+
+
+def list_price(provider: str, model: str) -> dict | None:
+    """The registry's list price {unit_price, unit, source, asOf, stale, warning?}, or None. Warned after 90 days."""
+    m = registry.model(provider, model) or {}
+    p = m.get("price")
+    if not p:
+        return None
+    try:
+        age = (date.today() - date.fromisoformat(p["asOf"])).days
+    except ValueError:
+        age = 9999
+    stale = age > int(registry.load().get("staleDays") or 90)
+    out = {"unit_price": float(p["usd"]), "unit": p["unit"], "source": f"{p['source']} {p['asOf']}", "asOf": p["asOf"], "stale": stale}
+    if stale:
+        out["warning"] = (f"{PROVIDER_NAMES.get(provider, provider)}'s list price for {model} was read on {p['asOf']}, over "
+                          f"{registry.load().get('staleDays') or 90} days ago. Check it, or enter today's price in Settings › AI.")
+    return out
+
+
+def user_price(provider: str, model: str) -> dict | None:
+    """A price you entered for this project (`save-price`, workflow.json "prices")."""
+    p = (workflow().get("prices") or {}).get(f"{provider}:{model}")
+    if not isinstance(p, dict) or not isinstance(p.get("usd"), (int, float)) or p.get("unit") not in UNITS:
+        return None
+    return {"unit_price": float(p["usd"]), "unit": p["unit"], "source": f"entered by you {p.get('at') or ''}".strip()}
+
+
+def prices_for(pairs) -> dict:
+    """{(provider, model): price} by the price chain: the provider's price API (fal's table; OpenRouter is priced per
+    token elsewhere), else the registry's list price, else a price you entered. A pair with no price is left out
+    (the caller refuses it: no_price). fal's table is asked once for all its models."""
+    pairs = list(dict.fromkeys(pairs))
+    out = {}
+    fal = [m for p, m in pairs if registry.provider(p).get("priceApi") == "fal"]
+    live = fal_prices(fal) if fal else {}
+    for p, m in pairs:
+        got = live.get(m) if m in live else list_price(p, m)
+        got = got or user_price(p, m)
+        if got:
+            out[(p, m)] = got
+    return out
+
+
+def no_price(provider: str, model: str) -> AiError:
+    return AiError(f"No price is known for {model} on {PROVIDER_NAMES.get(provider, provider)}, and the AI limits need one. "
+                   "Enter its price in Settings › AI (what the provider charges, and per what), then try again.", "no_price", 409)
+
+
+# ---------- the project's choice of provider per capability (<data>/workflow.json) ----------
+
+def workflow() -> dict:
+    """This project's workflow: {"version": 1, "template": …, "blocks": {cap: {on, provider, model, voice?}},
+    "prices": {"provider:model": {usd, unit, at}}}. No file: the registry's defaults, exactly as before."""
+    w = _read(WORKFLOW)
+    if not isinstance(w, dict):
+        w = {}
+    return {"version": 1, "template": w.get("template"), "blocks": w.get("blocks") if isinstance(w.get("blocks"), dict) else {},
+            "prices": w.get("prices") if isinstance(w.get("prices"), dict) else {}}
+
+
+def _save_workflow(w: dict) -> None:
+    _write(WORKFLOW, {"version": 1, "template": w.get("template"), "blocks": w.get("blocks") or {}, "prices": w.get("prices") or {}})
+
+
+def _usable(cap: str, provider: str, model: str) -> bool:
+    p = registry.providers().get(provider)
+    if not p or not model:
+        return False
+    m = (p.get("models") or {}).get(model)
+    if m:
+        return m.get("capability") == cap
+    return cap in (p.get("freeModels") or [])
+
+
+def block(cap: str) -> dict:
+    """The capability's effective choice: the project's workflow.json block when it names a registered provider and
+    model for this capability, else the registry's default. {capability, on, provider, model, voice, source}."""
+    if cap not in registry.CAPABILITIES:
+        raise AiError(f"capability: one of {', '.join(registry.CAPABILITIES)}.", "bad_input", 400)
+    b = (workflow()["blocks"] or {}).get(cap)
+    d = registry.default_model(cap)
+    out = {"capability": cap, "on": True, "provider": d[0] if d else None, "model": d[1] if d else None, "voice": None, "source": "default"}
+    if isinstance(b, dict):
+        out["on"] = b.get("on", True) is not False
+        if _usable(cap, str(b.get("provider") or ""), str(b.get("model") or "")):
+            out.update(provider=b["provider"], model=b["model"], voice=b.get("voice") or None, source="workflow")
+        elif b.get("provider"):
+            out["warning"] = f"workflow.json picks {b.get('provider')} {b.get('model')} for {cap}, which the registry does not list for it; the default is used."
+    m = registry.model(out["provider"], out["model"]) if out["provider"] else None
+    if m and not out["voice"]:
+        out["voice"] = m.get("voiceDefault")
+    return out
+
+
+def _choice(tool: str) -> tuple[str, str]:
+    """(provider, model) a tool uses on this project. Refused when the project switched the capability off."""
+    cap = registry.tools()[tool]["capability"]
+    b = block(cap)
+    if not b["on"]:
+        raise AiError(f"{tool}: {cap} is switched off in this project's workflow (Settings › AI).", "off", 409)
+    return b["provider"], b["model"]
+
+
+def _model(provider: str, model: str) -> dict:
+    return registry.model(provider, model) or {}
+
+
+def credit_line(cap: str = "music") -> str:
+    """The credit for an AI-made piece, from the registry: 'AI-generated (Stable Audio 2.5, via fal.ai)'."""
+    pid, mid = _choice_cap(cap)
+    m = _model(pid, mid)
+    return f"AI-generated ({m.get('credit') or m.get('label') or mid}, via {PROVIDER_NAMES.get(pid, pid)})"
+
+
+def _choice_cap(cap: str) -> tuple[str, str]:
+    b = block(cap)
+    return b["provider"], b["model"]
 
 
 # ---------- the reel ----------
@@ -568,14 +648,18 @@ def plan(slug: str, tools: list[str], options: dict | None = None) -> list[dict]
     project = load_project(slug)
     needs_shots = any(t in tools for t in ("slowmo", "sharpen", "living", "foley"))
     info = shots_info(project) if needs_shots else []
-    fal = fal_prices([TOOLS[t][1] for t in tools if TOOLS[t][0] == "fal"])
+    chosen = {t: (TOOLS[t][0], _review_model(options)) if t == "review" else _choice(t) for t in tools}
+    priced = prices_for([chosen[t] for t in tools if t != "review"])
     shots_opt = options.get("shots") or {}
     total_sec = sum(float(s["sec"]) for s in project.get("shots", []))
     items: list[dict] = []
     taken: set[int] = set()
     for tool in [t for t in ORDER if t in tools]:
-        provider, model, label, what = TOOLS[tool]
+        provider, model = chosen[tool]
+        label = TOOLS[tool][2]
         base = {"tool": tool, "provider": provider, "model": model, "label_required": label}
+        # A clip is cached per source window; another provider's clip is cached apart (the default's names are unchanged).
+        other = () if (provider, model) == TOOLS[tool][:2] else (provider, model)
         if tool == "review" and review_basis() == "frames":
             from studio.config import own_llm
 
@@ -591,27 +675,33 @@ def plan(slug: str, tools: list[str], options: dict | None = None) -> list[dict]
                           "usd": round(tin * m["prompt"] + tout * m["completion"], 4), "cached": False,
                           "what": f"review of the rendered reel ({total_sec:.0f} s of video and sound)"})
             continue
-        price = fal.get(model) or {"unit_price": 0.0, "unit": "requests", "source": "unknown"}
+        price = priced.get((provider, model))
+        if price is None:
+            raise no_price(provider, model)
+        if price.get("warning"):
+            base["priceWarning"] = price["warning"]
         each = lambda q: round(price["unit_price"] * q, 4)  # noqa: E731
+        ups = float(_model(provider, model).get("unitsPerSecond") or 1) if str(price["unit"]).lower().startswith("unit") else 1.0
+        qs = lambda sec: quantity(price["unit"], seconds=sec * ups)  # noqa: E731 - seconds of output, in the provider's unit
         if tool in ("slowmo", "sharpen", "living"):
             limit = {"slowmo": 2, "sharpen": 3, "living": int(options.get("max_living", 1))}[tool]
             for x in _pick_shots(tool, info, shots_opt.get(tool), limit, taken):
                 taken.add(x["i"])
                 if tool == "slowmo":
                     secs = round(x["sec"] * 0.5, 3)
-                    name = _cache_name(tool, x["src"], x["start"], secs)
+                    name = _cache_name(tool, x["src"], x["start"], secs, *other)
                     what = f"shot {x['i'] + 1} ({x['src'].name}) in half-speed slow motion" + (
                         f" (downscaled from {x.get('width')}x{x.get('height')} to 1080p first: fal's limit)" if _over_1080(x) else "")
                 elif tool == "sharpen":
                     secs = round(x["sec"] * x["speed"], 3)
-                    name = _cache_name(tool, x["src"], x["start"], secs, _sharpen_factor(x))
+                    name = _cache_name(tool, x["src"], x["start"], secs, _sharpen_factor(x), *other)
                     what = f"shot {x['i'] + 1} ({x['src'].name}, {x.get('width')}x{x.get('height')}) sharpened x{_sharpen_factor(x):g}"
                 else:
                     secs = LIVING_SECONDS
-                    name = _cache_name(tool, x["src"], LIVING_PROMPT)
+                    name = _cache_name(tool, x["src"], LIVING_PROMPT, *other)
                     what = f"shot {x['i'] + 1} (photo {x['src'].name}) with a slow camera move"
                 cached = (HOME / "clips" / f"{name}.mp4").exists()
-                q = quantity(price["unit"], seconds=secs)
+                q = qs(secs)
                 items.append({**base, "target": x["i"], "quantity": round(q, 3), "unit": price["unit"], "unitPrice": price["unit_price"],
                               "usd": 0.0 if cached else each(q), "cached": cached, "cacheName": name, "what": what, "priceSource": price["source"]})
         elif tool == "foley":
@@ -622,9 +712,9 @@ def plan(slug: str, tools: list[str], options: dict | None = None) -> list[dict]
                 why = _quiet(x, project)
                 if not why or x["sec"] < 1.0 or len([i for i in items if i["tool"] == "foley"]) >= limit:
                     continue
-                name = _cache_name("foley", x["rel"], x["start"], x["sec"], (x.get("ai") or ""), _foley_prompt(project, x))
+                name = _cache_name("foley", x["rel"], x["start"], x["sec"], (x.get("ai") or ""), _foley_prompt(project, x), *other)
                 cached = (_clip_dir() / f"{name}.m4a").exists()
-                q = quantity(price["unit"], seconds=x["sec"])
+                q = qs(x["sec"])
                 items.append({**base, "target": x["i"], "quantity": round(q, 3), "unit": price["unit"], "unitPrice": price["unit_price"],
                               "usd": 0.0 if cached else max(each(q), 0.001), "cached": cached, "cacheName": name,
                               "what": f"shot {x['i'] + 1} ({x['src'].name}, {why}): natural sound for {x['sec']:g} s", "priceSource": price["source"]})
@@ -633,14 +723,14 @@ def plan(slug: str, tools: list[str], options: dict | None = None) -> list[dict]
             if why:
                 raise AiError(why, "bad_input", 400)
             first = project["shots"][0]
-            name = _cache_name("behind", first["src"], first["sec"], first.get("start"), first.get("pan"), _mezz_stamp(project["slug"]))
+            name = _cache_name("behind", first["src"], first["sec"], first.get("start"), first.get("pan"), _mezz_stamp(project["slug"]), *other)
             cached = (_clip_dir() / f"{name}.webm").exists()
-            q = quantity(price["unit"], seconds=max(20.0, float(first["sec"]) * 15))  # compute seconds: about 15 per second of 1080p video
+            q = qs(max(20.0, float(first["sec"]) * 15))  # compute seconds: about 15 per second of 1080p video
             items.append({**base, "target": 0, "quantity": round(q, 3), "unit": price["unit"], "unitPrice": price["unit_price"],
                           "usd": 0.0 if cached else max(each(q), 0.001), "cached": cached, "cacheName": name,
                           "what": f"the headline behind the subject of shot 1 ({float(first['sec']):g} s cut out)", "priceSource": price["source"]})
         elif tool == "music":
-            q = quantity(price["unit"], seconds=total_sec + 3)
+            q = qs(total_sec + 3)
             items.append({**base, "target": None, "quantity": q, "unit": price["unit"], "unitPrice": price["unit_price"], "usd": each(q),
                           "cached": False, "what": f"an instrumental bed of {math.ceil(total_sec) + 3} s ({_mood(project)}, {project.get('bpm') or 'free'} BPM)",
                           "priceSource": price["source"]})
@@ -672,7 +762,8 @@ def estimate(req: dict) -> dict:
     per_tool = []
     for t in [t for t in ORDER if t in tools]:
         rows = [i for i in items if i["tool"] == t]
-        per_tool.append({"tool": t, "provider": rows[0]["provider"] if rows else TOOLS[t][0], "model": rows[0]["model"] if rows else TOOLS[t][1],
+        cp, cm = (rows[0]["provider"], rows[0]["model"]) if rows else ((TOOLS[t][0], TOOLS[t][1]) if t == "review" else _choice_cap(registry.tools()[t]["capability"]))
+        per_tool.append({"tool": t, "provider": cp, "model": cm,
                          "usd": round(sum(i["usd"] for i in rows), 4),
                          "items": rows, "labelRequired": TOOLS[t][2], "what": TOOLS[t][3],
                          "note": None if rows else "nothing on this reel fits this tool (see its rule in docs/ai-api.md)"})
@@ -687,66 +778,89 @@ def estimate(req: dict) -> dict:
 
 # ---------- fal ----------
 
-def _fal_headers() -> dict:
-    key = fal_key()
-    if not key:
-        raise AiError("Add your fal.ai key in Settings › AI.", "no_key", 400)
-    return {"Authorization": f"Key {key}"}
-
-
 def fal_upload(path: Path, content_type: str) -> str:
-    status, headers, raw = _http("POST", FAL_TOKEN, "fal.ai", data=b"{}", headers={**_fal_headers(), "Content-Type": "application/json", "Accept": "application/json"}, timeout=30)
-    tok = _json(raw)
-    if status >= 400 or not tok.get("token"):
-        raise _provider_error("fal", status, tok, headers)
-    base = str(tok.get("base_url") or "https://v3.fal.media").rstrip("/")
-    status, headers, raw = _http("POST", f"{base}/files/upload", "fal.ai", data=path.read_bytes(),
-                                 headers={"Authorization": f"{tok.get('token_type') or 'Bearer'} {tok['token']}", "Content-Type": content_type,
-                                          "X-Fal-File-Name": path.name}, timeout=300)
-    up = _json(raw)
-    if status >= 400 or not up.get("access_url"):
-        raise _provider_error("fal", status, up, headers)
-    return up["access_url"]
+    return fal_queue.upload(_ctx("fal"), Path(path), content_type)
 
 
 def fal_run(endpoint: str, payload: dict, timeout: float = FAL_TIMEOUT) -> dict:
-    """Submit to fal's queue, wait, return the output. Raises AiError in plain words (charged=True once fal finished)."""
-    status, headers, raw = _http("POST", f"{FAL_QUEUE}/{endpoint}", "fal.ai", data=json.dumps(payload).encode("utf-8"),
-                                 headers={**_fal_headers(), "Content-Type": "application/json"}, timeout=60)
-    sub = _json(raw)
-    if status >= 400 or not sub.get("status_url"):
-        raise _provider_error("fal", status, sub, headers)
-    deadline = time.time() + timeout
-    while True:
-        status, headers, raw = _http("GET", sub["status_url"], "fal.ai", headers=_fal_headers(), timeout=30)
-        st = _json(raw)
-        if status >= 400:
-            raise _provider_error("fal", status, st, headers)
-        if st.get("status") == "COMPLETED":
-            break
-        if time.time() > deadline:
-            raise AiError(f"fal.ai did not finish within {int(timeout // 60)} minutes. Try again later.", "timeout", 504)
-        time.sleep(POLL)
-    status, headers, raw = _http("GET", sub["response_url"], "fal.ai", headers=_fal_headers(), timeout=60)
-    out = _json(raw)
-    if status >= 400 or st.get("error"):
-        err = _provider_error("fal", status if status >= 400 else 422, out if status >= 400 else {"detail": st.get("error")}, headers)
-        err.charged = False
-        raise err
-    return out
+    """Submit to fal's queue, wait, return the output (studio.providers.fal_queue). Raises AiError in plain words."""
+    return fal_queue.run(_ctx("fal"), endpoint, payload, timeout)
 
 
-def download(url: str, dest: Path) -> Path:
-    if not str(url).startswith("https://"):
-        raise AiError("fal.ai sent back an address the studio will not download.", "upstream", 502)
-    status, headers, raw = _http("GET", url, "fal.ai", timeout=300)
-    if status >= 400 or not raw:
-        raise AiError(f"Could not download the result from fal.ai (HTTP {status}). It was paid for; run the tool again to retry the download.", "upstream", 502, charged=True)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_suffix(dest.suffix + ".part")
-    tmp.write_bytes(raw)
-    tmp.replace(dest)
-    return dest
+def download(url: str, dest: Path, who: str = "fal.ai") -> Path:
+    """Save an output at once (studio.providers.http.download), through this module's HTTP."""
+    return phttp.download(url, Path(dest), who, http=_http)
+
+
+# ---------- any provider: one model call, through its protocol adapter ----------
+
+def _upload(ctx: base.Ctx, path: Path, content_type: str) -> str:
+    proto = ctx.provider["protocol"]
+    if proto == "fal_queue":
+        return fal_queue.upload(ctx, Path(path), content_type)
+    if proto == "async_task":
+        return async_task.upload(ctx, Path(path), content_type)
+    raise AiError(f"{ctx.name} takes no files from the studio; pick another provider for this step.", "bad_input", 400)
+
+
+def _generate(item: dict, values: dict, files: dict | None = None) -> dict:
+    """Run item's model (item["provider"], item["model"]) with its registry template. values: what the template asks
+    for ({prompt}, {text}, {voice}, {seconds} …); files: {"video" | "image": (Path, content type)}, uploaded first when
+    the model takes them. -> {"url" or "bytes", "type", "raw": the provider's answer, "cost": USD it reported or None,
+    "billed": the quantity it reported or None}."""
+    pid, mid = item["provider"], item["model"]
+    m = _model(pid, mid)
+    cap = m.get("capability") or registry.tools()[item["tool"]]["capability"]
+    ctx = _ctx(pid)
+    proto = ctx.provider["protocol"]
+    vals = {**values}
+    for name, kind in (m.get("files") or {}).items():
+        if not files or kind not in files:
+            raise AiError(f"{m.get('label') or mid} needs a {kind}, which this step does not have.", "bad_input", 400)
+        if not ctx.key:
+            raise AiError(f"Add your {ctx.name} key in Settings › AI.", "no_key", 400)
+        vals[name] = _upload(ctx, *files[kind])
+    deadline = float(registry.capability(cap).get("deadline") or FAL_TIMEOUT)
+    remote = m.get("id") or mid
+    if proto == "fal_queue":
+        out = fal_queue.run(ctx, remote, base.finish(m.get("input") or {}, vals), deadline)
+        return {"url": base.first_url(base.dig(out, m.get("output") or "")), "raw": out, "cost": None, "billed": None}
+    if proto == "async_task":
+        got = async_task.run(ctx, remote, m, base.finish(m.get("input") or {}, vals), deadline)
+        return {"url": base.first_url(got["output"]), "raw": got["raw"], "cost": got["cost"], "billed": None}
+    if proto == "sync_http":
+        got = sync_http.run(ctx, remote, m, vals)
+        return {"bytes": got["bytes"], "type": got["type"], "raw": {}, "cost": None, "billed": got["billed"]}
+    raise AiError(f"{ctx.name} answers in text ({proto}); it cannot make this step.", "bad_input", 400)
+
+
+AUDIO_EXT = {"audio/mpeg": ".mp3", "audio/mp3": ".mp3", "audio/wav": ".wav", "audio/x-wav": ".wav", "audio/wave": ".wav",
+             "audio/flac": ".flac", "audio/ogg": ".ogg", "video/mp4": ".mp4", "video/webm": ".webm"}
+
+
+def _ext(gen: dict, fallback: str) -> str:
+    if gen.get("url"):
+        ext = Path(urllib.parse.urlsplit(gen["url"]).path).suffix.lower()
+        return ext if re.fullmatch(r"\.[a-z0-9]{2,5}", ext or "") else fallback
+    return AUDIO_EXT.get(str(gen.get("type") or "").split(";")[0].strip(), fallback)
+
+
+def _save_output(item: dict, gen: dict, dest: Path) -> Path:
+    """The model's output on disk now (a URL is downloaded at once: some expire within the hour)."""
+    if gen.get("bytes") is not None:
+        return phttp.write(gen["bytes"], Path(dest))
+    return download(gen.get("url") or "", Path(dest), PROVIDER_NAMES.get(item["provider"], item["provider"]))
+
+
+def _actual(item: dict, gen: dict) -> float | None:
+    """What the call really cost when the provider says so: its own USD figure, or the quantity it billed times the
+    unit price (ElevenLabs' character-cost). None: the estimate stands."""
+    if isinstance(gen.get("cost"), (int, float)):
+        return float(gen["cost"])
+    if isinstance(gen.get("billed"), (int, float)) and item.get("unitPrice") is not None:
+        q = quantity(item.get("unit") or "", seconds=gen["billed"], chars=int(gen["billed"]), megapixels=gen["billed"])
+        return round(float(item["unitPrice"]) * q, 6)
+    return None
 
 
 def _ffmpeg(args: list[str], timeout: int = 600) -> None:
@@ -790,6 +904,7 @@ def tool_clip(item: dict, x: dict, slug: str) -> tuple[dict, float]:
         return {"file": str(final), "cached": True}, 0.0
     work = _clip_dir() / f"{item['cacheName']}_work_{os.getpid()}"  # two reels sharing a clip at once must not share a folder
     work.mkdir(exist_ok=True)
+    m = _model(item["provider"], item["model"])
 
     def call():
         if tool == "living":
@@ -806,23 +921,24 @@ def tool_clip(item: dict, x: dict, slug: str) -> tuple[dict, float]:
                 img = cv2.resize(img, (int(w * k), int(h * k)), interpolation=cv2.INTER_AREA)
             jpg = work / "still.jpg"
             cv2.imwrite(str(jpg), img, [cv2.IMWRITE_JPEG_QUALITY, 93])
-            url = fal_upload(jpg, "image/jpeg")
-            out = fal_run(item["model"], {"image_url": url, "prompt": LIVING_PROMPT, "negative_prompt": LIVING_NEGATIVE,
-                                          "duration": str(LIVING_SECONDS), "cfg_scale": 0.5})
-            download(((out.get("video") or {}).get("url") or ""), final)
-            return {"file": str(final)}, None
+            gen = _generate(item, {"prompt": LIVING_PROMPT, "negative_prompt": LIVING_NEGATIVE, "seconds": LIVING_SECONDS},
+                            {"image": (jpg, "image/jpeg")})
+            if m.get("conforms"):
+                _save_output(item, gen, final)
+            else:  # another provider's clip: made 9:16 like every reel shot
+                normalise.img2video(_save_output(item, gen, work / ("raw" + _ext(gen, ".mp4"))), final, _ffmpeg)
+            return {"file": str(final)}, _actual(item, gen)
         seconds = round(x["sec"] * (0.5 if tool == "slowmo" else x["speed"]), 3)
         seg = cut_window(x["src"], float(x["start"]), seconds, work / "window.mp4")
-        url = fal_upload(seg, "video/mp4")
         if tool == "slowmo":
-            out = fal_run(item["model"], {"video_url": url, "num_frames": 1, "use_calculated_fps": True, "use_scene_detection": False, "loop": False})
-            download(((out.get("video") or {}).get("url") or ""), final)
+            gen = _generate(item, {}, {"video": (seg, "video/mp4")})
+            _save_output(item, gen, final)
         else:
-            out = fal_run(item["model"], {"video_url": url, "upscale_factor": _sharpen_factor(x), "model": "Proteus", "H264_output": True})
-            got = download(((out.get("video") or {}).get("url") or ""), work / "up.mp4")
-            # Topaz returns picture only: the clip's own sound goes back in, so the mix is unchanged.
-            _ffmpeg(["-i", str(got), "-i", str(seg), "-map", "0:v:0", "-map", "1:a:0?", "-c:v", "copy", "-c:a", "copy", "-shortest", str(final)])
-        return {"file": str(final)}, None
+            gen = _generate(item, {"upscale_factor": _sharpen_factor(x)}, {"video": (seg, "video/mp4")})
+            got = _save_output(item, gen, work / ("up" + _ext(gen, ".mp4")))
+            # Upscalers return picture only: the clip's own sound goes back in, so the mix is unchanged.
+            normalise.upscale(got, seg, final, _ffmpeg, h264=bool(m.get("input", {}).get("H264_output")))
+        return {"file": str(final)}, _actual(item, gen)
 
     try:
         result, usd = charge(item["provider"], item["model"], tool, slug, item["usd"], call, note=f"shot {x['i'] + 1} {x['src'].name}")
@@ -877,17 +993,21 @@ def tool_foley(item: dict, x: dict, project: dict) -> tuple[dict, float]:
         raise AiError(f"Shot {x['i'] + 1} has no rendered picture yet: render the reel once, then add natural sound.", "bad_input", 400)
     work = _clip_dir() / f"{item['cacheName']}_work_{os.getpid()}"
     work.mkdir(exist_ok=True)
+    m = _model(item["provider"], item["model"])
 
     def call():
-        seg = work / "shot.mp4"
-        _ffmpeg(["-i", str(mezz), "-t", f"{x['sec']:.3f}", "-map", "0:v:0", "-an", "-vf", "scale=-2:720,format=yuv420p",
-                 "-c:v", "libx264", "-preset", "fast", "-crf", "20", str(seg)])
-        url = fal_upload(seg, "video/mp4")
-        out = fal_run(item["model"], {"video_url": url, "prompt": _foley_prompt(project, x), "negative_prompt": FOLEY_NEGATIVE,
-                                      "duration": round(float(x["sec"]), 2), "num_steps": 25, "cfg_strength": 4.5})
-        got = download(((out.get("video") or {}).get("url") or ""), work / "with_sound.mp4")
-        _ffmpeg(["-i", str(got), "-map", "0:a:0", "-vn", "-c:a", "aac", "-b:a", "160k", "-ac", "2", str(final)])
-        return {"file": str(final)}, None
+        files = None
+        if m.get("files"):  # made from the picture (MMAudio): the shot as rendered, 720 p, no sound
+            seg = work / "shot.mp4"
+            _ffmpeg(["-i", str(mezz), "-t", f"{x['sec']:.3f}", "-map", "0:v:0", "-an", "-vf", "scale=-2:720,format=yuv420p",
+                     "-c:v", "libx264", "-preset", "fast", "-crf", "20", str(seg)])
+            files = {"video": (seg, "video/mp4")}
+        # A model that makes sound from words (ElevenLabs, Stable Audio) hears the same description of the shot.
+        seconds = round(min(float(x["sec"]), float(m.get("maxSeconds") or 1e9)), 2)
+        gen = _generate(item, {"prompt": _foley_prompt(project, x), "negative_prompt": FOLEY_NEGATIVE, "seconds": seconds}, files)
+        got = _save_output(item, gen, work / ("with_sound" + _ext(gen, ".mp4")))
+        normalise.sfx(got, final, _ffmpeg)
+        return {"file": str(final)}, _actual(item, gen)
 
     try:
         result, usd = charge(item["provider"], item["model"], "foley", project["slug"], item["usd"], call, note=f"shot {x['i'] + 1} {x['src'].name}")
@@ -932,19 +1052,16 @@ def tool_behind(item: dict, project: dict) -> tuple[dict, float]:
     work = _clip_dir() / f"{item['cacheName']}_work_{os.getpid()}"
     work.mkdir(exist_ok=True)
 
+    kind = _model(item["provider"], item["model"]).get("outputKind") or "mask"
+
     def call():
         small = work / "shot720.mp4"
         _ffmpeg(["-i", str(mezz), "-map", "0:v:0", "-an", "-vf", "scale=720:-2,format=yuv420p", "-c:v", "libx264", "-preset", "fast", "-crf", "16", str(small)])
-        url = fal_upload(small, "video/mp4")
-        out = fal_run(item["model"], {"video_url": url, "model": "General Use (Light)", "operating_resolution": "1024x1024",
-                                      "refine_foreground": True, "output_mask": True, "video_output_type": "X264 (.mp4)", "video_quality": "high"})
-        mask = download(((out.get("mask_video") or {}).get("url") or ""), work / "mask.mp4")
-        # The mask is scaled back to the rendered shot, softened by a pixel, and becomes its alpha.
-        _ffmpeg(["-i", str(mezz), "-i", str(mask), "-filter_complex",
-                 "[1:v][0:v]scale2ref[m][v];[m]format=gray,gblur=sigma=1.2[a];[v][a]alphamerge,format=yuva420p[out]",
-                 "-map", "[out]", "-an", "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "0", "-crf", "24", "-row-mt", "1",
-                 "-auto-alt-ref", "0", str(final)])
-        return {"file": str(final)}, None
+        gen = _generate(item, {}, {"video": (small, "video/mp4")})
+        got = _save_output(item, gen, work / ("mask" + _ext(gen, ".mp4")))
+        # A mask is scaled back to the rendered shot, softened by a pixel, and becomes its alpha (a cut-out with alpha is fitted).
+        normalise.bg_cut(got, mezz, final, _ffmpeg, kind=kind)
+        return {"file": str(final)}, _actual(item, gen)
 
     try:
         result, usd = charge(item["provider"], item["model"], "behind", project["slug"], item["usd"], call, note="shot 1 cut-out")
@@ -960,6 +1077,45 @@ def _mood(project: dict) -> str:
     return _mood_of(project)
 
 
+def music_credit(provider: str, model: str) -> dict:
+    """The music sidecar's credit fields, from the registry: who made it, through whom, and the credit line."""
+    m, name = _model(provider, model), PROVIDER_NAMES.get(provider, provider)
+    credit = m.get("credit") or m.get("label") or model
+    page = m.get("page") or registry.provider(provider).get("dashboard")
+    maker = f" ({m['maker']})" if m.get("maker") else ""
+    return {"creator": f"{credit} (AI, via {name})", "licenseUrl": page, "landing": page, "source": name,
+            "licenceNote": (f"Instrumental made for this reel by {credit}{maker} through {name}, which lists the model for "
+                            f"commercial use. No third-party recording is sampled. Credit line: 'Music: AI-generated ({credit})'.")}
+
+
+def music_item(seconds: float) -> dict:
+    """The music block of this project, priced for one piece of `seconds` (vlog.music_beds). Refused with no_price."""
+    pid, mid = _choice("music")
+    price = prices_for([(pid, mid)]).get((pid, mid))
+    if price is None:
+        raise no_price(pid, mid)
+    q = quantity(price["unit"], seconds=seconds)
+    return {"tool": "music", "provider": pid, "model": mid, "unit": price["unit"], "unitPrice": price["unit_price"],
+            "usd": round(price["unit_price"] * q, 4), "priceSource": price["source"], "credit": credit_line("music")}
+
+
+def make_music(item: dict, prompt: str, seconds: int, stem: Path, wav: bool = False) -> tuple[dict, float | None]:
+    """One instrumental piece from item's model, saved as stem + its extension (a .wav trimmed to length when the
+    model's output is not already right, or when `wav` asks for one). For charge(): (result, actual USD or None)."""
+    m = _model(item["provider"], item["model"])
+    seconds = int(min(seconds, int(m.get("maxSeconds") or seconds)))
+    gen = _generate(item, {"prompt": prompt, "seconds": seconds})
+    ext = _ext(gen, ".wav")
+    stem = Path(stem)
+    if m.get("conforms") and ext in (".wav", ".mp3", ".flac", ".ogg") and (ext == ".wav" or not wav):
+        dest = _save_output(item, gen, stem.with_name(stem.name + ext))
+    else:
+        raw = _save_output(item, gen, stem.with_name(stem.name + ".src" + ext))
+        dest = normalise.music(raw, stem.with_name(stem.name + ".wav"), seconds, _ffmpeg)
+        raw.unlink(missing_ok=True)
+    return {"file": str(dest), "seed": base.dig(gen.get("raw") or {}, "seed")}, _actual(item, gen)
+
+
 def tool_music(item: dict, project: dict) -> tuple[dict, float]:
     from studio.sound import LIB
 
@@ -972,19 +1128,11 @@ def tool_music(item: dict, project: dict) -> tuple[dict, float]:
     name = f"ai_{project['slug']}_{hashlib.sha1(prompt.encode()).hexdigest()[:8]}"
 
     def call():
-        out = fal_run(item["model"], {"prompt": prompt, "seconds_total": seconds, "num_inference_steps": 8})
-        url = (out.get("audio") or {}).get("url") or ""
-        ext = Path(urllib.parse.urlsplit(url).path).suffix.lower() or ".wav"
-        dest = download(url, LIB / "music" / f"{name}{ext if ext in ('.wav', '.mp3', '.flac', '.ogg') else '.wav'}")
-        return {"file": str(dest), "seed": out.get("seed")}, None
+        return make_music(item, prompt, seconds, LIB / "music" / name)
 
     result, usd = charge(item["provider"], item["model"], "music", project["slug"], item["usd"], call, note=f"{seconds}s bed")
     dest = Path(result["file"])
-    side = {"title": f"Made for {project['slug']}", "creator": "Stable Audio 2.5 (AI, via fal.ai)", "license": "AI-GENERATED", "ai": True,
-            "licenseUrl": "https://fal.ai/models/fal-ai/stable-audio-25/text-to-audio",
-            "landing": "https://fal.ai/models/fal-ai/stable-audio-25/text-to-audio", "source": "fal.ai",
-            "licenceNote": ("Instrumental made for this reel by Stable Audio 2.5 (Stability AI) through fal.ai, which lists the model for "
-                            "commercial use. No third-party recording is sampled. Credit line: 'Music: AI-generated (Stable Audio 2.5)'."),
+    side = {"title": f"Made for {project['slug']}", "license": "AI-GENERATED", "ai": True, **music_credit(item["provider"], item["model"]),
             "query": _mood(project), "prompt": prompt, "seed": result.get("seed"), "kind": "music", "made": datetime.now().isoformat(timespec="seconds"),
             "usd": usd, "lead": 0.0}
     try:
@@ -1005,21 +1153,32 @@ def tool_voice(item: dict, project: dict) -> tuple[dict, float]:
     lines = _spoken(project)
     folder = HOME / "voice" / project["slug"]
     folder.mkdir(parents=True, exist_ok=True)
-    voice_id = VOICE_ID
+    m = _model(item["provider"], item["model"])
+    b = block("voice")
+    voice_id = (b["voice"] if (b["provider"], b["model"]) == (item["provider"], item["model"]) else None) or m.get("voiceDefault") or VOICE_ID
+    if m.get("voiceRequired") and not (b["voice"] and (b["provider"], b["model"]) == (item["provider"], item["model"])):
+        raise AiError(f"Pick a voice for {m.get('label') or item['model']} in Settings › AI first (it has no default voice).", "no_voice", 409)
+    other = "" if (item["provider"], item["model"]) == TOOLS["voice"][:2] else f"{item['provider']}:{item['model']}:{voice_id}"
 
     def call():
-        made = []
+        made, actual = [], 0.0
         for n, ln in enumerate(lines, 1):
             _progress(n, len(lines), f"voice line {n} of {len(lines)}")
-            out = fal_run(item["model"], {"text": ln["text"], "voice_setting": {"voice_id": voice_id, "speed": 1.1, "vol": 1.0, "pitch": 0},
-                                          "language_boost": "Japanese", "output_format": "url",
-                                          "audio_setting": {"format": "mp3", "sample_rate": 44100, "bitrate": 128000, "channel": 1}})
-            dest = download(((out.get("audio") or {}).get("url") or ""), folder / f"line{ln['i']:02d}_{hashlib.sha1(ln['text'].encode()).hexdigest()[:6]}.mp3")
-            dur = (out.get("duration_ms") or 0) / 1000 or probe_audio(dest)
+            gen = _generate(item, {"text": ln["text"], "voice": voice_id})
+            name = f"line{ln['i']:02d}_{hashlib.sha1((ln['text'] + other).encode()).hexdigest()[:6]}.mp3"
+            if m.get("conforms"):
+                dest = _save_output(item, gen, folder / name)
+            else:  # mp3, mono, 44.1 kHz whoever made it
+                raw = _save_output(item, gen, folder / (name + ".src" + _ext(gen, ".mp3")))
+                dest = normalise.voice(raw, folder / name, _ffmpeg)
+                raw.unlink(missing_ok=True)
+            dur = (base.dig(gen.get("raw") or {}, m.get("durationMs")) or 0) / 1000 or probe_audio(dest)
             room = max(0.6, ln["end"] - ln["start"] - 0.25)
             tempo = round(min(1.35, max(1.0, dur / room)), 3)  # a line longer than its caption is sped up a little, never cut
             made.append({"file": str(dest), "at": round(ln["start"] + 0.15, 2), "tempo": tempo, "seconds": round(dur, 2), "text": ln["text"]})
-        return {"lines": made}, None
+            got = _actual(item, gen)
+            actual = None if actual is None or got is None else actual + got
+        return {"lines": made}, (round(actual, 6) if actual is not None else None)
 
     result, usd = charge(item["provider"], item["model"], "voice", project["slug"], item["usd"], call, note=f"{len(lines)} lines")
     return {"model": item["model"], "voiceId": voice_id, "gain": 1.0, "lines": result["lines"]}, usd
@@ -1081,7 +1240,9 @@ def review_basis() -> str | None:
     Frames when a vision model is set and either there is no OpenRouter key or STUDIO_AI_REVIEW_LOCAL=1 asks for it."""
     from studio.config import own_llm
 
-    if own_llm(vision=True) and (not reviewer_key() or _env("STUDIO_AI_REVIEW_LOCAL").lower() in ("1", "on", "true", "yes")):
+    v = block("vision")
+    local = _env("STUDIO_AI_REVIEW_LOCAL").lower() in ("1", "on", "true", "yes") or (v["source"] == "workflow" and v["provider"] == "own")
+    if own_llm(vision=True) and (not reviewer_key() or local):
         return "frames"
     return "video" if reviewer_key() else None
 
@@ -1241,6 +1402,15 @@ def parse_review(text: str) -> dict:
             "summary": str(d.get("summary") or "")[:400]}
 
 
+def _review_model(req: dict | None = None, env: bool = True) -> str:
+    """The OpenRouter model that reviews: asked for in the request, else STUDIO_AI_REVIEW_MODEL, else this project's
+    vision block when it picks an OpenRouter model, else the registry's default."""
+    req = req or {}
+    b = block("vision")
+    picked = b["model"] if b["source"] == "workflow" and b["provider"] == "openrouter" else None
+    return str(req.get("model") or (_env("STUDIO_AI_REVIEW_MODEL") if env else "") or picked or REVIEW_MODEL)
+
+
 def vision_json(images: list[Path], system: str, prompt: str, slug: str, purpose: str = "vision", max_tokens: int = 1200) -> dict:
     """One question about a few pictures (JPEGs) to the reviewer's vision model, answered as JSON. Priced first, charged to
     the ledger as ai-<purpose> for `slug`, refused over a limit like every other AI call. With your own vision model set
@@ -1252,27 +1422,20 @@ def vision_json(images: list[Path], system: str, prompt: str, slug: str, purpose
         content = [{"type": "text", "text": prompt}] + [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(Path(p).read_bytes()).decode("ascii")}} for p in images]
         payload = {"model": own["model"], "messages": [{"role": "system", "content": system}, {"role": "user", "content": content}],
                    "response_format": {"type": "json_object"}, "max_tokens": max_tokens, "temperature": 0.2}
-        headers = {"Content-Type": "application/json", **({"Authorization": f"Bearer {own['key']}"} if own["key"] else {})}
-        status, _, raw = _http("POST", own["url"], "your model server", data=json.dumps(payload).encode("utf-8"), headers=headers, timeout=600)
+        status, _, body = openai_chat.post(_http, own["url"], payload, "your model server", own["key"], timeout=600)
         if status == 400:  # LM Studio refuses response_format json_object (it takes json_schema or text): ask in plain text
             payload.pop("response_format", None)
-            status, _, raw = _http("POST", own["url"], "your model server", data=json.dumps(payload).encode("utf-8"), headers=headers, timeout=600)
-        body = _json(raw)
+            status, _, body = openai_chat.post(_http, own["url"], payload, "your model server", own["key"], timeout=600)
         if status >= 400 or body.get("error"):
             raise AiError(f"Your model server ({own['url']}) refused: {str(body.get('error') or status)[:200]}", "upstream", 502)
         try:
-            text = body["choices"][0]["message"]["content"]
-            if isinstance(text, list):
-                text = "".join(x.get("text", "") for x in text if isinstance(x, dict))
-            text = re.sub(r"^```(json)?|```$", "", (text or "").strip()).strip()
-            hit = text if text.startswith("{") else re.search(r"\{[\s\S]*\}", text).group(0)
-            return json.loads(hit)
+            return openai_chat.json_of(openai_chat.text_of(body))
         except (KeyError, IndexError, TypeError, ValueError, AttributeError):
             raise AiError(f"Your model ({own['model']}) sent back no JSON.", "upstream", 502) from None
     key = reviewer_key()
     if not key:
         raise AiError("No OpenRouter key: add one in Settings › Keys & AI.", "no_key", 400)
-    model = REVIEW_MODEL
+    model = _review_model({}, env=False)
     m = model_prices(model)
     est = round((len(images) * 1400 + len(prompt) // 3 + 600) * m["prompt"] + max_tokens * m["completion"], 4)
     content = [{"type": "text", "text": prompt}] + [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(Path(p).read_bytes()).decode("ascii")}} for p in images]
@@ -1280,28 +1443,12 @@ def vision_json(images: list[Path], system: str, prompt: str, slug: str, purpose
                "response_format": {"type": "json_object"}, "max_tokens": max_tokens, "temperature": 0.2, "usage": {"include": True}}
 
     def call():
-        status, headers, raw = _http("POST", f"{OPENROUTER}/chat/completions", "OpenRouter", data=json.dumps(payload).encode("utf-8"),
-                                     headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
-                                              "HTTP-Referer": "https://kensaur.us", "X-Title": "Lazycow Studio"}, timeout=180)
-        body = _json(raw)
+        status, headers, body = openai_chat.post(_http, f"{OPENROUTER}/chat/completions", payload, "OpenRouter", key, timeout=180, openrouter=True)
         if status >= 400 or body.get("error"):
             raise _provider_error("openrouter", status if status >= 400 else 502, body.get("error") if isinstance(body.get("error"), dict) else body, headers)
-        usage = body.get("usage") or {}
-        cost = usage.get("cost")
-        tin, tout = int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0)
-        actual = float(cost) if isinstance(cost, (int, float)) else (tin * m["prompt"] + tout * m["completion"] if tin else None)
+        actual, _, _ = openai_chat.usage(body, m)
         try:
-            text = body["choices"][0]["message"]["content"]
-            if isinstance(text, list):
-                text = "".join(x.get("text", "") for x in text if isinstance(x, dict))
-            text = re.sub(r"^```(json)?|```$", "", (text or "").strip()).strip()
-            try:
-                return json.loads(text), actual
-            except ValueError:  # a model that wraps its JSON in a sentence: the outermost object
-                hit = re.search(r"\{[\s\S]*\}", text)
-                if not hit:
-                    raise
-                return json.loads(hit.group(0)), actual
+            return openai_chat.json_of(openai_chat.text_of(body)), actual
         except (KeyError, IndexError, TypeError, ValueError):
             raise AiError("The vision model sent back no JSON.", "upstream", 502, charged=True) from None
 
@@ -1332,7 +1479,7 @@ def _review(slug: str, project: dict, mp4: Path, f: Path, req: dict, notes: bool
 
     basis = review_basis()
     own = own_llm(vision=True) if basis == "frames" else None
-    model = own["model"] if own else str(req.get("model") or _env("STUDIO_AI_REVIEW_MODEL") or REVIEW_MODEL)
+    model = own["model"] if own else _review_model(req)
     stamp = f"{mp4.stat().st_size}-{int(mp4.stat().st_mtime)}"
     old = _read(f)
     # The cache is per render, model AND basis: a review from frames never stands in for one that watched the video.
@@ -1357,22 +1504,14 @@ def _review(slug: str, project: dict, mp4: Path, f: Path, req: dict, notes: bool
                "response_format": {"type": "json_object"}, "max_tokens": 4000, "temperature": 0.2, "usage": {"include": True}}
 
     def call():
-        status, headers, raw = _http("POST", f"{OPENROUTER}/chat/completions", "OpenRouter", data=json.dumps(payload).encode("utf-8"),
-                                     headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
-                                              "HTTP-Referer": "https://kensaur.us", "X-Title": "Lazycow Studio"}, timeout=240)
-        body = _json(raw)
+        status, headers, body = openai_chat.post(_http, f"{OPENROUTER}/chat/completions", payload, "OpenRouter", key, timeout=240, openrouter=True)
         if status >= 400 or body.get("error"):
             raise _provider_error("openrouter", status if status >= 400 else 502, body.get("error") if isinstance(body.get("error"), dict) else body, headers)
-        usage = body.get("usage") or {}
-        tin, tout = int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0)
-        cost = usage.get("cost")
-        actual = float(cost) if isinstance(cost, (int, float)) else (tin * m["prompt"] + tout * m["completion"] if tin else None)
+        actual, tin, tout = openai_chat.usage(body, m)
         try:
-            text = body["choices"][0]["message"]["content"]
+            text = openai_chat.text_of(body)
         except (KeyError, IndexError, TypeError):
             raise AiError("The reviewer sent back nothing. Try again in a minute.", "upstream", 502, charged=True) from None
-        if isinstance(text, list):
-            text = "".join(p.get("text", "") for p in text if isinstance(p, dict))
         try:
             out = parse_review(text)
         except AiError as err:
@@ -1445,6 +1584,17 @@ def last_review(req: dict) -> dict:
     if r and mp4.exists():
         r["current"] = r.get("stamp") == f"{mp4.stat().st_size}-{int(mp4.stat().st_mtime)}"
     return {"slug": slug, "review": r}
+
+
+def _music_licence(provider: str, model: str) -> str:
+    m = _model(provider, model)
+    return f"AI-generated for this reel ({m.get('credit') or m.get('label') or model} via {PROVIDER_NAMES.get(provider, provider)}, commercial use)"
+
+
+def _sfx_licence(provider: str, model: str) -> str:
+    m = _model(provider, model)
+    what = "from the shot's own picture" if m.get("files") else "from a description of the shot"
+    return f"AI-made ambient sound {what} ({m.get('credit') or m.get('label') or model} via {PROVIDER_NAMES.get(provider, provider)})"
 
 
 # ---------- run: apply tools to a reel ----------
@@ -1523,7 +1673,7 @@ def run(req: dict) -> dict:
                 shot["ai_clip"] = clip
                 done.append(it["what"] + (" (cached, free)" if res.get("cached") else ""))
             if done:
-                notes.append({"tool": tool, "model": TOOLS[tool][1], "usd": round(usd, 4), "what": "; ".join(done), "label_required": TOOLS[tool][2]})
+                notes.append({"tool": tool, "model": rows[0]["model"], "usd": round(usd, 4), "what": "; ".join(done), "label_required": TOOLS[tool][2]})
         elif tool == "foley":
             done = []
             for k, it in enumerate(rows, 1):
@@ -1534,8 +1684,8 @@ def run(req: dict) -> dict:
                 project["shots"][x["i"]]["ai_foley"] = {"tool": "foley", "file": res["file"], "model": it["model"], "seconds": x["sec"]}
                 done.append(it["what"] + (" (cached, free)" if res.get("cached") else ""))
             if done:
-                notes.append({"tool": "foley", "model": TOOLS["foley"][1], "usd": round(usd, 4), "what": "; ".join(done), "label_required": False,
-                              "licence": "AI-made ambient sound from the shot's own picture (MMAudio V2 via fal.ai)"})
+                notes.append({"tool": "foley", "model": rows[0]["model"], "usd": round(usd, 4), "what": "; ".join(done), "label_required": False,
+                              "licence": _sfx_licence(rows[0]["provider"], rows[0]["model"])})
         elif tool == "behind":
             res, usd = tool_behind(rows[0], project)
             first = project["shots"][0]
@@ -1543,17 +1693,17 @@ def run(req: dict) -> dict:
             # a new window) makes the cut-out stale, and the build then leaves it out (reels.behind_layer).
             first["ai_behind"] = {"tool": "behind", "file": res["file"], "model": rows[0]["model"], "src": first["src"], "sec": first["sec"],
                                   "stamp": _mezz_stamp(target)}
-            notes.append({"tool": "behind", "model": TOOLS["behind"][1], "usd": round(usd, 4), "what": rows[0]["what"] + (" (cached, free)" if res.get("cached") else ""),
+            notes.append({"tool": "behind", "model": rows[0]["model"], "usd": round(usd, 4), "what": rows[0]["what"] + (" (cached, free)" if res.get("cached") else ""),
                           "label_required": False})
         elif tool == "music":
             res, usd = tool_music(rows[0], project)
             project["music"] = {"id": res["id"], "start": 0.0, "volume": 1.0}
-            notes.append({"tool": "music", "model": TOOLS["music"][1], "usd": round(usd, 4), "what": rows[0]["what"] + f" -> {res['id']}",
-                          "label_required": False, "licence": "AI-generated for this reel (Stable Audio 2.5 via fal.ai, commercial use)"})
+            notes.append({"tool": "music", "model": rows[0]["model"], "usd": round(usd, 4), "what": rows[0]["what"] + f" -> {res['id']}",
+                          "label_required": False, "licence": _music_licence(rows[0]["provider"], rows[0]["model"])})
         elif tool == "voice":
             res, usd = tool_voice(rows[0], project)
             project["voice"] = res
-            notes.append({"tool": "voice", "model": TOOLS["voice"][1], "usd": round(usd, 4), "what": rows[0]["what"] + f" in the voice {res['voiceId']}",
+            notes.append({"tool": "voice", "model": rows[0]["model"], "usd": round(usd, 4), "what": rows[0]["what"] + f" in the voice {res['voiceId']}",
                           "label_required": True})
         spent_now += usd
         applied.append({"tool": tool, "usd": round(usd, 4), "items": len(rows)})
@@ -1578,36 +1728,43 @@ def status(req: dict | None = None) -> dict:
             "SELECT substr(purpose, 4) AS tool, provider, model, ROUND(SUM(usd), 4) AS usd, COUNT(*) AS calls FROM spend WHERE purpose LIKE ? GROUP BY purpose, provider, model ORDER BY usd DESC",
             (PURPOSE + "%",))]
     s, c = spent(), caps()
-    keys = {p: bool(key_for(p)) for p in KEY_NAMES}
+    # The Settings card's three providers always; any other provider once its key is saved (all: /api/ai/providers).
+    have = {p: bool(key_for(p)) for p in KEY_NAMES}
+    keys = {p: v for p, v in have.items() if v or registry.provider(p).get("core")}
     # Ready also with only your own vision model: the reviewer then works from still frames (review_basis "frames").
-    return {"ready": keys["fal"] or keys["openrouter"] or review_basis() == "frames", "keys": keys, "caps": c, "spent": {"total": s["total"], "today": s["today"], "perReel": per},
+    return {"ready": any(have.values()) or review_basis() == "frames", "keys": keys, "caps": c, "spent": {"total": s["total"], "today": s["today"], "perReel": per},
             "byTool": by_tool, "room": {"total": round(c["total"] - s["total"], 4), "today": round(c["daily"] - s["today"], 4)},
-            "tools": [{"tool": t, "provider": TOOLS[t][0], "model": TOOLS[t][1], "labelRequired": TOOLS[t][2], "what": TOOLS[t][3]} for t in ORDER],
+            "tools": [{"tool": t, "provider": c[0], "model": c[1], "labelRequired": TOOLS[t][2], "what": TOOLS[t][3]}
+                      for t in ORDER for c in [TOOLS[t][:2] if t == "review" else _choice_cap(registry.tools()[t]["capability"])]],
             "reviewModel": _env("STUDIO_AI_REVIEW_MODEL") or REVIEW_MODEL, "paidTagging": bool(openrouter_key()),
             "ownLlm": own_llm_view(), "reviewBasis": review_basis(),
             "summary": (f"AI assist: {_usd(s['total'])} of {_usd(c['total'])} spent, {_usd(s['today'])} today (daily budget {_usd(c['daily'])}); "
                         f"{_usd(c['reel'])} per reel.")}
 
 
+def _providers_list() -> str:
+    ids = list(KEY_NAMES)
+    return ", ".join(ids[:-1]) + f" or {ids[-1]}"
+
+
 def check_key(req: dict) -> dict:
-    """A pasted key, checked with the provider's free call before it is saved. Never echoed."""
+    """A pasted key, checked with the provider's free call (the registry's `check`) before it is saved. Never echoed."""
     provider = str(req.get("provider") or "")
     if provider not in KEY_NAMES:
-        raise AiError("provider: fal, openrouter or together.", "bad_input", 400)
+        raise AiError(f"provider: {_providers_list()}.", "bad_input", 400)
     key = str(req.get("key") or "").strip()
+    p = registry.provider(provider)
     name = PROVIDER_NAMES[provider]
-    if not re.fullmatch(r"[A-Za-z0-9:_.\-]{16,300}", key) or (provider == "openrouter" and not key.startswith("sk-or-")):
-        hint = {"fal": "fal.ai/dashboard/keys", "openrouter": "openrouter.ai/settings/keys (they start with sk-or-)", "together": "api.together.ai/settings/api-keys"}[provider]
-        raise AiError(f"That does not look like a {name} key. Copy it again from {hint}.", "bad_key", 400)
-    if provider == "fal":
-        url, headers = f"{FAL_PRICING}?endpoint_id=fal-ai/rife/video", {"Authorization": f"Key {key}"}
-    elif provider == "openrouter":
-        url, headers = f"{OPENROUTER}/key", {"Authorization": f"Bearer {key}"}
-    else:
-        url, headers = f"{TOGETHER}/models", {"Authorization": f"Bearer {key}"}
-    st, h, raw = _http("GET", url, name, headers=headers, timeout=30)
+    if not re.fullmatch(r"[A-Za-z0-9:_.\-]{16,300}", key) or (p.get("keyPrefix") and not key.startswith(p["keyPrefix"])):
+        raise AiError(f"That does not look like a {name} key. Copy it again from {p.get('keyHint') or p.get('dashboard')}.", "bad_key", 400)
+    ctx = _ctx(provider, key)
+    chk = p.get("check") or {}
+    st, h, raw = _http(chk.get("method", "GET"), ctx.url(chk["url"]), name, headers=ctx.auth(), timeout=30)
     if st >= 400:
         raise _provider_error(provider, st, _json(raw), h)
+    bad = base.body_error(ctx, _json(raw), p.get("task") or {})  # kie.ai answers 200 with {"code": 401} in the body
+    if bad:
+        raise bad
     return {"provider": provider, "valid": True}
 
 
@@ -1630,7 +1787,7 @@ def save_key(req: dict) -> dict:
     """Check, then upsert into the studio's .env under the name the AI tools read. "" removes it. Never echoed."""
     provider = str(req.get("provider") or "")
     if provider not in KEY_NAMES:
-        raise AiError("provider: fal, openrouter or together.", "bad_input", 400)
+        raise AiError(f"provider: {_providers_list()}.", "bad_input", 400)
     key = str(req.get("key") or "").strip()
     if key:
         check_key({"provider": provider, "key": key})
@@ -1655,46 +1812,57 @@ def save_caps(req: dict) -> dict:
 
 
 CREDITS_TTL = 600  # seconds: balances move slowly, and the page should not wait on four services every time
-DASHBOARDS = {"fal": "https://fal.ai/dashboard/billing", "openrouter": "https://openrouter.ai/settings/credits",
-              "together": "https://api.together.ai/settings/billing", "firecrawl": "https://www.firecrawl.dev/app/usage"}
+DASHBOARDS = {**{pid: p.get("dashboard") for pid, p in registry.providers().items() if p.get("keyEnv") and p.get("settings") != "llm"},
+              "firecrawl": "https://www.firecrawl.dev/app/usage"}
 
 
 def _provider_of(model: str | None, provider: str | None) -> str:
     if provider:
         return provider
+    for pid, p in registry.providers().items():
+        if model and model in (p.get("models") or {}):
+            return pid
     return "fal" if (model or "").startswith("fal-ai/") else "openrouter"
 
 
 def _balance(provider: str, key: str) -> dict:
-    """What the provider says is left on this key's account. Read-only calls; an error is reported, not raised."""
-    if provider == "fal":
-        st, _, raw = _http("GET", "https://api.fal.ai/v1/account/billing?expand=credits", PROVIDER_NAMES["fal"],
-                           headers={"Authorization": f"Key {key}"}, timeout=20)
-        body = _json(raw)
-        if st == 200 and isinstance(body.get("credits"), dict):
-            c = body["credits"]
-            return {"left": c.get("current_balance"), "currency": c.get("currency") or "USD"}
-        if st in (401, 403):
-            return {"error": "This key cannot read the balance (fal needs a key with billing read access). The dashboard shows it."}
-        return {"error": _said(body) or f"fal answered {st}."}
-    if provider == "openrouter":
-        st, _, raw = _http("GET", "https://openrouter.ai/api/v1/key", PROVIDER_NAMES["openrouter"],
-                           headers={"Authorization": f"Bearer {key}"}, timeout=20)
-        body = _json(raw)
-        if st != 200:
-            return {"error": _said(body) or f"OpenRouter answered {st}."}
-        d = body.get("data") or {}
-        out = {"used": d.get("usage"), "limit": d.get("limit"), "left": d.get("limit_remaining"), "currency": "USD"}
-        if out["left"] is None:  # a key without its own limit draws on the account: ask for the account's credits
-            st2, _, raw2 = _http("GET", "https://openrouter.ai/api/v1/credits", PROVIDER_NAMES["openrouter"],
-                                 headers={"Authorization": f"Bearer {key}"}, timeout=20)
-            c = (_json(raw2) or {}).get("data") or {}
-            if st2 == 200 and isinstance(c.get("total_credits"), (int, float)):
-                out.update(left=round(c["total_credits"] - (c.get("total_usage") or 0), 4), limit=c["total_credits"], used=c.get("total_usage"))
-        return out
-    if provider == "together":
-        return {"note": "Together does not report a balance through its API. The dashboard shows it."}
-    return {}
+    """What the provider says is left on this key's account, by the registry's `balance` (url, where `left`, `used`,
+    `limit`, `currency` or `unit` are, `orElse` a second call). Read-only calls; an error is reported, not raised."""
+    p = registry.provider(provider)
+    spec, name = p.get("balance") or {}, PROVIDER_NAMES[provider]
+    if not spec.get("url"):
+        return {"note": spec.get("note") or f"{name} does not report a balance through its API. The dashboard shows it."}
+    ctx = _ctx(provider, key)
+    st, _, raw = _http("GET", ctx.url(spec["url"]), name, headers=ctx.auth(), timeout=20)
+    body = _json(raw)
+    bad = base.body_error(ctx, body, p.get("task") or {})
+    if st in (401, 403) and spec.get("denied"):
+        return {"error": spec["denied"]}
+    if st != 200 or bad or (spec.get("require") and base.dig(body, spec["require"]) is None):
+        return {"error": (str(bad) if bad else _said(body)) or f"{name} answered {st}."}
+    out = _balance_fields(spec, body)
+    if out.get("left") is None and spec.get("orElse"):  # an OpenRouter key without its own limit: the account's credits
+        more = spec["orElse"]
+        st2, _, raw2 = _http("GET", ctx.url(more["url"]), name, headers=ctx.auth(), timeout=20)
+        b2 = _json(raw2)
+        if st2 == 200 and isinstance(base.dig(b2, more.get("require") or "data"), (int, float)):
+            out.update({k: v for k, v in _balance_fields(more, b2).items() if k != "currency"})
+    return out
+
+
+def _balance_fields(spec: dict, body) -> dict:
+    out = {k: base.dig(body, spec[k]) for k in ("used", "limit", "left") if spec.get(k)}
+    if spec.get("leftFrom"):
+        a, b = (base.dig(body, x) for x in spec["leftFrom"])
+        if isinstance(a, (int, float)):
+            out["left"] = round(a - (b or 0), 4)
+    if spec.get("unit"):
+        out["unit"] = spec["unit"]
+    else:
+        out["currency"] = spec.get("currencyIs") or base.dig(body, spec.get("currency")) or "USD"
+    if spec.get("renews"):
+        out["renews"] = base.dig(body, spec["renews"])
+    return out
 
 
 def credits(req: dict | None = None) -> dict:
@@ -1722,7 +1890,7 @@ def credits(req: dict | None = None) -> dict:
     except (OSError, ValueError):
         cache = {}
     out = {}
-    for p in ("fal", "openrouter", "together", "firecrawl"):
+    for p in [*DASHBOARDS]:
         if p == "firecrawl":
             try:
                 from studio import research
@@ -1765,13 +1933,8 @@ def credits(req: dict | None = None) -> dict:
 
 LLM_ENV = {"base_url": "STUDIO_LLM_BASE_URL", "model": "STUDIO_LLM_MODEL", "vision_model": "STUDIO_LLM_VISION_MODEL",
            "api_key": "STUDIO_LLM_API_KEY"}
-# Where people usually run one, for the Settings page's quick fill (all speak the OpenAI chat API).
-LLM_PRESETS = [{"name": "Ollama", "base_url": "http://127.0.0.1:11434/v1", "model": "qwen3:8b", "vision_model": "qwen3-vl:8b"},
-               {"name": "LM Studio", "base_url": "http://127.0.0.1:1234/v1", "model": "", "vision_model": ""},
-               {"name": "vLLM / llama.cpp", "base_url": "http://127.0.0.1:8000/v1", "model": "", "vision_model": ""},
-               {"name": "OpenAI", "base_url": "https://api.openai.com/v1", "model": "", "vision_model": ""},
-               {"name": "Groq", "base_url": "https://api.groq.com/openai/v1", "model": "", "vision_model": ""},
-               {"name": "OpenRouter (any model)", "base_url": "https://openrouter.ai/api/v1", "model": "", "vision_model": ""}]
+# Where people usually run one, for the Settings page's quick fill (all speak the OpenAI chat API): registry "own".
+LLM_PRESETS = registry.provider("own").get("presets") or []
 
 
 def own_llm_view() -> dict | None:
@@ -1828,9 +1991,198 @@ def llm_presets(req: dict | None = None) -> dict:
     return {"presets": LLM_PRESETS, "ownLlm": own_llm_view()}
 
 
+# ---------- the provider registry for Settings › AI: view, choose per capability, prices, voices ----------
+
+def _cached_fal_prices() -> dict:
+    """fal's live price table as last read (no network): {endpoint: {unit_price, unit, at, source}}."""
+    cache = _read(HOME / "fal-pricing.json") or {}
+    return {k: v for k, v in (cache.get("prices") or {}).items() if time.time() - float(v.get("at", 0)) < PRICE_TTL}
+
+
+def _price_view(provider: str, model: str, live: dict | None = None) -> dict:
+    """The price chain as the page shows it, without asking anyone: {usd, unit, source, asOf?, stale?, warning?, live?}
+    or {"usd": None, "code": "no_price"}."""
+    p = registry.provider(provider)
+    if p.get("free"):
+        return {"usd": 0.0, "unit": "free", "source": "your own server: nothing is charged"}
+    if p.get("priceApi") == "fal" and model in (live or {}):
+        v = live[model]
+        return {"usd": v["unit_price"], "unit": v["unit"], "source": v.get("source") or "fal pricing API", "live": True}
+    got = list_price(provider, model) or user_price(provider, model)
+    if not got:
+        return {"usd": None, "unit": None, "code": "no_price", "source": "no price known: enter one before this runs"}
+    out = {"usd": got["unit_price"], "unit": got["unit"], "source": got["source"]}
+    out.update({k: got[k] for k in ("asOf", "stale", "warning") if k in got})
+    m = _model(provider, model)
+    if (m.get("price") or {}).get("completion") is not None:
+        out["completion"] = m["price"]["completion"]
+    return out
+
+
+def providers_view(req: dict | None = None) -> dict:
+    """Everything the Settings › AI card needs: each capability (its label rule and this project's choice), each
+    provider (protocol, whether its key is saved, its models with licence, risk and price) and the prices you
+    entered. Never a key: only whether one is saved."""
+    from studio.config import own_llm
+
+    reg = registry.load()
+    w, live = workflow(), _cached_fal_prices()
+    provs = []
+    for pid, p in reg["providers"].items():
+        models = [{"id": mid, "capability": m["capability"], "label": m.get("label") or mid, "default": bool(m.get("default")),
+                   "licence": m.get("licence"), "risk": m.get("risk"), "note": m.get("note"), "voiceRequired": bool(m.get("voiceRequired")),
+                   "voiceDefault": m.get("voiceDefault"), "maxSeconds": m.get("maxSeconds"), "maxChars": m.get("maxChars"),
+                   "price": _price_view(pid, mid, live)}
+                  for mid, m in (p.get("models") or {}).items()]
+        provs.append({"id": pid, "name": p.get("name") or pid, "protocol": p["protocol"], "keyEnv": p.get("keyEnv"),
+                      "hasKey": bool(key_for(pid)) if p.get("keyEnv") else False, "keyOptional": bool(p.get("keyOptional")),
+                      "keyHint": p.get("keyHint"), "dashboard": p.get("dashboard"), "core": bool(p.get("core")), "free": bool(p.get("free")),
+                      "terms": p.get("terms"), "freeModels": p.get("freeModels") or [], "voices": bool(p.get("voices")),
+                      "settings": p.get("settings"), **({"configured": bool(own_llm())} if pid == "own" else {}), "models": models})
+    caps_ = {cap: {**reg["capabilities"][cap], "block": block(cap), "tools": [t for t, v in reg["tools"].items() if v["capability"] == cap]}
+             for cap in registry.CAPABILITIES}
+    return {"asOf": reg.get("asOf"), "staleDays": reg.get("staleDays") or 90, "capabilities": caps_, "providers": provs,
+            "prices": w["prices"], "workflow": {"exists": WORKFLOW.exists(), "template": w["template"]},
+            "units": list(UNITS)}
+
+
+def _licence_check(provider: str, model: str) -> tuple[str | None, str | None]:
+    """(refusal, warning) from the provider's own model page (registry `licenceCheck`): Replicate's license_url must not
+    be a non-commercial licence; fal's catalogue must say commercial. When it cannot be read, the registry's word stands."""
+    p = registry.provider(provider)
+    spec = p.get("licenceCheck")
+    if not spec:
+        return None, None
+    ctx = _ctx(provider)
+    if spec.get("auth") and not ctx.key:
+        return None, f"The licence was not checked live (no {ctx.name} key yet); the registry lists it for commercial use."
+    try:
+        st, _, raw = _http("GET", ctx.url(spec["url"], {"model": model}), ctx.name, headers=ctx.auth() if spec.get("auth") else {}, timeout=20)
+    except AiError:
+        st, raw = 0, b""
+    if st != 200:
+        return None, f"{ctx.name} did not answer the licence check ({st or 'no answer'}); the registry lists it for commercial use."
+    v = base.dig(_json(raw), spec["field"])
+    if spec.get("refuse") and v and re.search(spec["refuse"], str(v), re.I):
+        return f"{model} on {ctx.name} has a non-commercial licence ({v}); the studio only uses models it may use for business.", None
+    if spec.get("ok") and v not in spec["ok"]:
+        return f"{ctx.name} lists {model} with the licence {v!r}, not for commercial use; the studio refuses it.", None
+    return None, None
+
+
+def select(req: dict) -> dict:
+    """Set one capability's provider and model (and voice) for this project in workflow.json. {"reset": true} goes back
+    to the registry's default; {"on": false} switches the capability off. A model with a non-commercial licence is
+    refused; one marked risky (kie.ai's Suno) needs "acceptRisk": true; a voice model without a default voice needs one."""
+    cap = str(req.get("capability") or "")
+    if cap not in registry.CAPABILITIES:
+        raise AiError(f"capability: one of {', '.join(registry.CAPABILITIES)}.", "bad_input", 400)
+    w = workflow()
+    if req.get("reset") is True:
+        w["blocks"].pop(cap, None)
+        _save_workflow(w)
+        return {"capability": cap, "block": block(cap), "warnings": []}
+    on = req.get("on", True)
+    if not isinstance(on, bool):
+        raise AiError("on: true or false.", "bad_input", 400)
+    pid, mid = str(req.get("provider") or ""), str(req.get("model") or "").strip()
+    if not pid and on is False:
+        w["blocks"][cap] = {**(w["blocks"].get(cap) or {}), "on": False}
+        _save_workflow(w)
+        return {"capability": cap, "block": block(cap), "warnings": []}
+    if pid not in registry.providers():
+        raise AiError(f"provider: one of {', '.join(registry.providers())}.", "bad_input", 400)
+    p, name = registry.provider(pid), PROVIDER_NAMES[pid]
+    if registry.FORBIDDEN.search(mid):
+        raise AiError("Text-to-video is never used here: the studio does not invent scenes.", "bad_input", 400)
+    m = (p.get("models") or {}).get(mid)
+    warnings = []
+    if m is None:
+        listed = [k for k, v in (p.get("models") or {}).items() if v.get("capability") == cap]
+        if cap not in (p.get("freeModels") or []) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}", mid):
+            raise AiError(f"{name} has no {cap} model called {mid or '(none)'}." + (f" It has: {', '.join(listed)}." if listed else ""), "bad_input", 400)
+        warnings.append(f"{mid} is not in the registry: {name} is asked for it by name, and priced by its own price list.")
+    elif m.get("capability") != cap:
+        raise AiError(f"{mid} on {name} is a {m.get('capability')} model, not {cap}.", "bad_input", 400)
+    if m and m.get("risk"):
+        if req.get("acceptRisk") is not True:
+            raise AiError(f"{m.get('label') or mid} is marked {m['risk']}: {m.get('note') or ''} Send acceptRisk: true to pick it anyway.".replace("  ", " "),
+                          "risk", 409)
+        warnings.append(f"{m.get('label') or mid} is {m['risk']}: {m.get('note') or ''}".strip())
+    voice = req.get("voice")
+    if voice is not None and (not isinstance(voice, str) or not re.fullmatch(r"[A-Za-z0-9_\-]{1,100}", voice)):
+        raise AiError("voice: the voice's id as the provider lists it (letters, digits, _ and -).", "bad_input", 400)
+    if m and m.get("voiceRequired") and not voice:
+        raise AiError(f"{m.get('label') or mid} needs a voice: pick one from the list (/api/ai/voices?provider={pid}).", "no_voice", 400)
+    if m:
+        why, note = _licence_check(pid, mid)
+        if why:
+            raise AiError(why, "licence", 409)
+        if note:
+            warnings.append(note)
+    if p.get("keyEnv") and not p.get("keyOptional") and not key_for(pid):
+        warnings.append(f"No {name} key yet: add it in Settings › AI before this runs.")
+    if m and not (list_price(pid, mid) or user_price(pid, mid)) and not p.get("priceApi") and not p.get("free"):
+        warnings.append(f"No price is known for {mid}: enter one, or every run of it is refused (no_price).")
+    w["blocks"][cap] = {"on": on, "provider": pid, "model": mid, **({"voice": voice} if voice else {})}
+    _save_workflow(w)
+    return {"capability": cap, "block": block(cap), "warnings": warnings}
+
+
+def save_price(req: dict) -> dict:
+    """A price you entered for one provider's model ({provider, model, usd, unit}); "usd": null removes it. It is the
+    price chain's third step: used only when the provider has no price API and the registry no list price."""
+    pid, mid = str(req.get("provider") or ""), str(req.get("model") or "").strip()
+    if pid not in registry.providers():
+        raise AiError(f"provider: one of {', '.join(registry.providers())}.", "bad_input", 400)
+    p = registry.provider(pid)
+    if mid not in (p.get("models") or {}) and not (p.get("freeModels") and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}", mid)):
+        raise AiError(f"{PROVIDER_NAMES[pid]} has no model called {mid or '(none)'}.", "bad_input", 400)
+    w = workflow()
+    k = f"{pid}:{mid}"
+    usd = req.get("usd")
+    if usd is None:
+        w["prices"].pop(k, None)
+        _save_workflow(w)
+        return {"provider": pid, "model": mid, "removed": True, "price": _price_view(pid, mid)}
+    if isinstance(usd, bool) or not isinstance(usd, (int, float)) or not math.isfinite(usd) or usd < 0 or usd > 1000:
+        raise AiError("usd: a number of US dollars from 0 to 1000.", "bad_input", 400)
+    unit = str(req.get("unit") or "")
+    if unit not in UNITS:
+        raise AiError(f"unit: one of {', '.join(UNITS)}.", "bad_input", 400)
+    w["prices"][k] = {"usd": float(usd), "unit": unit, "at": date.today().isoformat()}
+    _save_workflow(w)
+    return {"provider": pid, "model": mid, "removed": False, "price": _price_view(pid, mid)}
+
+
+def voices(req: dict) -> dict:
+    """The voices a provider offers this key (registry `voices`: ElevenLabs GET /v2/voices). {provider, search?, next?}."""
+    pid = str(req.get("provider") or "elevenlabs")
+    if pid not in registry.providers():
+        raise AiError(f"provider: one of {', '.join(registry.providers())}.", "bad_input", 400)
+    spec = registry.provider(pid).get("voices")
+    if not spec:
+        return {"provider": pid, "voices": [], "next": None, "note": f"{PROVIDER_NAMES[pid]} has no voice list; its models name their voices."}
+    ctx = _ctx(pid)
+    if not ctx.key:
+        raise AiError(f"Add your {ctx.name} key in Settings › AI to see its voices.", "no_key", 400)
+    url = ctx.url(spec["url"])
+    for field, value in ((spec.get("search"), req.get("search")), (spec.get("nextParam"), req.get("next"))):
+        if field and isinstance(value, str) and value.strip():
+            url += ("&" if "?" in url else "?") + f"{field}={urllib.parse.quote(value.strip()[:100])}"
+    st, h, raw = _http("GET", url, ctx.name, headers=ctx.auth(), timeout=30)
+    body = _json(raw)
+    if st >= 400:
+        raise _provider_error(pid, st, body, h)
+    out = [{"id": base.dig(v, spec["id"]), "name": base.dig(v, spec.get("name") or "name"), "labels": base.dig(v, spec.get("labels") or "labels") or {},
+            "preview": base.dig(v, spec.get("preview") or "preview_url")} for v in (base.dig(body, spec["list"]) or []) if isinstance(v, dict)]
+    return {"provider": pid, "voices": [v for v in out if v["id"]], "next": base.dig(body, spec.get("next") or "next_page_token")}
+
+
 ACTIONS = {"status": status, "estimate": estimate, "run": run, "review": review, "last-review": last_review,
            "check-key": check_key, "save-key": save_key, "save-caps": save_caps, "credits": credits,
-           "save-llm": save_llm, "llm-presets": llm_presets}
+           "save-llm": save_llm, "llm-presets": llm_presets, "providers": providers_view, "select": select, "save-price": save_price,
+           "voices": voices}
 
 
 def call(action: str, req: dict) -> dict:

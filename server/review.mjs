@@ -862,9 +862,34 @@ setInterval(tickAuto, 10 * 60_000);
    Same shape as research: one short Python process per call (request JSON on stdin, `RESULT {...}` on stdout).
    Every paid call inside goes through one ledger with a per-reel cap, an AI total cap and the daily budget.
    `run` is a background job (STAGE / PROGRESS lines, like a render) and can queue a render when it ends. */
-const AI_TIMEOUT = { status: 60_000, estimate: 120_000, review: 300_000, "last-review": 30_000, "check-key": 40_000, "save-key": 40_000, "save-caps": 20_000, credits: 60_000, "save-llm": 40_000, "llm-presets": 20_000 };
+const AI_TIMEOUT = { status: 60_000, estimate: 120_000, review: 300_000, "last-review": 30_000, "check-key": 40_000, "save-key": 40_000, "save-caps": 20_000, credits: 60_000, "save-llm": 40_000, "llm-presets": 20_000, providers: 30_000, select: 40_000, "save-price": 20_000, voices: 40_000 };
 const AI_TOOLS = ["review", "sharpen", "slowmo", "living", "foley", "behind", "music", "voice"];
-const AI_SETTINGS = ["fal_key", "openrouter_key", "together_key", "ai_reel_cap_usd", "ai_total_cap_usd", "daily_usd_budget", "llm"];
+const AI_SETTINGS = ["fal_key", "openrouter_key", "together_key", "keys", "ai_reel_cap_usd", "ai_total_cap_usd", "daily_usd_budget", "llm"];
+/* The AI provider registry (shared/ai-providers.json, docs/ai-api.md): ids are checked here, names and models by py/studio/ai.py. */
+const AI_PROVIDER_RX = /^[a-z0-9][a-z0-9-]{1,29}$/;
+const AI_CAPABILITIES = ["voice", "music", "sfx", "upscale", "slowmo", "img2video", "bg-cut", "llm", "vision"];
+/** {capability, provider, model, voice, on, reset, acceptRisk} for POST /api/ai/select, checked before Python sees it. */
+function aiSelectInput(b) {
+  const bad = (msg) => Object.assign(new Error(msg), { status: 400, code: "bad_input" });
+  if (!AI_CAPABILITIES.includes(b.capability)) throw bad(`capability: one of ${AI_CAPABILITIES.join(", ")}.`);
+  const out = { capability: b.capability };
+  if (b.reset === true) return { ...out, reset: true };
+  if (b.on !== undefined) { if (typeof b.on !== "boolean") throw bad("on: true or false."); out.on = b.on; }
+  if (b.provider !== undefined && b.provider !== null && b.provider !== "") {
+    if (typeof b.provider !== "string" || !AI_PROVIDER_RX.test(b.provider)) throw bad("provider: a provider id from /api/ai/providers.");
+    out.provider = b.provider;
+  }
+  if (b.model !== undefined && b.model !== null) {
+    if (typeof b.model !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/.test(b.model)) throw bad("model: a model id from /api/ai/providers.");
+    out.model = b.model;
+  }
+  if (b.voice !== undefined && b.voice !== null && b.voice !== "") {
+    if (typeof b.voice !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(b.voice)) throw bad("voice: a voice id from /api/ai/voices.");
+    out.voice = b.voice;
+  }
+  if (b.acceptRisk === true) out.acceptRisk = true;
+  return out;
+}
 /* Your own model server is saved in .env by Python while this process runs; every Python job is started with ENV, which
    took .env's STUDIO_* lines at start. Take the STUDIO_LLM_* lines again so a saved (or removed) server applies at once,
    unless the shell that started the studio set them (that still wins, as for every STUDIO_ setting). */
@@ -2876,6 +2901,38 @@ const server = createServer(async (req, res) => {
       try { return send(res, 200, await ai("llm-presets")); }
       catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
     }
+    /* The provider registry for Settings › AI: capabilities with this project's choice, providers (key saved or not, never
+       the key), models with licence, risk and price (py/studio/ai.py providers_view; docs/ai-api.md). */
+    if (req.method === "GET" && url.pathname === "/api/ai/providers") {
+      try { return send(res, 200, await ai("providers")); }
+      catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
+    /* One capability's provider and model (and voice) for this project, saved in <data>/workflow.json. */
+    if (req.method === "POST" && url.pathname === "/api/ai/select") {
+      try { return send(res, 200, await ai("select", aiSelectInput(await body(req)))); }
+      catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
+    /* A price you entered for a model the provider and the registry give no price for ({provider, model, usd, unit}). */
+    if (req.method === "POST" && url.pathname === "/api/ai/price") {
+      try {
+        const b = await body(req);
+        if (typeof b.provider !== "string" || !AI_PROVIDER_RX.test(b.provider)) return send(res, 400, { error: "provider: a provider id from /api/ai/providers.", code: "bad_input" });
+        if (typeof b.model !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/.test(b.model)) return send(res, 400, { error: "model: a model id from /api/ai/providers.", code: "bad_input" });
+        if (b.usd !== null && (typeof b.usd !== "number" || !Number.isFinite(b.usd))) return send(res, 400, { error: "usd: a number of US dollars, or null to remove it.", code: "bad_input" });
+        if (b.usd !== null && typeof b.unit !== "string") return send(res, 400, { error: "unit: what the price is per (see units in /api/ai/providers).", code: "bad_input" });
+        return send(res, 200, await ai("save-price", { provider: b.provider, model: b.model, usd: b.usd, ...(b.usd !== null ? { unit: b.unit } : {}) }));
+      } catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
+    /* The voices a provider offers the saved key (ElevenLabs), for the voice block's picker. */
+    if (req.method === "GET" && url.pathname === "/api/ai/voices") {
+      try {
+        const provider = url.searchParams.get("provider") || "elevenlabs";
+        if (!AI_PROVIDER_RX.test(provider)) return send(res, 400, { error: "provider: a provider id from /api/ai/providers.", code: "bad_input" });
+        const input = { provider };
+        for (const k of ["search", "next"]) { const v = url.searchParams.get(k); if (v) input[k] = v.slice(0, 200); }
+        return send(res, 200, await ai("voices", input));
+      } catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
     if (req.method === "GET" && url.pathname === "/api/ai") {
       try { return send(res, 200, await ai("status")); }
       catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
@@ -2934,7 +2991,8 @@ const server = createServer(async (req, res) => {
       /* AI keys (Settings › AI): each checked with the provider's free call, then upserted into the studio's .env by
          py/studio/ai.py under the name the AI tools read (fal_key -> FAL_KEY, together_key -> TOGETHER_API_KEY,
          openrouter_key -> OPENROUTER_API_KEY_PARKED, which keeps the old paid tagging off). Never echoed; "" removes
-         it; a wrong key leaves .env untouched. Caps: ai_reel_cap_usd / ai_total_cap_usd in US dollars. No restart. */
+         it; a wrong key leaves .env untouched. Caps: ai_reel_cap_usd / ai_total_cap_usd in US dollars. No restart.
+         keys: {provider: key} for any provider in the registry (shared/ai-providers.json), saved under its keyEnv. */
       if (AI_SETTINGS.some((k) => b[k] !== undefined)) {
         const saved = {};
         try {
@@ -2942,6 +3000,15 @@ const server = createServer(async (req, res) => {
             if (b[field] === undefined) continue;
             if (typeof b[field] !== "string" || b[field].length > 400) return send(res, 400, { error: `Paste the ${provider} key as text.`, code: "bad_key", field });
             saved[field] = await ai("save-key", { provider, key: b[field].trim() });
+          }
+          if (b.keys !== undefined) {
+            if (!b.keys || typeof b.keys !== "object" || Array.isArray(b.keys) || Object.keys(b.keys).length > 20)
+              return send(res, 400, { error: "keys: {provider: key}, for example {\"elevenlabs\": \"sk_…\"}.", code: "bad_input", field: "keys" });
+            for (const [provider, key] of Object.entries(b.keys)) {
+              if (!AI_PROVIDER_RX.test(provider)) return send(res, 400, { error: "keys: provider ids from /api/ai/providers.", code: "bad_input", field: "keys" });
+              if (typeof key !== "string" || key.length > 400) return send(res, 400, { error: `Paste the ${provider} key as text.`, code: "bad_key", field: `keys.${provider}` });
+              saved[`keys.${provider}`] = await ai("save-key", { provider, key: key.trim() });
+            }
           }
           if (b.llm !== undefined) {
             const l = b.llm;

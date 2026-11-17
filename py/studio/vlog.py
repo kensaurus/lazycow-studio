@@ -1974,9 +1974,14 @@ def music_beds(slug: str, seconds: float, moods: list[str] | None = None) -> Pat
     each = min(180, math.ceil(seconds / parts) + 6)
     files: list[Path] = []
     credits: list[dict] = []
-    if ai.status().get("ready"):
-        files = _ai_pieces(slug, parts, each, moods)
-        credits = [{"file": str(f), "credit": "AI-generated (Stable Audio 2.5, via fal.ai)", "license": "AI-GENERATED"} for f in files]
+    try:  # the project's music block (Settings › AI; the registry's default without one), priced by the price chain
+        item = ai.music_item(each)
+    except ai.AiError as exc:  # switched off, or no price known: free music fills in
+        print(f"music: {exc}", flush=True)
+        item = None
+    if item and ai.key_for(item["provider"]):
+        files = _ai_pieces(slug, parts, each, moods, item)
+        credits = [{"file": str(f), "credit": _piece_credit(f), "license": "AI-GENERATED"} for f in files]
     spans: dict[Path, tuple[float, float]] = {}
 
     def span(f: Path) -> tuple[float, float]:
@@ -1989,7 +1994,7 @@ def music_beds(slug: str, seconds: float, moods: list[str] | None = None) -> Pat
         for f in sorted((OUT / slug / "music").glob(f"vlog_{slug}_*.wav"), key=lambda p: p.stat().st_mtime, reverse=True):
             if f not in files and _audio_sec(f) > 20:
                 files.append(f)
-                credits.append({"file": str(f), "credit": "AI-generated (Stable Audio 2.5, via fal.ai), made for an earlier cut", "license": "AI-GENERATED"})
+                credits.append({"file": str(f), "credit": _piece_credit(f) + ", made for an earlier cut", "license": "AI-GENERATED"})
             if total() >= seconds:
                 break
     if total() < seconds:
@@ -2022,11 +2027,28 @@ def music_beds(slug: str, seconds: float, moods: list[str] | None = None) -> Pat
     return bed
 
 
-def _ai_pieces(slug: str, parts: int, each: int, moods: list[str] | None) -> list[Path]:
-    """Up to `parts` Stable Audio pieces of `each` seconds, made inside the AI limits (a refused one stops the rest)."""
+def _piece_credit(f: Path, made_now: str | None = None) -> str:
+    """A bed piece's credit line: the one written beside it when it was made (from the provider registry), else the
+    model every piece was made with before the registry (Stable Audio 2.5 through fal.ai)."""
+    side = Path(str(f) + ".json")
+    if made_now:
+        try:
+            side.write_text(json.dumps({"credit": made_now}), encoding="utf-8")
+        except OSError:
+            pass
+        return made_now
+    try:
+        return json.loads(side.read_text(encoding="utf-8"))["credit"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return "AI-generated (Stable Audio 2.5, via fal.ai)"
+
+
+def _ai_pieces(slug: str, parts: int, each: int, moods: list[str] | None, item: dict) -> list[Path]:
+    """Up to `parts` AI music pieces of `each` seconds from the project's music block (`item`, ai.music_item), made
+    inside the AI limits (a refused one stops the rest)."""
     from studio import ai
 
-    price = ai.fal_prices([ai.TOOLS["music"][1]]).get(ai.TOOLS["music"][1]) or {"unit_price": 0.2, "unit": "audios"}
+    price = {"unit_price": item["unitPrice"], "unit": item["unit"]}
     files = []
     for k in range(parts):
         prompt = (f"Instrumental, {moods[k % len(moods)]}. Clean mix, no vocals, no singing, no speech.") if moods else (f"Instrumental travel film score, {MOODS[k % len(MOODS)]}. Acoustic guitar, kalimba, soft hand percussion and "
@@ -2041,15 +2063,15 @@ def _ai_pieces(slug: str, parts: int, each: int, moods: list[str] | None) -> lis
                 break
 
             def call(prompt=prompt, dest=dest):
-                out = ai.fal_run(ai.TOOLS["music"][1], {"prompt": prompt, "seconds_total": each, "num_inference_steps": 8})
-                return {"file": str(ai.download((out.get("audio") or {}).get("url") or "", dest))}, None
+                return ai.make_music(item, prompt, each, dest.with_suffix(""), wav=True)
 
             dest.parent.mkdir(parents=True, exist_ok=True)
             try:
-                ai.charge("fal", ai.TOOLS["music"][1], "music", slug, usd, call, note=f"vlog bed {k + 1}/{parts}, {each}s")
+                ai.charge(item["provider"], item["model"], "music", slug, usd, call, note=f"vlog bed {k + 1}/{parts}, {each}s")
             except Exception as exc:  # noqa: BLE001 - a failed call: the earlier pieces and free music fill in
-                print(f"music: Stable Audio failed ({exc})", flush=True)
+                print(f"music: {item['credit']} failed ({exc})", flush=True)
                 break
+            _piece_credit(dest, item["credit"])  # who made this piece, beside it, for every later cut that reuses it
         files.append(dest)
     return files
 

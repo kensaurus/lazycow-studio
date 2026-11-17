@@ -1,0 +1,4 @@
+{"id": "p7x2k", "model": "stability-ai/stable-audio-2.5", "version": "hidden", "input": {"prompt": "Instrumental", "duration": 12},
+ "output": null, "error": null, "logs": "", "status": "starting", "created_at": "2026-11-17T01:00:00.000Z", "data_removed": false,
+ "urls": {"get": "https://api.replicate.com/v1/predictions/p7x2k", "cancel": "https://api.replicate.com/v1/predictions/p7x2k/cancel",
+          "web": "https://replicate.com/p/p7x2k"}}

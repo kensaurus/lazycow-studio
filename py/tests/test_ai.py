@@ -17,7 +17,7 @@ OR = "sk-or-v1-0123456789abcdef0123456789abcdef"
 TG = "tgp_v1_0123456789abcdefghijklmnop"
 PRICES = {"prices": [
     {"endpoint_id": "fal-ai/rife/video", "unit_price": 0.0013, "unit": "seconds"},
-    {"endpoint_id": "fal-ai/topaz/upscale/video", "unit_price": 0.01, "unit": "seconds"},
+    {"endpoint_id": "topaz/upscale/video/precision", "unit_price": 0.01, "unit": "seconds"},
     {"endpoint_id": "fal-ai/stable-audio-25/text-to-audio", "unit_price": 0.2, "unit": "audios"},
     {"endpoint_id": "fal-ai/minimax/speech-02-hd", "unit_price": 0.1, "unit": "1000 characters"},
     {"endpoint_id": "fal-ai/kling-video/v2.5-turbo/pro/image-to-video", "unit_price": 0.07, "unit": "seconds"},
@@ -338,7 +338,7 @@ def test_run_makes_an_ai_copy_wires_the_outputs_and_leaves_the_original(env, mon
     from studio import sound
     monkeypatch.setattr(sound, "LIB", env / "audio")
     fake = use(monkeypatch, fal_routes({
-        "fal-ai/topaz/upscale/video": {"video": {"url": "https://cdn.example/up.mp4"}},
+        "topaz/upscale/video/precision": {"video": {"url": "https://cdn.example/up.mp4"}},
         "fal-ai/stable-audio-25/text-to-audio": {"audio": {"url": "https://cdn.example/bed.wav"}, "seed": 7},
         "fal-ai/minimax/speech-02-hd": {"audio": {"url": "https://cdn.example/line.mp3"}, "duration_ms": 5200},
     }))
@@ -360,7 +360,7 @@ def test_run_makes_an_ai_copy_wires_the_outputs_and_leaves_the_original(env, mon
     assert all({"tool", "model", "usd", "at", "what", "label_required"} <= set(n) for n in p["ai"])
     spend = rows()
     assert {r["purpose"] for r in spend} == {"ai-sharpen", "ai-music", "ai-voice"} and all(r["slug"] == "day-test-ai" for r in spend)
-    up = fake.find("queue.fal.run/fal-ai/topaz/upscale/video")[0]["body"]
+    up = fake.find("queue.fal.run/topaz/upscale/video/precision")[0]["body"]
     assert up["H264_output"] is True and up["upscale_factor"] == 1.5
     tts = fake.find("queue.fal.run/fal-ai/minimax/speech-02-hd")[0]["body"]
     assert tts["text"] == "山にこもって、どこまで進むか。" and tts["voice_setting"]["voice_id"].startswith("Japanese_")
@@ -406,7 +406,7 @@ def test_slow_motion_stays_within_fals_1080p_limit(env, monkeypatch):
 def test_a_tool_that_finished_keeps_its_note_when_a_later_one_fails(env, monkeypatch):
     make_reel(env, monkeypatch=monkeypatch)
     monkeypatch.setattr(ai, "locked", lambda slug: False)
-    routes = fal_routes({"fal-ai/topaz/upscale/video": {"video": {"url": "https://cdn.example/up.mp4"}}})
+    routes = fal_routes({"topaz/upscale/video/precision": {"video": {"url": "https://cdn.example/up.mp4"}}})
     routes = [("POST", "queue.fal.run/fal-ai/stable-audio-25", [(422, {"detail": "prompt too long"})])] + routes
     use(monkeypatch, routes)
     with pytest.raises(ai.AiError, match="prompt too long"):

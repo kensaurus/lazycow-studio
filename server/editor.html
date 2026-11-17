@@ -653,13 +653,23 @@ NOTES: Edits save as a project JSON and render in the background ("Save & render
   .rbarw i { display: block; height: 100%; background: var(--moss); border-radius: 0 4px 4px 0; min-width: 2px; }
   .rnets b { text-align: right; font-variant-numeric: tabular-nums; }
   .rfold { margin: 2px 0; }
-  .rstall { border: 1px solid var(--bad); border-left-width: 4px; background: var(--panel); padding: 12px 16px; margin: 0 0 14px; max-width: 900px; }
-  .rstall h3 { margin: 0 0 6px; font-size: 16px; color: var(--bad); display: flex; gap: 6px; align-items: center; }
+  /* Networks that show the posts to nobody: one small red line under the flow's legend (17 Nov: the big card beside the
+     flow said again what its dashed red bands say, and pushed past the screen). The reasons fold open under it. */
+  .rstall { margin: 0 0 8px; max-width: 100%; font-size: 13.5px; }
+  .rstall > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; width: fit-content; max-width: 100%; padding: 4px 10px; cursor: pointer; list-style: none;
+    border-left: 3px solid var(--bad); background: color-mix(in srgb, var(--bad) 6%, var(--panel)); }
+  .rstall > summary::-webkit-details-marker { display: none; }
+  .rstall > summary > b { color: var(--bad); }
+  .rstall .rs-chip { display: inline-flex; align-items: center; gap: 5px; padding: 1px 7px 1px 3px; border: 1px solid color-mix(in srgb, var(--bad) 40%, var(--line)); background: var(--panel); font-weight: 600; }
+  .rstall .rs-why { color: var(--bad); text-decoration: underline; text-underline-offset: 2px; }
+  .rstall .rs-body { margin: 2px 0 0; padding: 8px 12px 4px; border-left: 3px solid var(--bad); }
   .rstall p { margin: 0 0 8px; max-width: 75ch; }
-  .rstall ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
-  .rstall li { display: grid; grid-template-columns: minmax(150px, 220px) 1fr auto; gap: 10px; align-items: start; }
+  .rstall ul { list-style: none; padding: 0; margin: 0 0 4px; display: grid; gap: 8px; }
+  .rstall li { display: grid; grid-template-columns: minmax(130px, 200px) minmax(0, 75ch) auto; gap: 4px 12px; align-items: start; }
+  .rstall li > * { min-width: 0; overflow-wrap: anywhere; }
   .rstall .rnet { display: inline-flex; align-items: center; gap: 6px; }
-  @media (max-width: 640px) { .rstall li { grid-template-columns: 1fr; gap: 2px; } }
+  @media (max-width: 640px) { .rstall li { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+    .rnets li { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; } .rnets .rbarw { grid-column: 1 / -1; grid-row: 2; } .rnets li .meta { grid-column: 1 / -1; } }
   .restabs { margin: 22px 0 12px; }
   .vcell { white-space: nowrap; }
   .vwrap { display: inline-block; width: 52px; height: 6px; background: var(--panel2); vertical-align: middle; margin-right: 8px; }
@@ -2400,10 +2410,7 @@ button.hchip { cursor: pointer; }
   .bj-bar i { transform: none; background: repeating-linear-gradient(90deg, #000080 0 6px, transparent 6px 8px); transition: width .4s steps(6); }
   @media (prefers-reduced-motion: reduce) { .w9bar.run i { animation: none; width: 100%; opacity: .45; } .w9hour { animation: none; } }
 
-  /* ===== 16 Nov: Results uses the width. The bars and the "not being shown" alert side by side from 1100 px. ===== */
-  .rwide { display: grid; gap: 14px 28px; align-items: start; }
-  .rwide .rstall { order: -1; max-width: none; margin: 0; }
-  .rwide .rnets { max-width: none; }
+  /* ===== Results: the flow, the bars and the table each take the full width (17 Nov: no second column). ===== */
   /* Per-network comparison under the bars: a sunken 90s list view. */
   .rntable { width: 100%; margin-top: 12px; border-collapse: collapse; font-size: 13px; background: var(--panel); border: 2px solid; border-color: #808080 #fff #fff #808080; }
   .rntable caption { text-align: left; font-weight: 700; padding: 0 0 4px; font-size: 13px; }
@@ -2413,7 +2420,7 @@ button.hchip { cursor: pointer; }
   .rntable tbody th { text-align: left; font-weight: 400; } .rntable tbody th > * { vertical-align: middle; }
   .rntable td.best { text-align: left; max-width: 0; width: 40%; overflow: hidden; text-overflow: ellipsis; }
   .rntable tr.stall td, .rntable tr.stall th { color: var(--bad); }
-  @media (min-width: 1100px) { .rwide { grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); } .rwide .rstall { order: 0; } }
+  @media (max-width: 640px) { .rntable { display: block; overflow-x: auto; max-width: 100%; } }  /* phones: the table scrolls, not the page */
   /* ===== Footage › Add footage: the ways in, one drop target, and the map of where footage comes from. =====
      One colour per kind of place, the same on the cards, the map's nodes and its wires: this computer = larch,
      cloud = sky, phones and other people = meadow, a link = ember, the studio inbox = the black frame. The bright
@@ -2522,7 +2529,7 @@ button.hchip { cursor: pointer; }
   @keyframes amFlash { 50% { box-shadow: 0 0 0 4px var(--pop); } }
   /* Results › posts in, views out. Bands in each network's colour, light; a lifted band full strength. */
   .rflow { margin: 6px 0 14px; } .rflow .rf-title { margin: 0; font: 700 12px/1.3 var(--mono); letter-spacing: .06em; text-transform: uppercase; } .rf-hint { margin: 2px 0 6px; max-width: 70ch; }
-  .rflow-svg { display: block; width: 100%; max-width: 760px; height: auto; overflow: visible; font: 13px var(--ui); }
+  .rflow-svg { display: block; width: 100%; max-width: 1200px; height: auto; overflow: visible; font: 13px var(--ui); }
   .rf-h { font: 700 11px var(--mono); letter-spacing: .05em; text-transform: uppercase; fill: var(--mute); }
   .rf-net { cursor: pointer; outline: none; transition: opacity .16s var(--ease-standard, ease-out); }
   .rf-rib { fill: color-mix(in srgb, var(--nc) 26%, transparent); stroke: color-mix(in srgb, var(--nc) 55%, transparent); stroke-width: 1; }
@@ -2539,7 +2546,7 @@ button.hchip { cursor: pointer; }
   .rflow.in .rf-net { animation: wiresIn .22s ease-out both; animation-delay: calc(min(var(--i, 0), 10) * 18ms); }
   .rflow .sn-detail { --kc: var(--sky); } .rflow .sn-detail.rf-k-zero { --kc: var(--bad); } .rflow .sn-detail.rf-k-unread, .rflow .sn-detail.rf-k-react { --kc: var(--edge); }
   .rflow ~ .rnets { display: none; }
-  @media (max-width: 640px) { .rflow { display: none; } .rflow ~ .rnets { display: grid; } }
+  @media (max-width: 640px) { .rflow > :not(.rstall) { display: none; } .rflow ~ .rnets { display: grid; } }
   /* Editor › Properties › where this reel is. Done steps filled, the waiting one ringed in the "you are here" yellow. */
   .rjourney { margin: 4px 0 12px; padding: 10px 0 8px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
   .rjourney h4 { margin: 0 0 8px; font: 700 11px/1.3 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--mute); }
@@ -2572,6 +2579,80 @@ button.hchip { cursor: pointer; }
     .sm-kids { margin-left: 14px; padding-left: 12px; border-left: 2px solid var(--line); }
     .ah-ups .up { grid-template-columns: minmax(0, 1fr) 72px; } .ah-ups .bar { grid-column: 1 / -1; grid-row: 2; }
   }
+  /* ===== 17 Nov: motion on the graphics (owner: "they look dead"). Each movement says one thing:
+     a soft pulse travelling along a wire = footage (or posts) is moving along it now; a breathing dot = watched,
+     ready or live; a quicker amber pulse = waiting on a step from you; a red ping = broken. A dashed wire stays still:
+     nothing flows there. Entrances (rise, wires drawing in, bands growing, bars filling) play once per page visit
+     (moVisit) and wait until the graphic is on screen. The loops are not CSS animations: moFlowTick writes --fo, --fd
+     and --mo-* 12 times a second on the graphics on screen, and nothing in a hidden tab (html.mo-hidden pauses the rest).
+     Transform, opacity, stroke-dash and clip-path only. Reduced motion: the global rule at the top stops every
+     entrance, the ticker never starts, every resting state below is the final one, and the flow overlays are not drawn. ===== */
+  :root { --ease-enter: cubic-bezier(.2, .8, .2, 1); --motion-enter: 240ms; --motion-draw: 440ms; }
+  html.mo-hidden *, html.mo-hidden *::before, html.mo-hidden *::after,
+  .mo-off, .mo-off *, .mo-off *::before, .mo-off *::after { animation-play-state: paused !important; }
+  @keyframes moRise { from { opacity: 0; transform: translateY(8px); } }
+  @keyframes moFade { from { opacity: 0; } }
+  @keyframes moRing { from { opacity: .9; transform: scale(.98); } to { opacity: 0; transform: scale(1.05); } }
+  @keyframes moDraw { from { stroke-dasharray: 1 1; stroke-dashoffset: 1; } to { stroke-dasharray: 1 1; stroke-dashoffset: 0; } }
+  @keyframes moGrow { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+  @keyframes moBar { from { transform: scaleX(0); } }
+  @keyframes moPop { from { opacity: 0; transform: scale(.4); } }
+  @keyframes moGot { 30% { transform: scale(1.06); } }
+  @keyframes moFlash { 20% { opacity: .6; } }
+  @keyframes moBob { 50% { transform: translateY(3px); } }
+  @keyframes moBlocks { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+  /* Nodes: rise in reading order; lift with a shadow on hover or focus; a ring when one is picked or a file lands. */
+  .snode, .sm-hub { position: relative; }
+  .snode.in, .sm-hub.in { animation: moRise var(--motion-enter) var(--ease-enter) backwards; animation-delay: calc(min(var(--i, 0), 12) * 35ms); }
+  .snode::after { content: ""; position: absolute; inset: -1px -1px -1px -5px; pointer-events: none; box-shadow: 0 10px 18px -10px rgb(0 0 0 / .45); opacity: 0; transition: opacity var(--motion-base) var(--ease-standard); }
+  .snode:hover, .snode:focus-visible { transform: translateY(-2px); }
+  .snode:hover::after, .snode:focus-visible::after { opacity: 1; }
+  .snode:is(.ping, .got)::before { content: ""; position: absolute; inset: -5px -5px -5px -9px; border: 2px solid var(--kc); pointer-events: none; opacity: 0; animation: moRing 600ms var(--ease-enter); }
+  .snode.k-inbox:is(.ping, .got)::before { border-color: var(--ink); }
+  .snode.got { animation: moGot 420ms var(--ease-enter); }
+  /* The project in the middle breathes very slowly: the place everything flows to (Footage) or from (Accounts). */
+  .sm-hub { --hubc: var(--larch); } .ammap .sm-hub { --hubc: var(--meadow); }
+  .sm-hub::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: var(--mo-gl, 0); box-shadow: 0 0 0 3px color-mix(in srgb, var(--hubc) 50%, transparent), 0 0 24px 4px color-mix(in srgb, var(--hubc) 40%, transparent); }
+  .sn-detail.in, .ah-more.in { animation: moRise var(--motion-enter) var(--ease-enter) backwards; }
+  /* Status dots on the graphics; the loops are moved by moFlowTick (--mo-*), still when it does not run. */
+  :is(.smap, .sn-detail) :is(.st-ok, .st-live) i.dot, .am-nets i.dot.st-ok, .rj-chip.s-posted i { opacity: var(--mo-br, 1); animation: none; }
+  :is(.smap, .sn-detail) .st-warn i.dot, .am-nets i.dot.st-warn { transform: scale(var(--mo-nu, 1)); }
+  :is(.smap, .sn-detail) .st-bad i.dot, .am-nets i.dot.st-bad { position: relative; }
+  :is(.smap, .sn-detail) .st-bad i.dot::after, .am-nets i.dot.st-bad::after, .rj-chip:is(.s-missing, .s-failed) i::after {
+    content: ""; position: absolute; inset: -2px; border-radius: 50%; border: 2px solid var(--bad); pointer-events: none;
+    opacity: var(--mo-po, 0); transform: scale(calc(1 + (var(--ping, 2.2) - 1) * var(--mo-pp, 0))); }
+  /* Wires: drawn in after their nodes; a slow pulse travels along the live ones (towards the project on Footage, out
+     to the networks on Accounts); a wire to a broken place is dashed red and still. */
+  .smap .sm-wires { animation: none !important; }
+  .sm-wires path.w.draw { animation: moDraw var(--motion-draw) var(--ease-enter) var(--d, 0ms) backwards; }
+  .sm-wires path.w.dash.draw { animation-name: moFade; }
+  .sm-wires path.w.dash.bad { stroke: var(--bad); opacity: .6; }
+  /* Beads travelling along the wire: a light core in the wire's colour, one every 36 px. */
+  .sm-wires path.wf { fill: none; stroke: color-mix(in srgb, var(--kc) 45%, #fff); stroke-width: 5; stroke-linecap: round; stroke-dasharray: 3 33; opacity: .95; stroke-dashoffset: var(--fo, 0px); }  /* moved by moFlowTick */
+  .sm-wires path.wf.k-inbox { stroke: color-mix(in srgb, var(--edge) 45%, #fff); }
+  .smap.flow-out .sm-wires path.wf { stroke-dashoffset: calc(72px - var(--fo, 0px)); }
+  .sm-wires g.wfs.draw { animation: moFade 500ms linear var(--d, 0ms) backwards; }
+  @media (prefers-reduced-motion: reduce) { .sm-wires g.wfs { display: none; } }
+  /* While files are over the drop box, its arrow nods: let go here. */
+  .addhub.hot .ah-dmico svg { animation: moBob 900ms ease-in-out infinite; }
+  .ah-ups .bar i, #uploads .bar i { transition: transform 420ms var(--ease-enter); }
+  /* Results › posts in, views out: bands grow from posts to views, biggest first; the view counts run up with them;
+     a lifted band brightens while the rest dim; a silent network's dashed band drifts slowly, going nowhere. */
+  .rflow.in .rf-net { animation: moGrow 640ms var(--ease-enter) backwards; animation-delay: calc(80ms + min(var(--i, 0), 10) * 70ms); }
+  .rf-net { transition: opacity 150ms var(--ease-standard); }
+  .rf-rib { transition: fill 150ms var(--ease-standard); }
+  .rf-net:is(.k-zero, .k-unread, .k-react) .rf-rib { stroke-dashoffset: calc(-1 * var(--fd, 0px)); }  /* moved by moFlowTick */
+  /* Problems: the by-cause bar fills when the panel opens; a chip's group header flashes once when it is jumped to. */
+  .pgroups.in .pgbar i { transform-origin: left center; animation: moBar 420ms var(--ease-enter) backwards; animation-delay: calc(var(--i, 0) * 50ms); }
+  .pgroup h4 { position: relative; isolation: isolate; }
+  .pgroup h4.flash::after { content: ""; position: absolute; inset: -3px -6px; z-index: -1; background: var(--pop); opacity: 0; pointer-events: none; animation: moFlash 900ms ease-out 250ms; }
+  /* Where this reel is: the line fills up to the step it waits on, which keeps a soft pulse. */
+  .rjourney.in .rj-steps li:is(.done, .now)::before { transform-origin: left center; animation: moBar 360ms var(--ease-enter) backwards; animation-delay: calc(var(--s, 0) * 140ms - 140ms); }
+  .rjourney.in .rj-steps li i { animation: moPop 260ms var(--ease-enter) backwards; animation-delay: calc(var(--s, 0) * 140ms + 60ms); }
+  .rj-steps li.now i::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid var(--pop); pointer-events: none; --ping: 1.5;
+    opacity: var(--mo-po, 0); transform: scale(calc(1 + (var(--ping) - 1) * var(--mo-pp, 0))); }
+  /* Studio Monitor: its block bars fill in blocks, once per visit. */
+  .sysmon.in .w9bar:not(.run) i { animation: moBlocks 560ms steps(8, end) backwards; }
 </style>
 
 <!-- Icons: Lucide-style strokes, inline so the editor works offline. -->
@@ -3430,6 +3511,7 @@ async function loadReels(open) {
   if (open && reel?.slug === open && !atHome()) await openReel(open);
 }
 async function openReel(slug) {
+  reelJourney.shown = null;  // "where this reel is" fills again for this opening
   const r = overview.reels.find((x) => x.slug === slug);
   if (r && !r.rendered) { toast(`${ico("hourglass", "sm")} ${esc(slug)} is still being made: ${esc(r.job?.label || "queued")}`, 3000); go(""); return; }
   let spec;
@@ -3833,6 +3915,7 @@ const I18N = {
     "rs.stall.title": "Not being shown to anyone: {nets}",
     "rs.stall.lead": "{n} posts there, the oldest {d} days out, and every one still has nothing. That is the network not showing them, not a weak reel: a better reel will not change it, and more posts there add nothing until it is fixed.",
     "rs.stall.net": "{net}: {n} posts, 0 views", "rs.stall.netr": "{net}: {n} posts, 0 reactions", "rs.stall.open": "Open {net}",
+    "rs.stall.short": "Not shown to anyone:", "rs.stall.why": "why?",
     "rs.fix.tiktok": "First, the account's region (tiktok.com/setting › Account region): it is set at sign-up and is one of the signals for who is shown your posts, so a region that is not your audience's works against every post. Then any limit: in the app, TikTok Studio › More tools › Account check. A new account with no followers can also get nothing at first.",
     "rs.fix.facebook": "Facebook counts a play from the first millisecond, so 0 means nobody was shown the reel. Check the Page's status and limits in Meta Business Suite, and that its reels show on the Page to someone who is not signed in.",
     "rs.fix.bluesky": "Bluesky shows posts mostly to followers and to the feeds they read: with few followers, nobody sees them. Follow and reply where your guests are, or pause posting there.",
@@ -4103,6 +4186,7 @@ const I18N = {
     "rs.stall.title": "だれにも表示されていません：{nets}",
     "rs.stall.lead": "{n}件の投稿、いちばん古いものは{d}日前。どれもまだ反応ゼロです。リールの出来ではなく、ネットワークが表示していない状態です。リールを良くしても変わらず、直るまではそこへ投稿を増やしても意味がありません。",
     "rs.stall.net": "{net}：{n}件・再生0", "rs.stall.netr": "{net}：{n}件・反応0", "rs.stall.open": "{net}を開く",
+    "rs.stall.short": "だれにも表示されていません：", "rs.stall.why": "理由",
     "rs.fix.tiktok": "まずアカウントの地域（tiktok.com/setting › アカウントの地域）。地域は登録時に決まり、投稿を誰に見せるかの手がかりのひとつです。見てほしい人の国と違うと、どの投稿にも不利になります。次に制限：アプリの TikTok Studio › その他のツール › アカウントチェック。フォロワー0の新しいアカウントは、最初は表示されないこともあります。",
     "rs.fix.facebook": "Facebookは1ミリ秒でも再生されれば数えます。0は、だれにも表示されていないということです。Meta Business Suiteでページの状態と制限を確かめ、ログインしていない人にもページ上でリールが見えるか確認してください。",
     "rs.fix.bluesky": "Blueskyの投稿は、主にフォロワーと、その人たちが読むフィードに届きます。フォロワーが少ないと、だれにも見られません。お客さんのいる場所でフォローや返信をするか、しばらく投稿を止めてください。",
@@ -4435,6 +4519,7 @@ function renderHome(force) {
     return;
   }
   homeSig = sig;
+  if (renderHome.shown !== page) moVisit();  // a new page visit: its graphics may play their entrance once more
   paintNav();
   ({ log: renderLog, posting: renderPosting, youtube: renderYouTube, footage: renderFootage, accounts: renderAccounts,
      ideas: renderIdeas, results: renderResults, keys: renderKeys, words: renderWords, review: renderReview, making: renderMaking, videos: renderVideos, versions: renderVersions,
@@ -7085,11 +7170,15 @@ function flyFiles(n, from) {
     const c = document.createElement("i"); c.className = "flychip"; c.setAttribute("aria-hidden", "true");
     c.style.left = start.x + "px"; c.style.top = start.y + "px";
     document.body.append(c);
-    const dx = tx - start.x, dy = ty - start.y;
-    c.animate([{ transform: "translate(-50%, -50%) scale(1)", opacity: 1 }, { transform: `translate(calc(${dx}px - 50%), calc(${dy}px - 50%)) scale(.45)`, opacity: .35 }],
-      { duration: 240, delay: i * 40, easing: "cubic-bezier(.2, 0, 0, 1)", fill: "both" }).finished.then(() => c.remove(), () => c.remove());
+    // A short arc (up, then down into the branch), each chip a little apart, shrinking as it lands.
+    const dx = tx - start.x, dy = ty - start.y, lift = Math.min(60, 20 + Math.abs(dx) * .12) + i * 4;
+    c.animate([{ transform: "translate(-50%, -50%) scale(1)", opacity: 1 },
+      { transform: `translate(calc(${dx * .5}px - 50%), calc(${dy * .5 - lift}px - 50%)) scale(.8)`, opacity: .9, offset: .45 },
+      { transform: `translate(calc(${dx}px - 50%), calc(${dy}px - 50%)) scale(.4)`, opacity: .3 }],
+      { duration: 380, delay: i * 40, easing: "cubic-bezier(.2, .8, .2, 1)", fill: "both" }).finished.then(() => c.remove(), () => c.remove());
   }
-  setTimeout(() => { const nd = document.querySelector('#home .snode[data-snode="uploads"]'); if (!nd) return; nd.classList.remove("got"); void nd.offsetWidth; nd.classList.add("got"); }, 240 + Math.min(n, 6) * 40);
+  // The branch rings once as they land (CSS .snode.got).
+  setTimeout(() => { const nd = document.querySelector('#home .snode[data-snode="uploads"]'); if (!nd) return; nd.classList.remove("got"); void nd.offsetWidth; nd.classList.add("got"); }, 380 + Math.min(n, 6) * 40);
 }
 /* One polite live region for upload news (start, finish, refusals), never for each percent. */
 function upLive(text) {
@@ -7756,19 +7845,20 @@ function resNetsHtml() {
   const say = (good.length ? tr("rv2.lead.good", { nets: good.map((x) => name(x.network)).join(sep), v: n(good.reduce((a, x) => a + x.views, 0)), p: good.reduce((a, x) => a + x.measured, 0) })
     : tr("rv2.lead.low", { v: n(R.totals.views), p: R.totals.measured }))
     + (!one && seen[0] && seen[0].views / all >= 0.5 ? " " + tr("rs.share", { net: name(seen[0].network), p: Math.round(100 * seen[0].views / all) }) : "");
-  // Wide screens put the networks' bars and the "not being shown" alert side by side (the owner, 16 Nov: "past
-  // software made full use of the spaces available"); narrow ones stack them, the alert first.
-  const wide = (left) => (stalled.length ? `<div class="rwide"><div class="rwleft">${left}</div>${resStallHtml(stalled)}</div>` : left);
-  if (one) return wide(`<p class="rsay">${esc(say)}</p>`);
-  return wide(`<p class="rsay">${esc(say)}</p>
-    ${resFlowHtml(R, name, n)}
+  // Networks that show the posts to nobody: one compact line under the flow's legend, its reasons folded (17 Nov: the
+  // big card beside the flow repeated its dashed red bands and squeezed it into half the width). The flow and the
+  // table take the full width.
+  const stall = resStallHtml(stalled);
+  if (one) return `<p class="rsay">${esc(say)}</p>${stall}`;
+  return `<p class="rsay">${esc(say)}</p>
+    ${resFlowHtml(R, name, n, stall) || stall}
     <ul class="rnets" aria-label="${esc(tr("rs.where", { d: R.days || 60 }))}">${seen.map((x) => `<li title="${esc(tr("rs.bartip", { v: n(x.views), p: x.measured, net: name(x.network) }))}">
       <span class="rnet">${netLogo(chOf(x.network), "sm")}${esc(name(x.network))}</span><span class="rbarw"><i style="width:${(100 * x.views / top).toFixed(1)}%"></i></span>
       <b>${n(x.views)}</b><span class="meta">${tr("rs.pct", { p: Math.max(1, Math.round(100 * x.views / all)), n: x.measured })}</span></li>`).join("")}</ul>
     ${other.length ? `<p class="meta rfold">${tr("rs.other", { list: other.map((x) => `${name(x.network)} (${tr(x.reactions === 1 ? "rs.reacts1" : "rs.reacts", { r: n(x.reactions) })})`).join(sep) })}</p>` : ""}
     ${none.length ? `<p class="meta rfold">${ico("info", "sm")} ${tr("rs.zero", { list: none.map((x) => tr("rs.zeronet", { net: name(x.network), n: x.out })).join(sep) })}</p>` : ""}
     ${unread.length ? `<p class="meta rfold">${tr("rs.unread", { list: unread.map((x) => name(x.network)).join(sep) })}</p>` : ""}
-    ${resNetTable(R, name, n)}`);
+    ${resNetTable(R, name, n)}`;
 }
 /* Results › posts in, views out: one band per network, from its posts (left, height by posts out in 60 days) to the
    views they brought (right, height by views). The story in one picture: YouTube's thin band of posts fans out into
@@ -7777,11 +7867,13 @@ function resNetsHtml() {
    focus a band to lift it; click (or Enter) opens why, under the picture. Wide screens only: phones keep the bars
    (.rnets), and the table under it is the same data as text. Inline SVG, no library. */
 const resFlow = { net: null, shown: null, drawn: false };
-function resFlowHtml(R, name, n) {
+function resFlowHtml(R, name, n, stall = "") {
   const rows = (R.networks || []).filter((x) => x.out > 0);
   if (rows.length < 2) return "";
   const kind = (x) => (x.hasViews && x.views > 0 ? "seen" : x.verdict === "unmeasured" ? "unread" : !x.hasViews && x.reactions > 0 ? "react" : "zero");
-  const W = 680, LX = 148, RX = 426, BW = 12, MIN = 22, GAP = 6, EXTRA = Math.max(140, rows.length * 18), TOP = 30;
+  // As wide as the page gives it (680 to 1200 units, drawn about 1:1 so the words stay their size); the views column
+  // keeps 254 units on the right for its labels.
+  const W = Math.round(Math.min(1200, Math.max(680, (document.getElementById("home")?.clientWidth || 760) - 64))), LX = 148, RX = W - 254, BW = 12, MIN = 22, GAP = 6, EXTRA = Math.max(140, rows.length * 18), TOP = 30;
   const outAll = rows.reduce((a, x) => a + x.out, 0) || 1, vAll = rows.reduce((a, x) => a + (kind(x) === "seen" ? x.views : 0), 0);
   const left = [...rows].sort((a, b) => b.out - a.out || b.views - a.views);
   const ord = { seen: 0, react: 1, zero: 2, unread: 3 };
@@ -7793,7 +7885,7 @@ function resFlowHtml(R, name, n) {
   const color = (k) => (CH_STYLE[chOf(k)] || CH_STYLE[k] || ["", "#555"])[1];
   const pct = (x) => Math.max(1, Math.round((100 * x.views) / (vAll || 1)));
   const rText = (x) => ({ seen: `${n(x.views)} · ${pct(x)}%`, zero: tr("rf.zero"), react: tr("rf.reacts", { n: n(x.reactions) }), unread: tr("rf.unread") })[kind(x)];
-  const first = !resFlow.drawn; resFlow.drawn = true;
+  const first = !resFlow.drawn;  // set once the bands have grown on screen (moWatch)
   const g = left.map((x, i) => {
     const a = L.get(x.network), b = Rp.get(x.network), k = kind(x), x1 = LX + BW, x2 = RX, mid = (x1 + x2) / 2;
     const rib = `M${x1},${a.y} C${mid},${a.y} ${mid},${b.y} ${x2},${b.y} L${x2},${b.y + b.h} C${mid},${b.y + b.h} ${mid},${a.y + a.h} ${x1},${a.y + a.h} Z`;
@@ -7804,10 +7896,10 @@ function resFlowHtml(R, name, n) {
       <rect class="rf-bar" x="${LX}" y="${a.y}" width="${BW}" height="${a.h}"/>
       <rect class="rf-bar r" x="${RX}" y="${b.y}" width="${BW}" height="${b.h}"/>
       <text class="rf-l" x="${LX - 8}" y="${a.y + a.h / 2}" text-anchor="end" dominant-baseline="central">${esc(name(x.network))} <tspan class="rf-n">${x.out}</tspan></text>
-      <text class="rf-r" x="${RX + BW + 8}" y="${b.y + b.h / 2}" dominant-baseline="central"><tspan class="rf-nm">${esc(name(x.network))}</tspan> <tspan class="rf-n">${esc(rText(x))}</tspan></text>
+      <text class="rf-r" x="${RX + BW + 8}" y="${b.y + b.h / 2}" dominant-baseline="central"><tspan class="rf-nm">${esc(name(x.network))}</tspan> <tspan class="rf-n">${k === "seen" ? `<tspan data-count="${x.views}">${n(x.views)}</tspan> · ${pct(x)}%` : esc(rText(x))}</tspan></text>
     </g>`;
   }).join("");
-  const svg = `<svg class="rflow-svg" viewBox="0 0 ${W} ${H}" role="group" aria-label="${esc(tr("rf.label"))}" preserveAspectRatio="xMinYMin meet">
+  const svg = `<svg class="rflow-svg" viewBox="0 0 ${W} ${H}" style="max-width:${W}px" role="group" aria-label="${esc(tr("rf.label"))}" preserveAspectRatio="xMinYMin meet">
     <text class="rf-h" x="${LX + BW}" y="14" text-anchor="end">${esc(tr("rf.posts"))}</text><text class="rf-h" x="${RX}" y="14">${esc(tr("rf.views"))}</text>${g}</svg>`;
   // Why, for the open network.
   let detail = "";
@@ -7826,7 +7918,7 @@ function resFlowHtml(R, name, n) {
       acts: (o.stalled || k === "unread") && openUrl ? `<a class="btn" href="${escUrl(openUrl)}" target="_blank" rel="noopener">${esc(tr("rs.stall.open", { net }))} ↗</a>` : "" });
   }
   resFlow.shown = o ? o.network : null;
-  return `<section class="rflow ${first ? "in" : ""}" aria-labelledby="rfTitle"><h3 id="rfTitle" class="rf-title">${esc(tr("rf.title"))}</h3><p class="meta rf-hint">${esc(tr("rf.hint"))}</p>${svg}${detail}</section>`;
+  return `<section class="rflow ${first ? "in" : ""}" aria-labelledby="rfTitle"><h3 id="rfTitle" class="rf-title">${esc(tr("rf.title"))}</h3><p class="meta rf-hint">${esc(tr("rf.hint"))}</p>${stall}${svg}${detail}</section>`;
 }
 document.addEventListener("click", (e) => {
   const t = e.target.closest?.("[data-rfnet]"); if (!t) return;
@@ -7867,17 +7959,20 @@ function resStallHtml(stalled) {
   const name = (k) => NET_NAME[chOf(k)] || NET_NAME[k] || k;
   const posts = stalled.reduce((a, x) => a + x.measured, 0);
   const days = Math.max(2, Math.floor(Math.max(...stalled.map((x) => x.oldestH || 0)) / 24));
-  return `<section class="rstall" aria-labelledby="rstall-h">
-    <h3 id="rstall-h">${ico("alert", "sm")} ${esc(tr("rs.stall.title", { nets: stalled.map((x) => name(x.network)).join(sep) }))}</h3>
-    <p>${esc(tr("rs.stall.lead", { n: posts, d: days }))}</p>
+  // One line: the networks as chips and "why?"; open, it shows the same reasons and links as before.
+  return `<details class="rstall"${resStallHtml.open ? " open" : ""} aria-label="${esc(tr("rs.stall.title", { nets: stalled.map((x) => name(x.network)).join(sep) }))}">
+    <summary>${ico("alert", "sm")}<b>${esc(tr("rs.stall.short"))}</b>${stalled.map((x) => `<span class="rs-chip">${netLogo(chOf(x.network), "sm")}${esc(name(x.network))}</span>`).join("")}<span class="rs-why">${esc(tr("rs.stall.why"))}</span></summary>
+    <div class="rs-body"><p>${esc(tr("rs.stall.lead", { n: posts, d: days }))}</p>
     <ul>${stalled.map((x) => {
       const open = STALL_OPEN[chOf(x.network)] || STALL_OPEN[x.network];
       return `<li><span class="rnet">${netLogo(chOf(x.network), "sm")}<b>${esc(tr(x.hasViews ? "rs.stall.net" : "rs.stall.netr", { net: name(x.network), n: x.measured }))}</b></span>
         <span>${esc(tr(STALL_FIX[chOf(x.network)] || STALL_FIX[x.network] || "rs.fix.other", { net: name(x.network) }))}</span>
         ${open ? `<a class="linkish" href="${escUrl(open)}" target="_blank" rel="noopener">${esc(tr("rs.stall.open", { net: name(x.network) }))} ↗</a>` : ""}</li>`;
-    }).join("")}</ul>
-  </section>`;
+    }).join("")}</ul></div>
+  </details>`;
 }
+// The reasons stay open (or shut) through the page's repaints.
+document.addEventListener("toggle", (e) => { if (e.target.classList?.contains("rstall")) resStallHtml.open = e.target.open; }, true);
 document.addEventListener("click", (e) => {
   const t = e.target.closest?.("[data-restab]");
   if (!t || !RES_TABS[t.dataset.restab]) return;
@@ -8670,10 +8765,9 @@ function accMapHtml(nets, st, { viaChrome, chromeOn, ws }) {
   }
   accMap.shown = open && detail.includes('id="amDetail"') ? open : null;
   const html = `<section class="panel ammap" aria-labelledby="amTitle"><div class="fh-head"><h3 id="amTitle">${ico("send")} ${tr("am.title")}</h3></div>
-    ${wireMap({ id: "amMap", label: tr("am.label"), hub, branches: groups.map((g) => ({ node: howNode(g), kids: g.list.map(netNode) })) })}
+    ${wireMap({ id: "amMap", label: tr("am.label"), hub, cls: "flow-out", branches: groups.map((g) => ({ node: howNode(g), kids: g.list.map(netNode) })) })}
     ${detail}</section>`;
-  for (const g of groups) { accMap.seen.add("how:" + g.h); for (const o of g.list) accMap.seen.add(o.n); }
-  accMap.seen.add("_hub");
+  if (moCalm() || !("IntersectionObserver" in window)) { for (const g of groups) { accMap.seen.add("how:" + g.h); for (const o of g.list) accMap.seen.add(o.n); } accMap.seen.add("_hub"); }  // else marked once on screen (moWatch)
   return html;
 }
 document.addEventListener("click", (e) => {
@@ -9461,6 +9555,102 @@ function mapNodes() {
    mapNode(): one node, a <button>. wireMap(): the layout; each branch is { node: (i) => html, kids: [(i) => html] },
    called in drawing order so the entrance delay (--i) runs in reading order. mapDetail(): the panel under a map.
    A node with the class "wire-dash" gets a dashed wire: the link is there but nothing flows yet. */
+/* ---------- Motion on the graphics (17 Nov; the CSS is the "motion on the graphics" block) ----------
+   Entrances play once per page visit: moVisit() forgets what was shown when another page opens, and each graphic
+   keeps its own "already shown" key, so the many repaints of a page never replay them. A graphic waits off screen
+   (.mo-off holds its entrance at the first frame and stops its loops) until an IntersectionObserver sees it; a hidden
+   tab pauses everything (html.mo-hidden). The loops are moFlowTick's, read from the clock, so a repaint never restarts
+   a breath or a flow. With reduced motion nothing here runs and the CSS shows every final state. */
+function moState() { return (moState.s ||= { shown: new Set(), on: new Map(), io: null, watched: new Set(), fresh: new WeakSet() }); }
+function moCalm() { return matchMedia("(prefers-reduced-motion: reduce)").matches; }
+function moVisit() {
+  const s = moState(); s.shown.clear(); s.on.clear();
+  try { foot.seen.clear(); accMap.seen.clear(); resFlow.drawn = false; } catch { /* not made yet at start-up */ }
+}
+function moAfter() {
+  const s = moState(), calm = moCalm();
+  for (const el of document.querySelectorAll(".smap, .rflow, .rjourney")) {
+    if (s.fresh.has(el)) continue;
+    s.fresh.add(el);
+    if (!calm && "IntersectionObserver" in window) { el.classList.add("mo-off"); moWatch(el); }
+  }
+  // The picked node gives one ring when the pick changes.
+  for (const map of document.querySelectorAll(".smap")) {
+    const on = map.querySelector(".snode.on"), key = on ? on.dataset.snode || on.dataset.accnode || "on" : "";
+    if (s.on.get(map.id) !== key) { s.on.set(map.id, key); if (on && !calm) on.classList.add("ping"); }
+  }
+  const mon = document.getElementById("sysmon");
+  if (mon && !s.shown.has("mon")) { s.shown.add("mon"); if (!calm) { mon.classList.add("in"); setTimeout(() => mon.classList.remove("in"), 900); } }
+  if (!calm && !s.tick && document.querySelector(moLoops())) s.tick = setInterval(moFlowTick, 83);
+}
+/* Every loop on the graphics (flows along wires, a silent band's drift, breathing and amber dots, red pings, the
+   project's glow) is one set of custom properties written 12 times a second on the graphics on screen. Infinite CSS
+   animations here were not composited and kept the page drawing 60 frames a second (about 10% of the main thread
+   at idle); this costs a fraction of that. Values come from the clock, so a repaint carries on where it was. Stops by
+   itself when no graphic is left; never starts with reduced motion, so the CSS defaults (the still states) show. */
+function moLoops() { return ".smap, .sn-detail, .rflow, .rjourney"; }
+function moFlowTick() {
+  const s = moState(), list = document.querySelectorAll(moLoops());
+  if (!list.length || moCalm()) { clearInterval(s.tick); s.tick = 0; return; }
+  if (document.hidden) return;
+  const t = performance.now(), wave = (ms) => 0.5 - 0.5 * Math.cos((2 * Math.PI * (t % ms)) / ms);
+  const p = (t % 2400) / 2400, q = Math.min(1, p / 0.7);
+  // Each value goes only on the elements that use it, so a tick restyles a handful of elements, not whole maps.
+  const loops = [
+    [".wfs", { "--fo": `${((t / 4800) * 72 % 72).toFixed(1)}px` }],  // flow: 72 px every 4.8 s
+    [".rf-net:is(.k-zero, .k-unread, .k-react) .rf-rib", { "--fd": `${((t / 9000) * 18 % 18).toFixed(1)}px` }],  // drift: 18 px every 9 s
+    [":is(.st-ok, .st-live) i.dot, i.dot.st-ok, .rj-chip.s-posted i", { "--mo-br": (1 - 0.6 * wave(2400)).toFixed(3) }],  // breathing, 2.4 s
+    [".st-warn i.dot, i.dot.st-warn", { "--mo-nu": (1 + 0.35 * wave(1600)).toFixed(3) }],  // amber, 1.6 s
+    [".st-bad i.dot, i.dot.st-bad, .rj-chip:is(.s-missing, .s-failed) i, .rj-steps li.now i",
+      { "--mo-pp": (1 - (1 - q) ** 3).toFixed(3), "--mo-po": (p < 0.7 ? 0.75 * (1 - q) : 0).toFixed(3) }],  // ping, 2.4 s
+    [".sm-hub", { "--mo-gl": (0.75 * wave(6000)).toFixed(3) }],  // the project's glow, 6 s
+  ];
+  for (const root of list) {
+    if (root.closest(".mo-off")) continue;
+    for (const [sel, v] of loops) for (const el of root.querySelectorAll(sel)) for (const k in v) el.style.setProperty(k, v[k]);
+  }
+}
+function moWatch(el) {
+  const s = moState();
+  s.io ||= new IntersectionObserver((list) => {
+    for (const e of list) {
+      e.target.classList.toggle("mo-off", !e.isIntersecting);
+      if (!e.isIntersecting) continue;
+      const el = e.target;
+      if (el.matches(".rflow.in") && !el.dataset.counted) { el.dataset.counted = "1"; moCount(el); }
+      // An entrance counts as played once it has run on screen, not when its HTML is made: a page often paints twice
+      // as it opens, and a copy replaced within that time plays it again in full instead of being cut short.
+      if (el.matches(".in, .smap") && !el.dataset.moMark) {
+        el.dataset.moMark = "1";
+        setTimeout(() => {
+          if (!el.isConnected) return;
+          if (el.matches(".rflow.in")) resFlow.drawn = true;
+          if (el.matches(".rjourney.in")) reelJourney.shown = el.dataset.rjslug;
+          if (el.matches(".smap")) {
+            const set = el.id === "amMap" ? accMap.seen : foot.seen;
+            for (const nd of el.querySelectorAll(".snode.in")) set.add(nd.dataset.snode ?? nd.dataset.accnode);
+            if (el.querySelector(".sm-hub.in")) set.add("_hub");
+          }
+        }, 700);
+      }
+    }
+  }, { rootMargin: "40px" });
+  for (const x of s.watched) if (!x.isConnected) { s.io.unobserve(x); s.watched.delete(x); }
+  s.io.observe(el); s.watched.add(el);
+}
+/* Numbers marked data-count run up from 0 to their value in 600 ms, ease-out, as their band grows. */
+function moCount(root) {
+  const els = [...root.querySelectorAll("[data-count]")];
+  if (!els.length || moCalm()) return;
+  const fmt = (v) => Math.round(v).toLocaleString(lang === "ja" ? "ja-JP" : "en-GB"), t0 = performance.now() + 160;
+  const tick = (t) => {
+    const p = Math.min(1, Math.max(0, (t - t0) / 600)), k = 1 - (1 - p) ** 3;
+    for (const el of els) el.textContent = fmt(+el.dataset.count * k);
+    if (p < 1 && root.isConnected) requestAnimationFrame(tick);
+  };
+  tick(performance.now());
+}
+document.addEventListener("visibilitychange", () => document.documentElement.classList.toggle("mo-hidden", document.hidden));
 function mapNode(o) {
   return `<button type="button" class="snode ${o.kcls} st-${o.status?.[0] || "plain"} ${o.fresh ? "in" : ""} ${o.on ? "on" : ""} ${o.cls || ""}" ${o.attr} style="--i:${o.i || 0}"
       aria-expanded="${!!o.on}" aria-controls="${esc(o.controls || "")}" aria-label="${esc(o.label || o.name)}" title="${esc(o.title || o.name)}">
@@ -9509,8 +9699,7 @@ function sourceMap() {
   const html = `<div class="smap-wrap">
     ${wireMap({ id: "smap", label: tr("sm.label"), hub, branches: m.top.map((b) => ({ node: (i) => nodeHtml(b, i), kids: b.kids.map((c) => (i) => nodeHtml(c, i)) })) })}
     ${nodeDetail(m.all.find((n) => n.id === foot.node))}</div>`;
-  for (const n of m.all) foot.seen.add(n.id);
-  foot.seen.add("_hub");
+  if (moCalm() || !("IntersectionObserver" in window)) { for (const n of m.all) foot.seen.add(n.id); foot.seen.add("_hub"); }  // else marked seen once on screen (moWatch)
   return html;
 }
 /* The wires: one curve from the hub to each branch and from a branch to each child, drawn after layout and again
@@ -9522,23 +9711,38 @@ function drawMapWires(map) {
   const box = map.getBoundingClientRect();
   svg.setAttribute("viewBox", `0 0 ${box.width} ${box.height}`); svg.setAttribute("width", box.width); svg.setAttribute("height", box.height);
   const rel = (el) => { const r = el.getBoundingClientRect(); return { l: r.left - box.left, r: r.right - box.left, t: r.top - box.top, b: r.bottom - box.top, cx: r.left - box.left + r.width / 2, cy: r.top - box.top + r.height / 2 }; };
-  const curve = (a, b, cls) => {
+  const curve = (a, b) => {
     const right = b.cx > a.cx, x1 = right ? a.r : a.l, x2 = right ? b.l : b.r, mid = (x1 + x2) / 2;
-    return `<path class="${cls}" d="M${x1.toFixed(1)},${a.cy.toFixed(1)} C${mid.toFixed(1)},${a.cy.toFixed(1)} ${mid.toFixed(1)},${b.cy.toFixed(1)} ${x2.toFixed(1)},${b.cy.toFixed(1)}"/>`;
+    return `M${x1.toFixed(1)},${a.cy.toFixed(1)} C${mid.toFixed(1)},${a.cy.toFixed(1)} ${mid.toFixed(1)},${b.cy.toFixed(1)} ${x2.toFixed(1)},${b.cy.toFixed(1)}`;
   };
-  const h = rel(hub);
-  let out = "";
+  // Each link: its kind's colour; dashed where nothing flows yet (wire-dash) or the place is broken or waits on a step;
+  // a flow along it when the place is watched, ready or live. A branch flows while any of its children does.
+  const has = (el, ...c) => c.some((x) => el.classList.contains(x));
+  const live = (el) => !has(el, "wire-dash", "st-bad", "st-warn") && has(el, "st-ok", "st-live");
+  const link = (el, d, kidsFlow = false) => {
+    const flow = live(el) || (kidsFlow && !has(el, "st-bad", "wire-dash"));
+    return { d, k: [...el.classList].find((c) => c.startsWith("k-")) || "", dash: !flow && has(el, "wire-dash", "st-bad", "st-warn"), bad: has(el, "st-bad"), flow, i: +el.style.getPropertyValue("--i") || 0 };
+  };
+  const h = rel(hub), links = [];
   for (const br of map.querySelectorAll(".sm-br")) {
     const node = br.querySelector(":scope > .snode"); if (!node) continue;
-    const wcls = (el) => "w " + ([...el.classList].find((c) => c.startsWith("k-")) || "") + (el.classList.contains("wire-dash") ? " dash" : "");
-    const n = rel(node);
-    out += curve(h, n, wcls(node));
-    for (const kid of br.querySelectorAll(":scope > .sm-kids .snode")) out += curve(n, rel(kid), wcls(kid));
+    const n = rel(node), kids = [...br.querySelectorAll(":scope > .sm-kids .snode")];
+    links.push(link(node, curve(h, n), kids.some(live)));
+    for (const kid of kids) links.push(link(kid, curve(n, rel(kid))));
   }
-  svg.innerHTML = out;
+  const sig = links.map((l) => `${l.d}${l.k}${l.dash}${l.bad}${l.flow}`).join("|");
+  if (sig === svg.dataset.sig && svg.childElementCount) return;  // same picture: leave it, and its motion, alone
+  svg.dataset.sig = sig;
+  // While the map's nodes rise (their entrance not yet seen on screen), each wire draws out after its node.
+  const draw = !moCalm() && !!map.querySelector(".snode.in, .sm-hub.in");
+  const delay = (l) => 140 + Math.min(l.i, 12) * 35;
+  const base = links.map((l) => `<path class="w ${l.k}${l.dash ? " dash" : ""}${l.bad ? " bad" : ""}${draw ? " draw" : ""}"${draw && !l.dash ? ' pathLength="1"' : ""} style="--d:${delay(l)}ms" d="${l.d}"/>`).join("");
+  const flows = links.filter((l) => l.flow).map((l) => `<path class="wf ${l.k}" d="${l.d}"/>`).join("");
+  svg.innerHTML = base + (flows ? `<g class="wfs${draw ? " draw" : ""}" style="--d:${Math.max(0, ...links.map(delay)) + 380}ms">${flows}</g>` : "");
 }
 let wireObs = null;
 function watchWires() {
+  moAfter();  // motion bookkeeping for every graphic on the page: fresh copies, the picked node, off-screen pauses
   const maps = document.querySelectorAll("#home .smap, #app .smap"); if (!maps.length) return;
   drawWires(); requestAnimationFrame(drawWires);
   if (!wireObs && "ResizeObserver" in window) wireObs = new ResizeObserver(() => drawWires());
@@ -10898,8 +11102,11 @@ function reelJourney(slug) {
     return `<button type="button" class="rj-chip s-${esc(p.status)}" data-rjnet="${esc(n)}" title="${esc(t)}" aria-label="${esc(t)}">${netLogo(chOf(n), "sm")}<i aria-hidden="true"></i></button>`;
   }).join("");
   const said = steps.map((s, i) => `${s.label}${s.sub ? " " + s.sub : ""}${i === now ? " ←" : ""}`).join(" › ");
-  return `<section class="rjourney" aria-label="${esc(tr("rj.label", { s: said }))}"><h4>${tr("rj.title")}</h4>
-    <ol class="rj-steps">${steps.map((s, i) => `<li class="${s.done ? "done" : ""} ${i === now ? "now" : ""} ${s.bad ? "bad" : ""}"><i aria-hidden="true"></i><b>${esc(s.label)}</b><span>${esc(s.sub || "")}</span></li>`).join("")}</ol>
+  // The line fills up to the waiting step once each time the reel is opened (openReel forgets it), not on each repaint.
+  const fresh = reelJourney.shown !== slug;  // set once it has filled on screen (moWatch)
+  queueMicrotask(moAfter);  // once the caller has put it on the page: held until on screen, then its loops run
+  return `<section class="rjourney${fresh && !moCalm() ? " in" : ""}" data-rjslug="${esc(slug)}" aria-label="${esc(tr("rj.label", { s: said }))}"><h4>${tr("rj.title")}</h4>
+    <ol class="rj-steps">${steps.map((s, i) => `<li class="${s.done ? "done" : ""} ${i === now ? "now" : ""} ${s.bad ? "bad" : ""}" style="--s:${i}"><i aria-hidden="true"></i><b>${esc(s.label)}</b><span>${esc(s.sub || "")}</span></li>`).join("")}</ol>
     ${chips ? `<div class="rj-nets">${chips}<span class="meta">${tr("rj.hint")}</span></div>` : ""}</section>`;
 }
 document.addEventListener("click", (e) => {
@@ -11387,6 +11594,7 @@ const PROB = {
   panel() {
     const ja = lang === "ja";
     let p = $("#probPanel");
+    const opening = !p;  // the by-cause bar fills when the panel opens, not when it repaints
     if (!p) { p = document.createElement("div"); p.id = "probPanel"; p.className = "probpanel"; p.setAttribute("role", "dialog"); document.body.appendChild(p); }
     this.open = true;
     const red = this.items.some((i) => i.level === "red");
@@ -11401,8 +11609,8 @@ const PROB = {
     const item = (i) => `<li class="${esc(i.level)}"><b>${esc(this.nice(i.title))}</b><span class="why">${esc(this.nice(i.detail))}</span>
         <span class="meta">${ja ? "最初" : "First seen"} ${esc(new Date(i.first).toLocaleString(ja ? "ja-JP" : "en-GB"))}</span>
         <span class="row"><a class="btn primary" href="${escUrl(i.fix?.href || "#/")}" data-probclose="1">${esc(i.fix?.label || (ja ? "直す" : "Fix"))}</a>${i.also?.href ? `<a class="btn" href="${escUrl(i.also.href)}" target="_blank" rel="noopener">${ico("globe", "sm")}${esc(i.also.label || "")}</a>` : ""}${i.dismissable ? `<button data-probdismiss="${esc(i.id)}">${ja ? "閉じる" : "Dismiss"}</button>` : `<span class="meta">${ja ? "直すまで残ります" : "Stays until it is fixed"}</span>`}</span></li>`;
-    const summary = order.length > 1 ? `<nav class="pgroups" aria-label="${ja ? "原因別" : "By cause"}">
-        <div class="pgbar" role="img" aria-label="${esc(order.map(([c, l]) => `${this.causeName(c, ja)} ${l.length}`).join(", "))}">${order.map(([c, l]) => `<i class="${tone(l)}" style="flex:${l.length}" title="${esc(this.causeName(c, ja))}: ${l.length}"></i>`).join("")}</div>
+    const summary = order.length > 1 ? `<nav class="pgroups${opening && !moCalm() ? " in" : ""}" aria-label="${ja ? "原因別" : "By cause"}">
+        <div class="pgbar" role="img" aria-label="${esc(order.map(([c, l]) => `${this.causeName(c, ja)} ${l.length}`).join(", "))}">${order.map(([c, l], i) => `<i class="${tone(l)}" style="flex:${l.length};--i:${i}" title="${esc(this.causeName(c, ja))}: ${l.length}"></i>`).join("")}</div>
         <div class="pgchips">${order.map(([c, l]) => `<button type="button" class="pgchip ${tone(l)}" data-probjump="${esc(c)}"><i aria-hidden="true"></i>${esc(this.causeName(c, ja))}<b>${l.length}</b></button>`).join("")}</div></nav>` : "";
     p.innerHTML = `<div class="phead"><img src="/brand/kenji-${red ? "worried" : this.items.length ? "point" : "thumbs"}.png" alt=""><b>${this.items.length ? (ja ? "直すこと" : "What went wrong") : (ja ? "問題はありません" : "Nothing is wrong")}</b><button class="icon" data-probclose="1" aria-label="${ja ? "閉じる" : "Close"}">${ico("x", "sm")}</button></div>
       ${summary}
@@ -11435,6 +11643,8 @@ document.addEventListener("click", (e) => {
   const g = document.getElementById("pg-" + j.dataset.probjump);
   g?.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   g?.querySelector("a, button")?.focus({ preventScroll: true });
+  const h = g?.querySelector("h4");  // its header flashes once: this is the group you asked for
+  if (h && !moCalm()) { h.classList.remove("flash"); void h.offsetWidth; h.classList.add("flash"); }
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && PROB.open) PROB.close(); });
 PROB.load();

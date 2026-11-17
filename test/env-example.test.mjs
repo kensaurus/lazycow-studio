@@ -20,7 +20,7 @@ const READS = [
 const files = (dir, ext) => readdirSync(join(ROOT, dir)).filter((f) => ext.some((e) => f.endsWith(e))).map((f) => join(ROOT, dir, f));
 
 test("every environment variable the code reads is documented in .env.example", () => {
-  const sources = [...files("server", [".mjs"]), ...files("scripts", [".mjs"]), ...files("py/studio", [".py"]), ...files("py/studio/connectors", [".py"])];
+  const sources = [...files("server", [".mjs"]), ...files("scripts", [".mjs"]), ...files("py/studio", [".py"]), ...files("py/studio/connectors", [".py"]), ...files("py/studio/providers", [".py"])];
   const used = new Set();
   for (const f of sources) {
     const text = readFileSync(f, "utf8");
