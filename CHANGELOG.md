@@ -2,6 +2,39 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.18.0 (2026-11-17)
+
+### Added
+- **Your own AI model.** Settings › Keys & AI › Your own AI model points the studio's writing jobs (suggested lines on
+  Words, post angles on Ideas) and, with a model that reads pictures, the long videos' names, chapters and caption
+  check at any server that speaks the OpenAI chat API: local (Ollama, LM Studio, vLLM, llama.cpp server) or hosted
+  (OpenAI, Groq, OpenRouter with any model). Presets fill the address; before saving, the studio asks the server for
+  its model list, so a wrong address or model name is caught there. Nothing is charged to the AI limits. Or set
+  `STUDIO_LLM_BASE_URL`, `STUDIO_LLM_MODEL`, `STUDIO_LLM_VISION_MODEL` and `STUDIO_LLM_API_KEY` in `.env`. The AI
+  reviewer (whole reel as video) and the fal.ai tools keep their own keys. `GET /api/ai/llm`, `POST /api/settings {llm}`.
+
+### Docs
+- **How it works.** `docs/architecture.md` now has diagrams of the parts and the reel pipeline, every AI and ML model
+  (local or cloud, key, how to change it), how to run it fully local, how to use your own LLM, and what leaves your
+  computer. The README, the Japanese README and the npm README link it from a short "How it works" section.
+- **How it picks which moments to use.** Each file is described by three frames; the seconds are chosen at render from
+  sharp, lightly moving frames that match the slot's words; long files lose their first and last stretch and search
+  more coarsely. With a comparison of one 20-minute file and twenty 15-second takes.
+- **Filming guide** (`docs/filming-guide.md`, `docs/filming-guide.ja.md`): 5–15 s takes, one subject each, 4K
+  landscape or vertical, 30 fps, HDR off, location on, and why, from how the studio cuts.
+
+### Fixed
+- **Problems tell the truth.** A network with one seen post is no longer "not being seen" (Facebook had a reel at 100
+  views). A post booked before its reel got new words is no longer marked missing because the network shows the older
+  text (a Google Maps post live since 14 Nov was red). A failed make says why in plain words (the drive ran out of
+  space) and opens the reel.
+- **One send at a time.** Two "post what is due" runs could send the same Bluesky post twice in the same second; a
+  per-project lock now stops the second.
+- **Bluesky posts carry two topic tags** (#キャンプ and the reel's own), as the playbook says; with none, a post reaches
+  followers only.
+- **A long video's YouTube language follows its title** (Japanese titles are declared Japanese, not English).
+- **The view-count read** no longer ends as an error for posts booked with older words.
+
 ## 0.17.2 (2026-11-17)
 
 ### Changed

@@ -2,7 +2,7 @@
 // success counts while a failing booking waits and then stops instead of being tried forever.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { classify, pickNext, noteStart, noteResult, MAX_TRIES, YT_PER_DAY } from "../server/swap.mjs";
+import { bookedBeforeNewWords, classify, pickNext, noteStart, noteResult, MAX_TRIES, YT_PER_DAY } from "../server/swap.mjs";
 
 const NOW = Date.parse("2026-11-10T12:00:00Z");
 const reel = { wordsAt: "2026-11-10T09:00:00Z" };
@@ -53,4 +53,11 @@ test("YouTube's allowance is spent when an upload starts and caps the day", () =
   for (let i = 0; i < YT_PER_DAY; i++) noteStart(s, yt, NOW);
   assert.equal(s.yt, YT_PER_DAY);
   assert.equal(pickNext([yt, x], s, NOW), x, "YouTube is skipped once the day's allowance is used");
+});
+
+test("a post booked before its reel got new words cannot be proved missing by the new words (aerial-1108, 14 Nov)", () => {
+  assert.equal(bookedBeforeNewWords(booking(), reel), true, "booked 9 Nov, new words 10 Nov");
+  assert.equal(bookedBeforeNewWords(booking({ created: "2026-11-10 10:00:00" }), reel), false, "booked after the new words");
+  assert.equal(bookedBeforeNewWords(booking(), {}), false, "words never changed");
+  assert.equal(bookedBeforeNewWords(undefined, reel), false, "a row the log no longer has");
 });

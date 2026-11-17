@@ -45,9 +45,30 @@ In Cursor (`.cursor/mcp.json`) or Claude Desktop (`claude_desktop_config.json`):
 
 This needs Node 20 or newer on your PATH. The double-click setup keeps its own Node out of your PATH, so use the lines in the studio's **Settings › Keys & AI › Use with Claude or Cursor** instead: they have your paths filled in. The agent can check the studio, make reels, plan posts and publish approved reels. It has no approve tool. Every tool: [docs/mcp.md](docs/mcp.md).
 
+## How it works under the hood
+
+The studio has three parts. A Node server (`server/review.mjs`, listening on `127.0.0.1:4317` only) serves the page and an HTTP API. A Python engine (`python -m studio …`) catalogs, tags and picks clips. Remotion and ffmpeg render the reels. Tagging and search use OpenCLIP on your own processor, so the main flow needs no key and no LLM. Cloud AI runs only when you add a key: on OpenRouter, a reviewer and suggested lines; on fal.ai, tools such as slow motion, music and voice. The writing jobs and the picture questions can run on your own model instead: any OpenAI-compatible server, local (Ollama, LM Studio, vLLM, llama.cpp) or hosted (Settings › Keys & AI › Your own AI model, or `STUDIO_LLM_BASE_URL` in `.env`). The agent you connect over MCP can use any model.
+
+```mermaid
+flowchart LR
+  UI["Studio page<br/>server/editor.html"] -- "HTTP" --> N["Node server<br/>server/review.mjs<br/>127.0.0.1:4317"]
+  AG["Your AI agent,<br/>any model"] -- "MCP" --> N
+  N --> PY["Python engine<br/>python -m studio<br/>CLIP search on your CPU"]
+  F[("Footage<br/>read only")] --> PY
+  PY --> R["Remotion and ffmpeg<br/>render"]
+  PY --> D[("Data folder<br/>catalog, renders, secrets")]
+  N -. "approved reels only" .-> P["YouTube, Facebook, Bluesky,<br/>your Chrome for X, TikTok and more"]
+  PY -. "only with your keys" .-> C["OpenRouter, fal.ai"]
+```
+
+Read more in [Architecture](docs/architecture.md): [the reel pipeline](docs/architecture.md#the-reel-pipeline), [every AI and ML model](docs/architecture.md#ai-and-ml-models), [run it fully local](docs/architecture.md#run-it-fully-local), [use your own LLM](docs/architecture.md#use-your-own-llm) and [what leaves your computer](docs/architecture.md#what-leaves-your-computer).
+
+**Filming for it?** The studio describes each file by three frames and takes at most one 1-4 s shot from a file per reel, so many short takes beat long recordings. [How it picks which moments to use](docs/architecture.md#how-it-picks-which-moments-to-use) · [Filming guide](docs/filming-guide.md): clip length, framing, settings, a checklist.
+
 ## Contents
 
 - [Connect your AI agent](#connect-your-ai-agent)
+- [How it works under the hood](#how-it-works-under-the-hood): the parts, the models, running fully local
 - [Quick start](#quick-start)
 - [The building blocks](#the-building-blocks)
 - [How it works](#how-it-works)
@@ -229,8 +250,8 @@ Nothing, unless you choose it. The studio, its search model, the music and the p
 | Optional service | What it adds | Needs |
 |:--|:--|:--|
 | [fal.ai](https://fal.ai) | Slow motion, sharpening, music made for a reel, a Japanese voice, a "living photo", sound effects, the music bed of a long video | Your key |
-| [OpenRouter](https://openrouter.ai) | An AI reviewer that suggests fixes and judges a new version, suggested new lines for the word bank, post angles | Your key |
-| [Together AI](https://together.ai) | Same kinds of tools, as an alternative | Your key |
+| [OpenRouter](https://openrouter.ai) | An AI reviewer that suggests fixes and judges a new version, suggested new lines for the word bank, post angles, chapter titles for long videos | Your key |
+| [Together AI](https://together.ai) | Nothing yet: Settings checks and saves the key, but no tool uses it | Your key |
 | [Firecrawl](https://firecrawl.dev) | **Research** (Posting › Research): reads the web for trends and events nearby (read-only) | Your key |
 
 - Every paid call is priced first and refused over your limits: by default 2 USD a day, 2 USD a reel and 20 USD in total. Change them in **Settings › Keys & AI**.
@@ -327,7 +348,8 @@ From a clone, without npm: `claude mcp add lazycow -- node C:\path\to\lazycow-st
 | Read | When you want to |
 |:--|:--|
 | [User guide](docs/user-guide.md) | use the studio page by page, or fix a problem |
-| [Architecture](docs/architecture.md) | know how the pieces fit, and where data lives |
+| [Filming guide](docs/filming-guide.md) | film footage the studio cuts well: take length, framing, settings, a checklist |
+| [Architecture](docs/architecture.md) | know how the pieces fit, which AI models run where, how to run it fully local, and where data lives |
 | [MCP](docs/mcp.md) | let an AI agent use the studio |
 | [Chrome link](docs/helper.md) | schedule X, TikTok, Google Maps, LINE and LinkedIn |
 | [Connected services](docs/integrations.md) | see each outside service and why it is used |

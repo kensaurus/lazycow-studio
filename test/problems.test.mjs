@@ -106,6 +106,12 @@ test("a network whose measured posts reached nobody is amber, with where to look
   assert.equal(found[0].also.href, "https://www.tiktok.com/tiktokstudio");
 });
 
+test("a network with a 0 median but one post that was seen is not 'reaching nobody' (Facebook, 17 Nov)", () => {
+  const perf = { networks: { facebook: { metric: "views", median: 0, posts: 7, silent: false },
+    bluesky: { metric: "engagements", median: 0, posts: 6, silent: true } } };
+  assert.deepEqual(findProblems({ perf, now: NOW }).map((f) => f.id), ["reach:bluesky"]);
+});
+
 test("every problem a check finds says itself in Japanese too: title, detail and the fix's label", () => {
   const posts = [
     { id: 1, slug: "a", network: "bluesky", status: "missing", at: "2026-11-11T19:00+09:00" },

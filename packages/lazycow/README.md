@@ -16,6 +16,22 @@ Approving a reel stays a person's job in the studio. Agents and scripts can make
 
 [Watch the 40-second demo](https://github.com/kensaurus/lazycow-studio/blob/main/docs/media/lazycow-demo.mp4) · [See the studio's pages](https://github.com/kensaurus/lazycow-studio#every-page-in-motion)
 
+## How it works
+
+The studio has three parts. A Node server (listening on `127.0.0.1:4317` only) serves the page and an HTTP API. A Python engine catalogs, tags and picks clips. Remotion and ffmpeg render the reels. Tagging and search use OpenCLIP on your own processor, so the main flow needs no key and no LLM. Cloud AI runs only when you add a key: on OpenRouter, a reviewer and suggested lines; on fal.ai, tools such as slow motion, music and voice. The writing jobs and the picture questions can run on your own model instead: any OpenAI-compatible server, local (Ollama, LM Studio, vLLM, llama.cpp) or hosted (Settings › Keys & AI › Your own AI model, or `STUDIO_LLM_BASE_URL` in `.env`). This package's MCP server calls no model itself, so your agent can use any model.
+
+```
+your agent ──MCP──▶ npx lazycow mcp ──HTTP──▶ studio server 127.0.0.1:4317 ──▶ Python engine (CLIP on your CPU)
+                                                     │                                 │
+                                         approved reels only                 Remotion + ffmpeg render
+                                                     ▼                                 ▼
+                                   YouTube, Facebook, Bluesky, your Chrome     data folder (catalog, renders)
+```
+
+Read more: [architecture and diagrams](https://github.com/kensaurus/lazycow-studio/blob/main/docs/architecture.md), [every AI and ML model](https://github.com/kensaurus/lazycow-studio/blob/main/docs/architecture.md#ai-and-ml-models), [run it fully local](https://github.com/kensaurus/lazycow-studio/blob/main/docs/architecture.md#run-it-fully-local), [use your own LLM](https://github.com/kensaurus/lazycow-studio/blob/main/docs/architecture.md#use-your-own-llm), [what leaves your computer](https://github.com/kensaurus/lazycow-studio/blob/main/docs/architecture.md#what-leaves-your-computer).
+
+Filming for it: each file gives at most one 1-4 s shot per reel, so film many short takes (5-15 s). [How it picks which moments to use](https://github.com/kensaurus/lazycow-studio/blob/main/docs/architecture.md#how-it-picks-which-moments-to-use) · [Filming guide](https://github.com/kensaurus/lazycow-studio/blob/main/docs/filming-guide.md) · [撮影ガイド](https://github.com/kensaurus/lazycow-studio/blob/main/docs/filming-guide.ja.md)
+
 ## Every page, in motion
 
 Recorded in the author's own studio (everyone on camera agreed). Each GIF opens, scrolls and plays a page; none presses Approve.

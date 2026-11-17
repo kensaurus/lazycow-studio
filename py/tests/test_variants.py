@@ -105,6 +105,9 @@ def test_video_networks_added_later_have_text_and_files():
     long_text = {**REEL, "posts": {**REEL["posts"], "x": "長い文。" * 120}}
     sky = _post_text(long_text, "bluesky")
     assert len(sky.rstrip("\n")) <= 300 and "utm_source=bluesky" in sky
+    # Two topic tags survive the trim (a post with none reaches followers only), never the brand's own handle tag.
+    tags = sky.rstrip("\n").split("\n")[-1].split()
+    assert tags[0] == "#キャンプ" and len(tags) == 2 and "#tsumagoicamp" not in tags
 
 
 def test_link_can_be_added_after_posting():

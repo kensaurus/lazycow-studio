@@ -15,6 +15,9 @@ NOTES: A post the network refuses is kept as "failed" with the reason, so it sho
 """
 from __future__ import annotations
 
+import os
+import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -237,10 +240,45 @@ def stories_from_schedule(now: datetime | None = None) -> dict:
     return {"queued": len(added), "stories": added, "dropped": len(dropped)}
 
 
+DUE_LOCK_STALE_S = 30 * 60  # a run holds the lock for minutes; one this old was left by a run that crashed or was stopped
+
+
+@contextmanager
+def _due_lock():
+    """One "publish --due" at a time per project. Two runs that read the same queued row both sent it: on 14 Nov one
+    reel went to Bluesky twice in the same second (the open project's minute tick and the other-projects tick, around a
+    project switch). Yields False when another run holds it."""
+    from studio.config import DATA
+
+    path = Path(DATA) / "post-due.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        if time.time() - path.stat().st_mtime > DUE_LOCK_STALE_S:
+            path.unlink(missing_ok=True)
+    except OSError:
+        pass
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        yield False
+        return
+    try:
+        os.write(fd, str(os.getpid()).encode())
+        os.close(fd)
+        yield True
+    finally:
+        path.unlink(missing_ok=True)
+
+
 def run_due() -> list[dict]:
     """Send every queued post whose time has come; one failure does not stop the rest. First, a post that came due
     while the studio was not running and is more than the catch-up grace late is marked missed instead of being
-    sent days late by surprise (studio.live.catch_up)."""
+    sent days late by surprise (studio.live.catch_up). Another run already sending for this project: nothing."""
+    with _due_lock() as mine:
+        return _run_due() if mine else []
+
+
+def _run_due() -> list[dict]:
     from studio import live
 
     results = []

@@ -1117,7 +1117,32 @@ def parse_review(text: str) -> dict:
 
 def vision_json(images: list[Path], system: str, prompt: str, slug: str, purpose: str = "vision", max_tokens: int = 1200) -> dict:
     """One question about a few pictures (JPEGs) to the reviewer's vision model, answered as JSON. Priced first, charged to
-    the ledger as ai-<purpose> for `slug`, refused over a limit like every other AI call."""
+    the ledger as ai-<purpose> for `slug`, refused over a limit like every other AI call. With your own vision model set
+    (STUDIO_LLM_BASE_URL + STUDIO_LLM_VISION_MODEL, config.own_llm) it goes there instead: no key, nothing charged."""
+    from studio.config import own_llm
+
+    own = own_llm(vision=True)
+    if own:
+        content = [{"type": "text", "text": prompt}] + [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(Path(p).read_bytes()).decode("ascii")}} for p in images]
+        payload = {"model": own["model"], "messages": [{"role": "system", "content": system}, {"role": "user", "content": content}],
+                   "response_format": {"type": "json_object"}, "max_tokens": max_tokens, "temperature": 0.2}
+        headers = {"Content-Type": "application/json", **({"Authorization": f"Bearer {own['key']}"} if own["key"] else {})}
+        status, _, raw = _http("POST", own["url"], "your model server", data=json.dumps(payload).encode("utf-8"), headers=headers, timeout=600)
+        if status == 400:  # LM Studio refuses response_format json_object (it takes json_schema or text): ask in plain text
+            payload.pop("response_format", None)
+            status, _, raw = _http("POST", own["url"], "your model server", data=json.dumps(payload).encode("utf-8"), headers=headers, timeout=600)
+        body = _json(raw)
+        if status >= 400 or body.get("error"):
+            raise AiError(f"Your model server ({own['url']}) refused: {str(body.get('error') or status)[:200]}", "upstream", 502)
+        try:
+            text = body["choices"][0]["message"]["content"]
+            if isinstance(text, list):
+                text = "".join(x.get("text", "") for x in text if isinstance(x, dict))
+            text = re.sub(r"^```(json)?|```$", "", (text or "").strip()).strip()
+            hit = text if text.startswith("{") else re.search(r"\{[\s\S]*\}", text).group(0)
+            return json.loads(hit)
+        except (KeyError, IndexError, TypeError, ValueError, AttributeError):
+            raise AiError(f"Your model ({own['model']}) sent back no JSON.", "upstream", 502) from None
     key = reviewer_key()
     if not key:
         raise AiError("No OpenRouter key: add one in Settings › Keys & AI.", "no_key", 400)
@@ -1385,6 +1410,7 @@ def status(req: dict | None = None) -> dict:
             "byTool": by_tool, "room": {"total": round(c["total"] - s["total"], 4), "today": round(c["daily"] - s["today"], 4)},
             "tools": [{"tool": t, "provider": TOOLS[t][0], "model": TOOLS[t][1], "labelRequired": TOOLS[t][2], "what": TOOLS[t][3]} for t in ORDER],
             "reviewModel": _env("STUDIO_AI_REVIEW_MODEL") or REVIEW_MODEL, "paidTagging": bool(openrouter_key()),
+            "ownLlm": own_llm_view(),
             "summary": (f"AI assist: {_usd(s['total'])} of {_usd(c['total'])} spent, {_usd(s['today'])} today (daily budget {_usd(c['daily'])}); "
                         f"{_usd(c['reel'])} per reel.")}
 
@@ -1563,8 +1589,74 @@ def credits(req: dict | None = None) -> dict:
     return {"providers": out, "caps": caps(), "spent": spent()}
 
 
+LLM_ENV = {"base_url": "STUDIO_LLM_BASE_URL", "model": "STUDIO_LLM_MODEL", "vision_model": "STUDIO_LLM_VISION_MODEL",
+           "api_key": "STUDIO_LLM_API_KEY"}
+# Where people usually run one, for the Settings page's quick fill (all speak the OpenAI chat API).
+LLM_PRESETS = [{"name": "Ollama", "base_url": "http://127.0.0.1:11434/v1", "model": "qwen3:8b", "vision_model": "qwen3-vl:8b"},
+               {"name": "LM Studio", "base_url": "http://127.0.0.1:1234/v1", "model": "", "vision_model": ""},
+               {"name": "vLLM / llama.cpp", "base_url": "http://127.0.0.1:8000/v1", "model": "", "vision_model": ""},
+               {"name": "OpenAI", "base_url": "https://api.openai.com/v1", "model": "", "vision_model": ""},
+               {"name": "Groq", "base_url": "https://api.groq.com/openai/v1", "model": "", "vision_model": ""},
+               {"name": "OpenRouter (any model)", "base_url": "https://openrouter.ai/api/v1", "model": "", "vision_model": ""}]
+
+
+def own_llm_view() -> dict | None:
+    """What Settings shows about your own model server: never the key itself."""
+    from studio.config import own_llm
+
+    own = own_llm()
+    if not own:
+        return None
+    return {"url": own["url"].removesuffix("/chat/completions"), "model": own["model"],
+            "visionModel": (own_llm(vision=True) or {}).get("model") or "", "hasKey": bool(own["key"])}
+
+
+def save_llm(req: dict) -> dict:
+    """Your own OpenAI-compatible model server, checked (its /models list answers and has the models named), then saved
+    in .env as STUDIO_LLM_*. An empty base_url removes it (back to OpenRouter). The key is never echoed."""
+    base = str(req.get("base_url") or "").strip().rstrip("/")
+    if not base:
+        for name in LLM_ENV.values():
+            _upsert_env(name, None)
+            os.environ.pop(name, None)
+        return {"saved": False, "removed": True, "ownLlm": None}
+    if not re.fullmatch(r"https?://[^\s/$.?#][^\s]{0,290}", base):
+        raise AiError("The address must start with http:// or https://, for example http://127.0.0.1:11434/v1 for Ollama.", "bad_input", 400)
+    model, vision = str(req.get("model") or "").strip(), str(req.get("vision_model") or "").strip()
+    for label, v in (("model", model), ("vision model", vision)):
+        if (label == "model" and not v) or (v and not re.fullmatch(r"[^\s]{1,200}", v)):
+            raise AiError(f"Name the {label} as your server lists it, for example qwen2.5:7b-instruct.", "bad_input", 400)
+    key = req.get("api_key")
+    if key is not None and (not isinstance(key, str) or len(key) > 400 or re.search(r"\s", key.strip())):
+        raise AiError("Paste the key as one line of text, or leave it empty.", "bad_key", 400)
+    use_key = (key if key is not None else _env("STUDIO_LLM_API_KEY") or "").strip()
+    st, _, raw = _http("GET", f"{base}/models", f"your model server ({base})",
+                       headers={"Authorization": f"Bearer {use_key}"} if use_key else {}, timeout=15)
+    if st >= 400:
+        raise AiError(f"Your model server ({base}) answered {st} to /models: {_said(_json(raw))[:160] or 'check the address and key'}.", "bad_key", 400)
+    ids = [str(m.get("id")) for m in (_json(raw).get("data") or []) if isinstance(m, dict) and m.get("id")]
+    for v in (model, vision):
+        if v and ids and v not in ids:
+            raise AiError(f"{v} is not on that server. It has: {', '.join(ids[:12])}{' …' if len(ids) > 12 else ''}.", "bad_input", 400)
+    values = {"base_url": base, "model": model, "vision_model": vision or None}
+    if key is not None:
+        values["api_key"] = key.strip() or None
+    for field, value in values.items():
+        _upsert_env(LLM_ENV[field], value)
+        if value is None:
+            os.environ.pop(LLM_ENV[field], None)
+        else:
+            os.environ[LLM_ENV[field]] = value
+    return {"saved": True, "removed": False, "models": ids[:50], "ownLlm": own_llm_view()}
+
+
+def llm_presets(req: dict | None = None) -> dict:
+    return {"presets": LLM_PRESETS, "ownLlm": own_llm_view()}
+
+
 ACTIONS = {"status": status, "estimate": estimate, "run": run, "review": review, "last-review": last_review,
-           "check-key": check_key, "save-key": save_key, "save-caps": save_caps, "credits": credits}
+           "check-key": check_key, "save-key": save_key, "save-caps": save_caps, "credits": credits,
+           "save-llm": save_llm, "llm-presets": llm_presets}
 
 
 def call(action: str, req: dict) -> dict:

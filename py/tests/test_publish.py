@@ -65,6 +65,26 @@ def test_a_network_without_schedules_is_queued_then_sent_when_due(net):
     assert sent and sent[0]["status"] == "posted" and _row(out["id"])["status"] == "posted"
 
 
+def test_a_second_due_run_sends_nothing_while_one_is_sending(net):
+    """14 Nov: two runs read the same queued Bluesky post and both sent it."""
+    from studio.config import DATA
+    from studio.db import connect
+    mod = net(Fake(can_schedule=False))
+    later = (datetime.now(timezone.utc) + timedelta(hours=2)).astimezone().isoformat(timespec="minutes")
+    out = publish.publish("pub-lock", "bluesky", later)
+    past = (datetime.now(timezone.utc) - timedelta(minutes=1)).astimezone().isoformat(timespec="minutes")
+    with connect() as con:
+        con.execute("UPDATE posts SET at = ? WHERE id = ?", (past, out["id"]))
+    lock = Path(DATA) / "post-due.lock"
+    lock.write_text("123")
+    try:
+        assert publish.run_due() == [] and not mod.calls and _row(out["id"])["status"] == "queued"
+    finally:
+        lock.unlink(missing_ok=True)
+    sent = [r for r in publish.run_due() if r["id"] == out["id"]]
+    assert sent[0]["status"] == "posted" and len(mod.calls) == 1 and not lock.exists()
+
+
 def test_a_network_that_holds_schedules_gets_the_time(net):
     mod = net(Fake(can_schedule=True))
     later = (datetime.now(timezone.utc) + timedelta(days=1)).astimezone().isoformat(timespec="minutes")

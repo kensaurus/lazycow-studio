@@ -13,7 +13,8 @@ Every outside service the studio talks to, why it uses it, and what is worth add
 | Google Photos Picker API | Import picked photos and videos | OAuth, read-only scope | `%STUDIO_DATA%\secrets` |
 | Firecrawl | Posting › Research: web research, read-only | API key | `FIRECRAWL_API_KEY` in `.env` |
 | OpenRouter | The AI reviewer (also the judge of a new version), Research angles, Words suggestions (the owner approves each), long-video chapter names | API key, inside the daily budget | `.env` |
-| fal.ai, Together AI | Paid AI tools on a reel (slow motion, sharpen, music, voice); the music bed of a long video | API key, priced first, inside the limits | `.env` |
+| fal.ai | Paid AI tools on a reel (slow motion, sharpen, music, voice); the music bed of a long video | API key, priced first, inside the limits | `.env` |
+| Together AI | Nothing yet: Settings checks and saves the key and the Log shows its balance, but no tool calls it | API key | `.env` |
 | Openverse | CC0 and public-domain music | No key, 200 searches a day | — |
 
 ## Why Chrome, not the networks' APIs
