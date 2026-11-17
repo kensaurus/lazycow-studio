@@ -1,7 +1,7 @@
 {
   "_documentation": {
     "FILE": "shared/support.json",
-    "PURPOSE": "Where people pay for Lazycow Studio's development: one place for the links the About window, README, SUPPORTING.md and .github/FUNDING.yml show.",
+    "PURPOSE": "Where people pay for Lazycow Studio's development: one place for the links the About window, README, docs/SUPPORTING.md and .github/FUNDING.yml show.",
     "NOTES": "Stripe Payment Links on the kensaurus合同会社 account (live, Stripe Tax on, tax-inclusive prices). Not a donation: Stripe Japan does not allow donations to a company without a gift agreement, so these are paid plans with small, real benefits (SUPPORTING.md). Changing a price means a new Stripe price and link; update this file and SUPPORTING.md together."
   },
   "legal": "https://kensaur.us/tokushoho/",

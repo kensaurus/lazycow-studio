@@ -1,7 +1,7 @@
 {
   "name": "lazycow-studio",
   "private": true,
-  "version": "0.17.1",
+  "version": "0.17.2",
   "description": "Turn your own footage into short vertical videos (Reels, Shorts, TikTok) on your own computer: auto-picked clips, beat cuts, approved words, CC0 music, review and scheduling.",
   "author": "Kenji Sakuramoto (https://kensaur.us)",
   "contributors": [
@@ -10,7 +10,7 @@
   "homepage": "https://kensaur.us",
   "funding": {
     "type": "individual",
-    "url": "https://github.com/kensaurus/lazycow-studio/blob/main/SUPPORTING.md"
+    "url": "https://github.com/kensaurus/lazycow-studio/blob/main/docs/SUPPORTING.md"
   },
   "type": "module",
   "scripts": {

@@ -354,9 +354,9 @@ The studio's code is under the **[Apache License 2.0](LICENSE)**.
 
 > **Remotion is not open source in the same way.** The studio uses [Remotion](https://www.remotion.dev) to draw the words on screen. Remotion has its own licence: it is free for individuals, non-profits and companies of up to 3 people. **A for-profit company with more than 3 people needs a [Remotion company licence](https://www.remotion.dev/license) to make reels with the studio.** That licence is between you and Remotion; the studio's Apache licence does not cover it.
 
-Every other component, model, font and piece of music, with its licence, is listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The fonts in `public/fonts` each have their licence file beside them. Each reel's music credit travels with it in `credits.txt`.
+Every other component, model, font and piece of music, with its licence, is listed in [THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md). The fonts in `public/fonts` each have their licence file beside them. Each reel's music credit travels with it in `credits.txt`.
 
-The names "Lazycow" and "Lazycow Studio" and the icon are trademarks of kensaurus LLC and are not covered by the licence. A fork needs its own name and icon: see [TRADEMARKS.md](TRADEMARKS.md).
+The names "Lazycow" and "Lazycow Studio" and the icon are trademarks of kensaurus LLC and are not covered by the licence. A fork needs its own name and icon: see [TRADEMARKS.md](docs/TRADEMARKS.md).
 
 ## Credit and contributing
 
@@ -364,7 +364,7 @@ Lazycow Studio is made by **Kenji Sakuramoto ([kensaurus](https://kensaur.us))**
 
 - **Using it?** Nothing to do. A link back to https://kensaur.us is always appreciated.
 - **Forking it?** Keep `LICENSE` and [`NOTICE`](NOTICE), give your fork its own name and icon, and please keep "Based on Lazycow Studio by kensaurus" in your About screen.
-- **Helping?** Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). Security problems: [SECURITY.md](SECURITY.md).
+- **Helping?** Read [CONTRIBUTING.md](.github/CONTRIBUTING.md) and the [Code of Conduct](.github/CODE_OF_CONDUCT.md). Security problems: [SECURITY.md](.github/SECURITY.md).
 - **Writing about it?** Use "Cite this repository" on GitHub ([CITATION.cff](CITATION.cff)).
 
 ## Support Lazycow
@@ -377,4 +377,4 @@ amount, or monthly with small benefits (your requests looked at first, your name
 | **Pay once** | [In yen](https://buy.stripe.com/28E4gB2AoalOaiIc6abII0c) · [In US dollars](https://buy.stripe.com/14A5kFa2Q0LeaiIeeibII0d) |
 | **Monthly** | [Supporter ¥500 / $4](https://buy.stripe.com/cNifZj8YM0Le1McgmqbII0e) · [Backer ¥1,500 / $10](https://buy.stripe.com/00w00l2Ao0LecqQb26bII0f) · [Sponsor ¥5,000 / $35](https://buy.stripe.com/6oU6oJ3Es2TmduUgmqbII0g) |
 
-What each plan includes, and how to cancel: [SUPPORTING.md](SUPPORTING.md). Thank you to [everyone who does](SUPPORTERS.md).
+What each plan includes, and how to cancel: [SUPPORTING.md](docs/SUPPORTING.md). Thank you to [everyone who does](docs/SUPPORTERS.md).

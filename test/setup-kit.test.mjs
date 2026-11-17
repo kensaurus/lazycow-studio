@@ -33,7 +33,7 @@ test("README.TXT walks through the steps and the files it names exist", () => {
   for (const n of [1, 2, 3, 4, 5, 6, 7]) assert.match(txt, new RegExp(`STEP ${n}\\.`), `STEP ${n}`);
   assert.match(txt, /There is no step 7/);
   assert.match(txt, /No crack\. It is free\./);
-  for (const f of ["Start Lazycow.cmd", "Start Lazycow.command", "scripts/bootstrap/windows.ps1", "scripts/bootstrap/mac.sh", "scripts/bootstrap/versions.json", "SUPPORTING.md", "AUTORUN.INF"]) assert.ok(has(f), f);
+  for (const f of ["Start Lazycow.cmd", "Start Lazycow.command", "scripts/bootstrap/windows.ps1", "scripts/bootstrap/mac.sh", "scripts/bootstrap/versions.json", "docs/SUPPORTING.md", "AUTORUN.INF"]) assert.ok(has(f), f);
 });
 
 test("Start Lazycow runs the installer the first time and the app after that", () => {

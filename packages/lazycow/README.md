@@ -115,6 +115,6 @@ Node 20 or newer. The studio itself runs on Windows 10/11 and macOS 14+ (Apple s
 
 ## Credits and licence
 
-Made by **kensaurus** (Kenji Sakuramoto, [kensaur.us](https://kensaur.us)). Apache-2.0: if you redistribute it or build on it, keep the `NOTICE` file, and please keep the line "Based on Lazycow Studio by kensaurus". "Lazycow" and the sleepy-cow icon are trademarks of kensaurus LLC ([TRADEMARKS.md](https://github.com/kensaurus/lazycow-studio/blob/main/TRADEMARKS.md)).
+Made by **kensaurus** (Kenji Sakuramoto, [kensaur.us](https://kensaur.us)). Apache-2.0: if you redistribute it or build on it, keep the `NOTICE` file, and please keep the line "Based on Lazycow Studio by kensaurus". "Lazycow" and the sleepy-cow icon are trademarks of kensaurus LLC ([TRADEMARKS.md](https://github.com/kensaurus/lazycow-studio/blob/main/docs/TRADEMARKS.md)).
 
-Like it? [Support Lazycow](https://github.com/kensaurus/lazycow-studio/blob/main/SUPPORTING.md): supporters get their feature requests looked at first.
+Like it? [Support Lazycow](https://github.com/kensaurus/lazycow-studio/blob/main/docs/SUPPORTING.md): supporters get their feature requests looked at first.

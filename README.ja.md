@@ -140,7 +140,7 @@ Lazycow Studioは、[kensaurus](https://kensaur.us/?view=portfolio&utm_source=la
 
 スタジオは無料で、これからも無料です。編集の手間が減ったと感じたら、開発費としてお支払いいただけます。一度だけでも（金額は自由）、月額でも（月 ¥500 から）大丈夫です。支払ってもアプリの機能は増えません。
 
-プランの内容と解約の方法: [SUPPORTING.md の日本語の説明](SUPPORTING.md#日本語)
+プランの内容と解約の方法: [SUPPORTING.md の日本語の説明](docs/SUPPORTING.md#日本語)
 
 ## ライセンス
 
@@ -148,7 +148,7 @@ Lazycow Studioは、[kensaurus](https://kensaur.us/?view=portfolio&utm_source=la
 
 > **Remotion のライセンスは別です。** 画面の文字を描くのに [Remotion](https://www.remotion.dev) を使っています。Remotion は個人、非営利団体、3人までの会社なら無料です。**4人以上の営利企業がこのスタジオでリールを作るには、[Remotion の会社向けライセンス](https://www.remotion.dev/license)が必要です。** これはあなたと Remotion の間の契約で、スタジオの Apache ライセンスには含まれません。
 
-ほかの部品、モデル、フォント、音楽とそれぞれのライセンスは [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) にあります。「Lazycow」「Lazycow Studio」という名前とアイコンは kensaurus LLC の商標で、ライセンスの対象外です。フォークするときは、別の名前とアイコンを付けてください（[TRADEMARKS.md](TRADEMARKS.md)）。
+ほかの部品、モデル、フォント、音楽とそれぞれのライセンスは [THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) にあります。「Lazycow」「Lazycow Studio」という名前とアイコンは kensaurus LLC の商標で、ライセンスの対象外です。フォークするときは、別の名前とアイコンを付けてください（[TRADEMARKS.md](docs/TRADEMARKS.md)）。
 
 ## 作者
 

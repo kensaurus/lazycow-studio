@@ -77,7 +77,7 @@
 
   STEP 7.  There is no step 7. No serial number. No CD key.
            No crack. It is free. Really.
-           (If you love it, see SUPPORTING.md. That is optional.)
+           (If you love it, see docs/SUPPORTING.md. That is optional.)
 
 
 ---------------------------------------------------------------------
@@ -127,10 +127,10 @@
 ---------------------------------------------------------------------
 
   Code: Apache License 2.0 (LICENSE). The names "Lazycow" and
-  "Lazycow Studio" and the icon are trademarks (TRADEMARKS.md).
+  "Lazycow Studio" and the icon are trademarks (docs/TRADEMARKS.md).
   ffmpeg is GPL; its licence goes in your data folder's bin.
   Remotion is free for individuals and teams of up to 3; bigger
-  companies need a Remotion licence. Details: THIRD_PARTY_NOTICES.md
+  companies need a Remotion licence. Details: docs/THIRD_PARTY_NOTICES.md
 
 
 =====================================================================

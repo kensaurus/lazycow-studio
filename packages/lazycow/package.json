@@ -1,6 +1,6 @@
 {
   "name": "lazycow",
-  "version": "0.17.1",
+  "version": "0.17.2",
   "description": "Lazycow Studio by kensaurus: MCP server, API client and one-line installer for the local-first video studio that turns your footage into reels and trip films.",
   "keywords": [
     "lazycow",
@@ -42,7 +42,7 @@
   },
   "funding": {
     "type": "individual",
-    "url": "https://github.com/kensaurus/lazycow-studio/blob/main/SUPPORTING.md"
+    "url": "https://github.com/kensaurus/lazycow-studio/blob/main/docs/SUPPORTING.md"
   },
   "mcpName": "io.github.kensaurus/lazycow",
   "type": "module",

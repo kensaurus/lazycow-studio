@@ -2,6 +2,14 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.17.2 (2026-11-17)
+
+### Changed
+- **Fewer files at the top of the repository.** CODE_OF_CONDUCT.md, CONTRIBUTING.md and SECURITY.md are in `.github/`
+  (GitHub still shows them in the sidebar); SUPPORTING.md, SUPPORTERS.md, TRADEMARKS.md and THIRD_PARTY_NOTICES.md are
+  in `docs/`. Every link follows them, and the About window opens them as before. The support link in the npm package
+  is `docs/SUPPORTING.md`.
+
 ## 0.17.1 (2026-11-17)
 
 ### Added

@@ -59,4 +59,4 @@ CI runs the same on Ubuntu (`.github/workflows/ci.yml`). Add or change tests wit
 
 ## Licence
 
-The project is under the [Apache License 2.0](LICENSE). By sending a pull request you agree that your contribution is licensed the same way (section 5 of the licence). The names "Lazycow" and "Lazycow Studio" and the icon are not covered: see [TRADEMARKS.md](TRADEMARKS.md).
+The project is under the [Apache License 2.0](../LICENSE). By sending a pull request you agree that your contribution is licensed the same way (section 5 of the licence). The names "Lazycow" and "Lazycow Studio" and the icon are not covered: see [TRADEMARKS.md](../docs/TRADEMARKS.md).
