@@ -553,3 +553,13 @@ def test_reach_calls_a_network_stalled_when_several_posts_days_out_all_have_noth
     assert by["bluesky"]["stalled"] and not by["bluesky"]["hasViews"], "no reactions on a network without views counts too"
     assert not by["facebook"]["stalled"], "the oldest is 36 h out: too early to say"
     assert not by["youtube"]["stalled"]
+
+
+def test_a_page_reel_missing_from_the_log_is_matched_to_its_reel_never_guessed():
+    """16 Nov: the one Facebook reel with 100 plays was not in the posting log, so Results said Facebook got nothing."""
+    texts = {"view": "不便だからこそ、景色がいい。\n本文A", "aerial-1109": "不便だからこそ、景色がいい。\n本文B",
+             "fire-1108": "火をわけあう。\n本文", "warm-1107": "寒いからこそ。\n本文"}
+    assert perf.match_reel("不便だからこそ、景色がいい。\n本文A", texts) == "view", "exact text wins"
+    assert perf.match_reel("火をわけあう。\n少し違う本文", texts) == "fire-1108", "a unique first line"
+    assert perf.match_reel("不便だからこそ、景色がいい。\n別の本文", texts) is None, "two reels share the line: no guess"
+    assert perf.match_reel("", texts) is None and perf.match_reel("知らない文", texts) is None

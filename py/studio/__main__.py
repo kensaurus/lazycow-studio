@@ -187,6 +187,7 @@ def main() -> None:
     pub.add_argument("--at", default=None)
     pub.add_argument("--id", type=int, default=None)
     pub.add_argument("--due", action="store_true")
+    pub.add_argument("--stories", action="store_true", help="queue an Instagram Story beside every booked YouTube reel")
     pub.add_argument("--replace", type=int, default=None, help="swap this booking for the reel's current render")
 
     extra = sub.add_parser("extras")
@@ -515,6 +516,8 @@ def main() -> None:
 
         if args.due:
             out = publish.run_due()
+        elif args.stories:
+            out = publish.stories_from_schedule()
         elif args.replace:
             print(f"STAGE 1/2 replacing booking {args.replace}", flush=True)
             out = publish.replace(args.replace)

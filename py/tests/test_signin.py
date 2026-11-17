@@ -356,9 +356,10 @@ def test_facebook_login_link_asks_for_the_page_permissions_and_business_on_local
     assert q["client_id"] == APP_ID and q["redirect_uri"] == "http://localhost:4317/oauth/facebook" and q["response_type"] == "code"
     # business_management too: a Page kept in a business portfolio is not listed without it;
     # read_insights so studio.perf can read each reel's plays and watch time; the last two read and answer comments
-    # (Results › Comments: GET and POST /{comment-id}/comments need them).
+    # (Results › Comments: GET and POST /{comment-id}/comments need them); the Instagram two post stories to the
+    # Instagram account linked to the Page (studio.connectors.instagram_story).
     assert q["scope"] == ("pages_show_list,pages_read_engagement,pages_manage_posts,business_management,read_insights,"
-                          "pages_read_user_content,pages_manage_engagement") and len(q["state"]) > 20
+                          "pages_read_user_content,pages_manage_engagement,instagram_basic,instagram_content_publish") and len(q["state"]) > 20
 
 
 BIZ_PERMS = {"data": [{"permission": p, "status": "granted"} for p in facebook.NEEDED + facebook.OPTIONAL]}

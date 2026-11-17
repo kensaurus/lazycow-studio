@@ -51,6 +51,7 @@ This needs Node 20 or newer on your PATH. The double-click setup keeps its own N
 - [Quick start](#quick-start)
 - [The building blocks](#the-building-blocks)
 - [How it works](#how-it-works)
+- [Every page, in motion](#every-page-in-motion): a GIF of each page
 - [A person approves every post](#a-person-approves-every-post)
 - [Everything stays on your computer](#everything-stays-on-your-computer)
 - [What you need](#what-you-need)
@@ -151,6 +152,18 @@ flowchart LR
 ![The Reels page: reels waiting for review, each with its first frame and its words](docs/img/reels.webp)
 
 Three programs run on one computer: a Node server and the studio page (`server/`), a Python pipeline (`py/studio/`), and Remotion for the words on screen (`src/`). More in [docs/architecture.md](docs/architecture.md).
+
+## Every page, in motion
+
+Recorded in the author's own studio, which makes the reels for 嬬恋牧場Work&Camp in Gunma (everyone on camera agreed). Each GIF opens, scrolls and plays a page; none of them presses Approve.
+
+| | |
+|:--|:--|
+| ![Reels: the Studio Monitor with reels by stage, the next posts and a 7-day grid of every network, then every reel by the day it was made](docs/img/pages/reels.gif) **Reels.** The Studio Monitor shows reels by stage, what is being made, the next posts, and a 7-day grid with a block on each day a network posts. Below it, every reel, grouped by the day it was made. | ![Review: a reel plays beside its clips and words, with Approve, New words and Open](docs/img/pages/review.gif) **Review.** Watch each reel beside its clips and its words. The line under them names the networks that **Approve** books it on. |
+| ![The reel editor: library, player, properties and a timeline of words, clips, music and effects](docs/img/pages/editor.gif) **The reel editor.** Library, player, properties and a timeline of words, clips, music and effects, on one screen. | ![Posting: the calendar of every booking with each day's times and headline, filtered by network](docs/img/pages/posting.gif) **Posting.** Every booking on a calendar, with each day's post times and headline. The network buttons filter it. |
+| ![Results: views by network, the networks that show posts to nobody, a per-network table and every post's numbers](docs/img/pages/results.gif) **Results.** Views by network, the networks showing your posts to nobody, views per post side by side, and every post's numbers. | ![Footage: where clips come from and every clip, marked used or unused](docs/img/pages/footage.gif) **Footage.** Where the clips come from (Drive folders, Google Photos picks, a Google Form) and which ones no reel has used yet. |
+| ![Settings › Accounts: each network, how it gets posted, and the one step left](docs/img/pages/accounts.gif) **Settings › Accounts.** Each network, how it gets posted (by the studio, in your Chrome, or by hand), and the one step left. | ![The setup wizard, InstallShield style, with a step list and a progress bar](docs/img/pages/setup.gif) **Setup.** A 1998 InstallShield-style wizard walks through each step, with Lazy Kenji. |
+| ![The DO NOT CLICK pop-up tour: 1999-style pop-up windows explain each page](docs/img/pages/popups.gif) **DO NOT CLICK.** The opt-in pop-up tour: Lazy Kenji explains every page in 1999 browser pop-ups. Esc stops it. | The same GIFs are in the [user guide](docs/user-guide.md#a-tour-page-by-page), page by page. Make your own with `node scripts/docs-gifs.mjs`. |
 
 ## A person approves every post
 

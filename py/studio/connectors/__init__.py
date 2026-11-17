@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from types import ModuleType
 
-from studio.connectors import bluesky, facebook
+from studio.connectors import bluesky, facebook, instagram_story
 
-REGISTRY: dict[str, ModuleType] = {"bluesky": bluesky, "facebook": facebook}
+REGISTRY: dict[str, ModuleType] = {"bluesky": bluesky, "facebook": facebook, "instagram-story": instagram_story}
 
 
 def get(net: str) -> ModuleType:

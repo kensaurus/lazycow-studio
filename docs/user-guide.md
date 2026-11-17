@@ -31,6 +31,12 @@ New here, with no terminal? Download the release zip, unzip it, read **README.TX
 you like your tours loud, press the blinking **DO NOT CLICK** button at the end of the setup guide (or find "90s pop-up
 tour" with Ctrl K): pop-up windows explain every page, 1999 style. Esc, or **MAKE IT STOP**, ends it.
 
+| | |
+|:--|:--|
+| ![The setup wizard, InstallShield style: the step list on the left, Lazy Kenji, Back and Next, a progress bar](img/pages/setup.gif) *The setup guide. Each step says what it needs; a green tick appears as each one is done.* | ![The DO NOT CLICK pop-up tour: 1999-style windows explain each page](img/pages/popups.gif) *The pop-up tour, for the brave. Esc stops it.* |
+
+*The GIFs in this guide are recorded in the author's own studio (嬬恋牧場Work&Camp). They open, scroll and play pages; none of them approves or books anything. `node scripts/docs-gifs.mjs` records them again.*
+
 The page shows a **Getting started** list until each step is done. The steps, in order:
 
 1. **System** (top bar). Every line is green or amber. A red line says what is missing.
@@ -57,11 +63,17 @@ The top bar has five sections, in the order work moves: **Footage**, **Reels**, 
 
 ### Footage
 
-![Footage: every clip and photo with how often it was used, a word search and tag filters](img/footage.webp)
+![Footage: where clips come from, then every clip and photo grouped by where it came from, marked used or unused, filtered to videos](img/pages/footage.gif)
 
-Every photo and video the studio can use, with its tags. **Fresh footage** says how many more reels your unused clips can make, and what to film next.
+Every photo and video the studio can use, with its tags. **Where footage comes from** lists each place it reads (a Drive folder, the Google Photos picks, a Google Form) and how many files each holds. **Fresh footage** says how many more reels your unused clips can make, and what to film next.
+
+**Add from Google Photos** opens Google's picker: since March 2025 an app can only read the photos you pick there, so a renamed or new album is not seen until you pick its items. Search does not find album names in the picker; open the album in Google Photos to see what is in it.
 
 ### Reels
+
+![Reels: the reels waiting for review beside the Studio Monitor (reels by stage, work running now, the next posts, a 7-day grid of every network), then every reel](img/pages/reels.gif)
+
+The page opens on the reels waiting for you and the **Studio Monitor**: how many reels are at each stage, what is being made now, every post of the next time slot, and **Next 7 days on the networks** (a block on each day a network posts; hover a block for the time and the reel). Below, every reel. **Group by** sorts them by kind, by stage, or by **When made** (today, yesterday, then each day of the last week, then by month). A card shows where the reel is booked or out; hover it for **Post**, **New version**, **Other opening** and **Don't post**. A reel that is not posting says why: rejected in review, replaced by a new cut, or set aside. A person badge means someone can be recognised and has not agreed yet.
 
 ![Reels › Make reels: pick themes, then make them; the reels waiting for review below](img/make-reels.webp)
 
@@ -72,6 +84,16 @@ Every photo and video the studio can use, with its tags. **Fresh footage** says 
 | **To review** | Reels waiting for your yes or no. **Start reviewing** opens the first one. |
 | **Words** | The word bank: every approved headline and line, and how often reels repeat them |
 | **Long videos** | Long YouTube videos from a trip (see [A long video from a trip](#a-long-video-from-a-trip)) |
+
+#### To review
+
+![To review: a reel plays beside its clips and its words; Approve, New words and Open on the right](img/pages/review.gif)
+
+Each reel waiting for you, one row each: the reel (press it to play), its score, its words, every clip it uses, and notes such as clips to look at or faces that need consent. **Approving books it on** names the networks it will go to. **Approve**, **New words** or **Open**. Keys: J and K move, A approves, R draws new words.
+
+#### The reel editor
+
+![The reel editor: the library on the left, the player, the reel's properties, and the timeline of words, clips, music and effects](img/pages/editor.gif)
 
 Open a reel to edit it. The editor has the clips on a timeline, the words, the music and the reel's style.
 
@@ -88,11 +110,9 @@ The draw rarely repeats what the last four reels used. Night and fire reels keep
 
 ### Posting
 
-![The posting calendar: a month of booked posts, one icon per network per day](img/posting-calendar.webp)
+![Posting: "Before these go out", then the calendar with each day's post times and headline; the Instagram Story and YouTube filters](img/pages/posting.gif)
 
-![Posting: "Before these go out" lists what needs you first; Runs by itself stays folded](img/posting.webp)
-
-*Posting › Calendar. Each icon is one booked post. A solid border means the network holds it; a dashed border means the studio sends it.*
+*Posting › Calendar. Each icon is one booked post. A solid border means the network holds it; a dashed border means the studio sends it. Each day shows its post times and the reel it uses on the most networks; past weeks with nothing in them are left out.*
 
 | Tab or link | What it is for |
 |:--|:--|
@@ -108,11 +128,17 @@ The top of the page also shows **Runs by itself**, the swap of older bookings, a
 
 ### Results
 
+![Results: views this week, the best post and the next post; views by network; the networks that show posts to nobody; views per post side by side; every post's numbers](img/pages/results.gif)
+
+The top says how many people saw your posts this week and on which networks. A red box names any network that shows your posts to nobody, with what to check there. **Each network, side by side** compares posts, views per post, reactions and the best post. **Every post** lists each post with its latest numbers.
+
 **How reels did** compares cut styles, themes and lengths on each network. Numbers come about 3 days after a post. They mean little before about 15 measured posts. **Activity log** lists every finished job, with how long it took and why it failed.
 
 ### Settings
 
-![Settings › Accounts: each network grouped by what is left to do, one button on each card](img/accounts.webp)
+![Settings › Accounts: each network grouped by what is left to do, one button on each card](img/pages/accounts.gif)
+
+The Facebook card also says whether **Instagram Stories** are on: every reel booked on YouTube then goes out as a story (shown for 24 hours) at the same time. They use the Facebook connection; **Connect again with Instagram** asks for the two Instagram permissions.
 
 | Tab | What it is for |
 |:--|:--|

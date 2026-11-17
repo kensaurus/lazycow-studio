@@ -637,6 +637,13 @@ export function scheduleRefusal({ status, slug, network, at, posts = [], now = D
     (Google Maps 12:00 on Fridays and Saturdays only), skipping days a network already has a post, never the
     same reel twice on one network, and never the same headline on one network on two days in a row.
     reels: [{slug, headline, networks}] (approved, with files for those networks). Returns {plan, skipped}. */
+/* Per network: the fewest days between two posts (Facebook every other day), and how many days around a post no other
+   post of the same theme may land (a reel's theme is the first word of its id: aerial-1108-3 is "aerial").
+   16 Nov: eight near-identical Facebook reels a day apart; one was shown to people (100 plays), seven to nobody, on a
+   Page with no limits. Spacing and variety are the test; the cause is not proven. */
+export const GAP = { facebook: 2 };
+export const THEME_DAYS = { facebook: 3 };
+export const themeOf = (slug) => String(slug || "").split("-")[0];
 export function planWeek({ reels = [], networks = SCHEDULERS, posts = [], start, days = 7, timeZone = "Asia/Tokyo", now = Date.now(), limits = MAX_DAYS_AHEAD }) {
   // limits: days ahead per network; the Chrome networks by default, more (Facebook, Bluesky, YouTube) from server/autoplan.mjs.
   const nets = networks.filter((n) => n in limits);
@@ -647,11 +654,14 @@ export function planWeek({ reels = [], networks = SCHEDULERS, posts = [], start,
   // Per network: which days hold a post (and its headline), and which reels it has already had.
   const days_ = Object.fromEntries(nets.map((n) => [n, new Map()]));
   const used = Object.fromEntries(nets.map((n) => [n, new Set()]));
+  const slugOn = Object.fromEntries(nets.map((n) => [n, new Map()]));  // per network: day -> the reel booked that day
   for (const r of posts) {
     if (!nets.includes(r.network) || !held(r)) continue;
     used[r.network].add(r.slug);
     days_[r.network].set(dayIn(r.at, timeZone), headlineBy.get(r.slug) ?? `#${r.slug}`);
+    slugOn[r.network].set(dayIn(r.at, timeZone), r.slug);
   }
+  const apart = (a, b) => Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86400e3;
   const plan = [], skipped = [], count = new Map();
   for (let i = 0; i < days; i++) {
     const day = addDays(first, i);
@@ -670,15 +680,21 @@ export function planWeek({ reels = [], networks = SCHEDULERS, posts = [], start,
       if (t < now + 15 * 60e3) { skipped.push({ day, network: net, why: "already past" }); continue; }
       if (t > now + limits[net] * 86400e3) { skipped.push({ day, network: net, why: `too far ahead for ${net}` }); continue; }
       if (days_[net].has(day)) { skipped.push({ day, network: net, why: "already has a post that day" }); continue; }
+      if (GAP[net] && [...days_[net].keys()].some((d) => apart(d, day) < GAP[net])) {
+        skipped.push({ day, network: net, why: `${NAMES[net] || net} posts every ${GAP[net] === 2 ? "other day" : `${GAP[net]} days`}` }); continue;
+      }
+      const nearThemes = THEME_DAYS[net] ? [...slugOn[net]].filter(([d]) => apart(d, day) <= THEME_DAYS[net]).map(([, s]) => themeOf(s)) : [];
       const near = [days_[net].get(addDays(day, -1)), days_[net].get(addDays(day, 1))].filter(Boolean);
       const pick = reels
-        .filter((r) => !off.has(r.slug) && (r.networks || []).includes(net) && !used[net].has(r.slug) && !near.includes(String(r.headline || "").trim()))
+        .filter((r) => !off.has(r.slug) && (r.networks || []).includes(net) && !used[net].has(r.slug) && !near.includes(String(r.headline || "").trim())
+          && !nearThemes.includes(themeOf(r.slug)))
         .map((r, k) => ({ r, k }))
         .sort((a, b) => (count.get(a.r.slug) || 0) - (count.get(b.r.slug) || 0) || a.k - b.k)[0]?.r;
       if (!pick) { skipped.push({ day, network: net, why: "no approved reel left that it has not had, with a different headline from the day before and after" }); continue; }
       plan.push({ slug: pick.slug, network: net, at, day, headline: String(pick.headline || "").trim() });
       used[net].add(pick.slug);
       days_[net].set(day, String(pick.headline || "").trim());
+      slugOn[net].set(day, pick.slug);
       count.set(pick.slug, (count.get(pick.slug) || 0) + 1);
     }
   }
@@ -740,7 +756,7 @@ async function typeLines(page, lines, { closeTags = false } = {}) {
   }
 }
 const fail = (message, proof = null) => ({ state: "failed", message, proof });
-const NAMES = { x: "X", tiktok: "TikTok", gbp: "Google Maps", pinterest: "Pinterest", linkedin: "LinkedIn", "line-oa": "LINE" };
+const NAMES = { facebook: "Facebook", x: "X", tiktok: "TikTok", gbp: "Google Maps", pinterest: "Pinterest", linkedin: "LinkedIn", "line-oa": "LINE" };
 
 /* ---------- X: https://x.com/compose/post ---------- */
 async function scheduleX(page, { file, text, at, timeZone, rehearse, step }) {
