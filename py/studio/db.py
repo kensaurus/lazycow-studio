@@ -91,7 +91,9 @@ def catalog_path():
 
 
 # Columns added after a catalog was first made: (table, column, type). Added in place, never dropped.
-LATER_COLUMNS = [("spend", "provider", "TEXT"), ("spend", "slug", "TEXT"), ("assets", "camera", "TEXT")]
+LATER_COLUMNS = [("spend", "provider", "TEXT"), ("spend", "slug", "TEXT"), ("assets", "camera", "TEXT"),
+                 # A paid AI call made by a backup service: the service first asked, and why it was passed over (ai.charge).
+                 ("spend", "fell_back_from", "TEXT"), ("spend", "fallback_reason", "TEXT")]
 
 
 def _migrate(con: sqlite3.Connection) -> None:

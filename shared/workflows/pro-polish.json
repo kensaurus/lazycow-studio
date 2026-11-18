@@ -16,5 +16,11 @@
   "img2video": {"on": true, "provider": "fal", "model": "fal-ai/kling-video/v2.5-turbo/pro/image-to-video"},
   "bg-cut": {"on": true, "provider": "fal", "model": "fal-ai/birefnet/v2/video"},
   "vision": {"provider": "@default"}
+ },
+ "fallback": {
+  "upscale": [{"provider": "replicate", "model": "topazlabs/video-upscale"}, {"provider": "kie", "model": "topaz/video-upscale"}],
+  "img2video": [{"provider": "runway", "model": "gen4.5"}, {"provider": "kie", "model": "kling-2.6/image-to-video"}],
+  "music": [{"provider": "elevenlabs", "model": "music_v2_5"}, {"provider": "replicate", "model": "stability-ai/stable-audio-2.5"}],
+  "sfx": [{"provider": "elevenlabs", "model": "eleven_text_to_sound_v3"}]
  }
 }

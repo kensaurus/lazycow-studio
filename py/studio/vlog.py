@@ -2062,16 +2062,19 @@ def _ai_pieces(slug: str, parts: int, each: int, moods: list[str] | None, item: 
                 print(f"music: {why}", flush=True)
                 break
 
-            def call(prompt=prompt, dest=dest):
-                return ai.make_music(item, prompt, each, dest.with_suffix(""), wav=True)
+            def make(it, prompt=prompt, dest=dest):  # the music block's service, or its backup when that one is out (studio.fallback)
+                return ai.make_music(it, prompt, each, dest.with_suffix(""), wav=True)
 
             dest.parent.mkdir(parents=True, exist_ok=True)
             try:
-                ai.charge(item["provider"], item["model"], "music", slug, usd, call, note=f"vlog bed {k + 1}/{parts}, {each}s")
+                made, _ = ai.charge(item["provider"], item["model"], "music", slug, usd, lambda make=make: make(item), note=f"vlog bed {k + 1}/{parts}, {each}s",
+                                    cap="music", backup=ai._backup_for({**item, "usd": usd, "measure": {"seconds": each}}, make))
             except Exception as exc:  # noqa: BLE001 - a failed call: the earlier pieces and free music fill in
                 print(f"music: {item['credit']} failed ({exc})", flush=True)
                 break
-            _piece_credit(dest, item["credit"])  # who made this piece, beside it, for every later cut that reuses it
+            # who made this piece, beside it, for every later cut that reuses it (a backup service names itself)
+            _piece_credit(dest, item["credit"] if made.get("provider", item["provider"]) == item["provider"] else
+                          f"AI-generated ({ai.music_credit(made['provider'], made['model'])['creator'].split(' (AI')[0]}, via {ai.PROVIDER_NAMES.get(made['provider'], made['provider'])})")
         files.append(dest)
     return files
 

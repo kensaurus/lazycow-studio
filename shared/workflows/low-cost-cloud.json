@@ -16,5 +16,9 @@
   "img2video": {"on": false},
   "bg-cut": {"on": false},
   "vision": {"provider": "@default"}
+ },
+ "fallback": {
+  "music": [{"provider": "stability", "model": "stable-audio-2.5"}, {"provider": "fal", "model": "fal-ai/stable-audio-25/text-to-audio"}],
+  "sfx": [{"provider": "stability", "model": "stable-audio-2.5-sfx"}, {"provider": "fal", "model": "fal-ai/mmaudio-v2"}]
  }
 }

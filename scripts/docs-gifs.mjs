@@ -25,22 +25,37 @@ const FFMPEG = [process.env.STUDIO_TOOLS && join(process.env.STUDIO_TOOLS, "ffmp
 const W = 1440, H = 900, GW = 960, GH = 600, FPS = 8;
 
 /* Each scene: a window title, a status-bar line, and steps. Step kinds: go (hash route), hold (frames), scroll (px over
-   frames), hover / click (CSS selector, first visible match), text (a button by its label), js (page code), key. Only safe controls are named. */
+   frames), hover / click (CSS selector, first visible match), sweep (move the pointer across an element over frames, for
+   hover-scrub), text (a button by its label), js (page code), key. A scene's `theme` ("dark"/"light", light by default) sets
+   the studio's colours. Only safe controls are named; UNSAFE below refuses a click on any control whose label or data attributes say
+   it changes the studio. */
+const UNSAFE = /approve|data-revok|book it|apply|data-wfapply|post now|send|save|delete|remove|reject|render|make reels|try again|reset|connect|承認|予約する|適用|保存|削除/i;
 const SCENES = {
-  reels: { title: "REELS.EXE", status: "Reels: what is waiting for you, what goes out next, every reel by the day it was made", steps: [
-    { go: "#/" }, { hold: 16 }, { scroll: 520, frames: 10 }, { hold: 4 },
-    { hover: ".rgroup .rcard" }, { hold: 10 }, { scroll: 700, frames: 10 }, { hold: 6 }] },
+  today: { title: "TODAY.EXE", status: "Today: what goes out today, what waits for you, what finished overnight, and this week's views", steps: [
+    { go: "#/today" }, { hold: 30 }] },
+  reels: { title: "REELS.EXE", status: "Reels: the Studio Monitor, then every reel; point at one to scrub through it", steps: [
+    { go: "#/" }, { hold: 12 }, { sweep: ".rcard[data-vid] .thumb", frames: 18 }, { hold: 4 },
+    { scroll: 520, frames: 10 }, { hold: 6 }, { scroll: 700, frames: 10 }, { hold: 6 }] },
+  workflow: { title: "WORKFLOW.EXE", status: "Workflow: every step a reel goes through, which AI service runs it, and what it costs", steps: [
+    { go: "#/workflow" }, { hold: 18 }, { click: "[data-wfnode]" }, { hold: 14 }, { scroll: 760, frames: 12 }, { hold: 6 },
+    { click: "[data-wftpl]" }, { hold: 16 }] },
   review: { title: "REVIEW.EXE", status: "Review: watch each reel, see its clips and words, then Approve (it books itself)", steps: [
     { go: "#/review" }, { hold: 10 }, { click: "[data-revplay]" }, { hold: 24 }, { hover: "[data-revok]" }, { hold: 8 }] },
   editor: { title: "EDITOR.EXE", status: "The reel editor: library, player, properties and the timeline, all on one screen", steps: [
     { go: "#/reel/carstay-1108" }, { hold: 10 }, { click: "#play" }, { hold: 30 }] },
-  posting: { title: "POSTING.EXE", status: "Posting: the calendar of every booking, with each day's times and headline", steps: [
-    { go: "#/posting" }, { hold: 8 }, { scroll: 560, frames: 10 }, { hold: 10 }, { hover: ".cchip" }, { hold: 6 },
-    { click: "a[href='#/posting/schedule/instagram-story']" }, { hold: 10 }, { click: "a[href='#/posting/schedule/youtube']" }, { hold: 8 }] },
-  results: { title: "RESULTS.EXE", status: "Results: views by network, what is not being shown, every post's numbers", steps: [
-    { go: "#/results" }, { hold: 12 }, { scroll: 380, frames: 8 }, { hold: 12 }, { scroll: 600, frames: 10 }, { hold: 8 }] },
-  footage: { title: "FOOTAGE.EXE", status: "Footage: where clips come from (Drive, Google Photos, a Google Form) and what is unused", steps: [
-    { go: "#/footage" }, { hold: 10 }, { scroll: 420, frames: 8 }, { hold: 8 }, { text: "Videos" }, { hold: 8 }, { scroll: 500, frames: 8 }, { hold: 6 }] },
+  posting: { title: "POSTING.EXE", status: "Posting: a lane per network, a column per day, each post by its state; approved reels wait in the tray", steps: [
+    { go: "#/posting" }, { hold: 14 }, { scroll: 520, frames: 10 }, { hold: 10 }, { scroll: 520, frames: 10 }, { hold: 8 }] },
+  results: { title: "RESULTS.EXE", status: "Results: views by network, predicted against actual, and the best time to post from your own numbers", steps: [
+    { go: "#/results" }, { hold: 10 }, { scroll: 420, frames: 8 }, { hold: 10 }, { click: "[data-restab='learn']" }, { hold: 6 },
+    { scroll: 260, frames: 6 }, { hold: 14 }, { scroll: 1000, frames: 14 }, { hold: 14 }] },
+  footage: { title: "FOOTAGE.EXE", status: "Footage: days of posts left, where you filmed, and every clip marked used or unused", steps: [
+    { go: "#/footage" }, { hold: 18 }, { scroll: 400, frames: 8 }, { hold: 8 }, { go: "#/footage/library" }, { hold: 10 }, { scroll: 500, frames: 8 }, { hold: 6 }] },
+  versions: { title: "VERSIONS.EXE", status: "Versions: a better cut of a booked reel, shot by shot, with what changed lit up", steps: [
+    { go: "#/versions" }, { hold: 8 }, { scroll: 600, frames: 12 }, { hold: 18 }] },
+  words: { title: "WORDS.EXE", status: "Words: every headline and line, how worn each one is, and how the reels using it did", steps: [
+    { go: "#/words" }, { hold: 16 }, { scroll: 400, frames: 8 }, { hold: 8 }, { go: "#/words/lines" }, { hold: 10 }] },
+  log: { title: "LOG.EXE", status: "Activity log: every job over the last day, one lane per kind, coloured by result", steps: [
+    { go: "#/log/activity" }, { hold: 18 }, { scroll: 400, frames: 8 }, { hold: 8 }] },
   accounts: { title: "ACCOUNTS.EXE", status: "Settings: each network, how it gets posted, and what to do next", steps: [
     { go: "#/accounts" }, { hold: 12 }, { scroll: 520, frames: 10 }, { hold: 10 }] },
   setup: { title: "SETUP.EXE", status: "Setup: the InstallShield-style wizard walks through every step", steps: [
@@ -79,7 +94,12 @@ async function record(browser, name, scene) {
   rmSync(dir, { recursive: true, force: true }); mkdirSync(dir, { recursive: true });
   const ctx = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: 1, locale: LANG === "ja" ? "ja-JP" : "en-GB" });
   // A first visit: no "seen" flags that would hide the wizard, the chosen language set.
-  await ctx.addInitScript((lang) => { try { localStorage.setItem("studio.lang", lang); localStorage.setItem("lc.wz.seen", "1"); } catch { /* ignore */ } }, LANG);
+  // Motion on (the GIFs show the studio's animations whatever the recording machine asks for) and the scene's colours.
+  await ctx.addInitScript(([lang, theme]) => { try {
+    localStorage.setItem("studio.lang", lang); localStorage.setItem("lc.wz.seen", "1");
+    localStorage.setItem("studio.motion", "on"); localStorage.setItem("studio.motionHint", "1");
+    localStorage.setItem("studio.theme", theme || "light");
+  } catch { /* ignore */ } }, [LANG, scene.theme || ""]);
   // No email address ever lands in a public picture: every one on screen reads you@example.com, however often the
   // page redraws.
   await ctx.addInitScript(() => {
@@ -96,19 +116,37 @@ async function record(browser, name, scene) {
   const shot = async () => { await page.screenshot({ path: join(dir, `${String(k++).padStart(4, "0")}.png`) }); };
   for (const s of scene.steps) {
     if (s.go) {
-      await page.goto(BASE + "/" + s.go, { waitUntil: "domcontentloaded" }); await page.waitForTimeout(3500);
-      // The "things need you" strip is about this studio's own chores, not the page being shown: hide it.
-      await page.locator("#probStrip button.icon").first().click({ timeout: 1500 }).catch(() => {});
+      await page.goto(BASE + "/" + s.go, { waitUntil: "domcontentloaded" }); await page.waitForTimeout(2500);
+      // A busy studio can take a while: wait (up to 40 s) until no "Please wait" / "Loading" box is on screen.
+      await page.waitForFunction(() => !/Please wait|Loading |お待ちください|読み込み中/.test(document.querySelector("#home")?.innerText || "") && (document.querySelector("#home")?.innerText || "").length > 200, null, { timeout: 40000 }).catch(() => console.log(`  ${name}: ${s.go} still loading after 40 s`));
+      await page.waitForTimeout(1500);
+      // The "Needs you" strip is about this studio's own chores, not the page being shown: hide it.
+      await page.locator("[data-wnhide]").first().click({ timeout: 1500 }).catch(() => {});
+      await page.addStyleTag({ content: ".toast,.toasts,#toasts{display:none!important}" }).catch(() => {});
       await page.mouse.move(W / 2, H * 0.6); await page.waitForTimeout(300);
     }
     else if (s.hold) for (let i = 0; i < s.hold; i++) { await shot(); await page.waitForTimeout(60); }
-    else if (s.scroll) for (let i = 0; i < s.frames; i++) { await page.mouse.wheel(0, s.scroll / s.frames); await page.waitForTimeout(40); await shot(); }
+    // The page's own scroller (the tallest scrollable box), not whatever panel sits under the pointer.
+    else if (s.scroll) for (let i = 0; i < s.frames; i++) {
+      await page.evaluate((dy) => { const all = [document.scrollingElement, ...document.querySelectorAll("main,section,div")]
+        .filter((e) => e && e.scrollHeight > e.clientHeight + 40 && (e === document.scrollingElement || /auto|scroll/.test(getComputedStyle(e).overflowY)));
+        all.sort((a, b) => b.clientHeight - a.clientHeight)[0]?.scrollBy(0, dy); }, s.scroll / s.frames).catch(() => {});
+      await page.waitForTimeout(40); await shot(); }
     else if (s.hover || s.click) {
       const el = await visibleFirst(page, s.hover || s.click);
       if (!el) { console.log(`  ${name}: nothing matches ${s.hover || s.click}`); continue; }
       await el.scrollIntoViewIfNeeded().catch(() => {});
+      if (s.click) {
+        const what = await el.evaluate((n) => `${n.innerText || ""} ${[...n.attributes].map((a) => a.name).join(" ")}`).catch(() => "");
+        if (UNSAFE.test(what)) throw new Error(`${name}: refusing to click "${what.trim().slice(0, 60)}": it changes the studio`);
+      }
       if (s.hover) await el.hover().catch(() => {}); else await el.click().catch(() => {});
       await page.waitForTimeout(500);
+    } else if (s.sweep) {
+      const el = await visibleFirst(page, s.sweep);
+      if (!el) { console.log(`  ${name}: nothing matches ${s.sweep}`); continue; }
+      await el.scrollIntoViewIfNeeded().catch(() => {}); const b = await el.boundingBox();
+      if (b) for (let i = 0; i < s.frames; i++) { await page.mouse.move(b.x + 6 + (b.width - 12) * i / (s.frames - 1), b.y + b.height / 2); await page.waitForTimeout(140); await shot(); }
     } else if (s.text) {
       const loc = page.getByRole("button", { name: new RegExp(`^\\s*${s.text}`) });
       const el = (await loc.count()) ? loc.first() : null;

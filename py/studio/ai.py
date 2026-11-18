@@ -27,8 +27,9 @@ DEPENDENCIES: Python stdlib, ffmpeg (studio build), cv2 (photo resize), studio.c
           Price chain: the provider's price API (fal, OpenRouter), else the registry's list price (warned after 90 days),
           else a price you entered (`save-price`), else the call is refused (code no_price): the limits need a number.
 USAGE: python -m studio.ai <status|estimate|run|review|last-review|check-key|save-key|save-caps|credits|save-llm|
-       llm-presets|providers|select|save-price|voices|workflow|workflow-apply|workflow-undo|spend-month>
-       (the last four are studio.workflow's: the Workflow page, its templates, Undo, and this month's spend)
+       llm-presets|providers|select|save-price|voices|health|health-reset|fallback|workflow|workflow-apply|workflow-undo|spend-month>
+       (health, health-reset and fallback are studio.fallback's: the switch to a backup service when one runs out;
+       the last four are studio.workflow's: the Workflow page, its templates, Undo, and this month's spend)
        (request JSON on stdin) prints one line: RESULT {"ok": true, "data": {...}}
                                              or RESULT {"ok": false, "error": "...", "code": "...", "status": 4xx|5xx}
        `run` also prints STAGE n/N and PROGRESS lines for the studio's job view.
@@ -63,6 +64,7 @@ import urllib.parse
 from datetime import date, datetime
 from pathlib import Path
 
+from studio import fallback
 from studio.config import DATA, RANCH, ROOT, SPEC, _parse_env, daily_budget, ffmpeg_bin, ffprobe_bin, openrouter_key
 from studio.providers import async_task, base, fal_queue, normalise, openai_chat, registry, sync_http
 from studio.providers import http as phttp
@@ -218,13 +220,29 @@ def over_caps(slug: str, usd: float, used: dict | None = None) -> str | None:
     return None
 
 
-def charge(provider: str, model: str, tool: str, slug: str | None, estimate: float, call, note: str = "", purpose: str | None = None):
+def charge(provider: str, model: str, tool: str, slug: str | None, estimate: float, call, note: str = "", purpose: str | None = None,
+           *, cap: str | None = None, backup=None):
     """Run one paid call inside the caps. `call()` returns (result, actual_usd or None).
     The estimate is reserved first (so two calls at once cannot both squeeze under a cap), then replaced
     by the actual cost, or by the estimate when the provider does not report one. A call that failed
     before the provider billed it is recorded at $0. slug None: a call for no reel (research's writing help),
     held to the daily budget and the AI total but not to a reel's limit; `purpose` then names its ledger row
-    ("research", "words-suggest") instead of ai-<tool>."""
+    ("research", "words-suggest") instead of ai-<tool>.
+    With `cap` the chosen provider is tried, then the next one in the capability's backup list when it is out of
+    credit, refuses its key, is rate-limited or down (studio.fallback.run): backup(provider, model, voice) returns
+    (estimate, call) for one backup, or None when it cannot do this step. Each attempt is held to the caps again at
+    its own price; the row of the one that worked names the provider used and, when it switched, fell_back_from and
+    the reason. A provider that failed that way is remembered as out for every capability (<data>/ai-health.json)."""
+    if cap is not None:
+        return fallback.run(cap, (provider, model), tool, slug, estimate, call, note, purpose, backup, _charge_once)
+    return _charge_once(provider, model, tool, slug, estimate, call, note, purpose)
+
+
+def _charge_once(provider: str, model: str, tool: str, slug: str | None, estimate: float, call, note: str = "", purpose: str | None = None,
+                 *, fell_back_from: str | None = None, reason: str | None = None):
+    """One attempt of charge(): the caps at this provider's price, the reserved row, the actual cost. A provider's
+    failure of the switch kinds is remembered by studio.fallback either way (a block that cannot switch still tells
+    the others the service is out)."""
     from studio.db import connect
 
     with connect() as con:
@@ -236,14 +254,20 @@ def charge(provider: str, model: str, tool: str, slug: str | None, estimate: flo
         if why:
             con.rollback()
             raise AiError(why, "cap", 402)
-        cur = con.execute("INSERT INTO spend (ts, model, purpose, usd, tokens_in, tokens_out, note, provider, slug) VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?)",
-                          (datetime.now().isoformat(timespec="seconds"), model, purpose or PURPOSE + tool, float(estimate), "pending " + note, provider, slug))
+        cur = con.execute("INSERT INTO spend (ts, model, purpose, usd, tokens_in, tokens_out, note, provider, slug, fell_back_from, fallback_reason) "
+                          "VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)",
+                          (datetime.now().isoformat(timespec="seconds"), model, purpose or PURPOSE + tool, float(estimate), "pending " + note, provider, slug,
+                           fell_back_from, reason if fell_back_from else None))
         row = cur.lastrowid
     try:
         result, actual = call()
     except AiError as err:
         with connect() as con:
             con.execute("UPDATE spend SET usd = ?, note = ? WHERE id = ?", (float(estimate) if err.charged else 0.0, f"failed: {err.code} {note}".strip(), row))
+        # A key that was never saved (no_key) is not remembered as "out": the page already says "no key" for it, and
+        # a service you never set up is not a problem to fix. The step still goes to a backup (studio.fallback.run).
+        if err.kind in fallback.SWITCH_ON and err.code != "no_key":
+            fallback.mark(provider, err.kind, str(err))
         raise
     except Exception:
         with connect() as con:
@@ -426,20 +450,73 @@ def no_price(provider: str, model: str) -> AiError:
                    "Enter its price in Settings › AI (what the provider charges, and per what), then try again.", "no_price", 409)
 
 
+# Units that count an amount (seconds, characters …); any other unit is one per call (generations, audios, videos).
+PER_AMOUNT = ("second", "compute", "unit", "minute", "1000 char", "char", "megapixel")
+
+
+def reprice(item: dict, provider: str, model: str, voice: str | None = None) -> dict:
+    """A plan item done by another provider's model (a backup, studio.fallback): the same work (item["measure"]:
+    seconds, compute seconds, characters, calls) at that provider's own price. Raises no_price."""
+    price = prices_for([(provider, model)]).get((provider, model))
+    if price is None:
+        raise no_price(provider, model)
+    meas = item.get("measure") or {}
+    unit = str(price["unit"])
+    low = unit.lower()
+    secs = float((meas.get("compute") if low.startswith("compute") else None) or meas.get("seconds") or 0)
+    if low.startswith("unit"):
+        secs *= float(_model(provider, model).get("unitsPerSecond") or 1)
+    q = quantity(unit, seconds=secs, chars=int(meas.get("chars") or 0), megapixels=secs * 30 * 1080 * 1920 / 1e6)
+    if not low.startswith(PER_AMOUNT):
+        q = float(meas.get("calls") or 1)
+    usd = max(round(float(price["unit_price"]) * q, 4), 0.001)
+    return {**item, "provider": provider, "model": model, "unit": unit, "unitPrice": price["unit_price"], "quantity": round(q, 3),
+            "usd": usd, "priceSource": price["source"], "voice": voice, "fellBackFrom": item["provider"]}
+
+
+def _backup_for(item: dict, make):
+    """The `backup` charge() takes for a plan item: (estimate, call) for the same step on another provider's model."""
+    def backup(provider: str, model: str, voice: str | None = None):
+        alt = reprice(item, provider, model, voice)
+        return alt["usd"], (lambda: make(alt))
+    return backup
+
+
+def _cap_of_tool(tool: str) -> str:
+    return registry.tools()[tool]["capability"]
+
+
+def _switched(item: dict, res: dict) -> str:
+    """" (made by Runway: fal.ai was out)" when a backup made this step, for the reel's AI note."""
+    used = res.get("provider")
+    if not used or used == item["provider"]:
+        return ""
+    return f" (made by {PROVIDER_NAMES.get(used, used)}: {PROVIDER_NAMES.get(item['provider'], item['provider'])} could not)"
+
+
 # ---------- the project's choice of provider per capability (<data>/workflow.json) ----------
 
 def workflow() -> dict:
     """This project's workflow: {"version": 1, "template": …, "blocks": {cap: {on, provider, model, voice?}},
-    "prices": {"provider:model": {usd, unit, at}}}. No file: the registry's defaults, exactly as before."""
+    "prices": {"provider:model": {usd, unit, at}}, "fallback": {cap: [{provider, model, voice?}]} (your own backup
+    list; studio.fallback), "autoSwitch": {on, maxRise, caps: {cap: on}}}. No file: the registry's defaults, exactly
+    as before, with the automatic backups (voice off)."""
     w = _read(WORKFLOW)
     if not isinstance(w, dict):
         w = {}
     return {"version": 1, "template": w.get("template"), "blocks": w.get("blocks") if isinstance(w.get("blocks"), dict) else {},
-            "prices": w.get("prices") if isinstance(w.get("prices"), dict) else {}}
+            "prices": w.get("prices") if isinstance(w.get("prices"), dict) else {},
+            "fallback": w.get("fallback") if isinstance(w.get("fallback"), dict) else {},
+            "autoSwitch": w.get("autoSwitch") if isinstance(w.get("autoSwitch"), dict) else {}}
 
 
 def _save_workflow(w: dict) -> None:
-    _write(WORKFLOW, {"version": 1, "template": w.get("template"), "blocks": w.get("blocks") or {}, "prices": w.get("prices") or {}})
+    out = {"version": 1, "template": w.get("template"), "blocks": w.get("blocks") or {}, "prices": w.get("prices") or {}}
+    if w.get("fallback"):
+        out["fallback"] = w["fallback"]
+    if w.get("autoSwitch"):
+        out["autoSwitch"] = w["autoSwitch"]
+    _write(WORKFLOW, out)
 
 
 def _usable(cap: str, provider: str, model: str) -> bool:
@@ -711,7 +788,8 @@ def plan(slug: str, tools: list[str], options: dict | None = None) -> list[dict]
                 cached = (HOME / "clips" / f"{name}.mp4").exists()
                 q = qs(secs)
                 items.append({**base, "target": x["i"], "quantity": round(q, 3), "unit": price["unit"], "unitPrice": price["unit_price"],
-                              "usd": 0.0 if cached else each(q), "cached": cached, "cacheName": name, "what": what, "priceSource": price["source"]})
+                              "usd": 0.0 if cached else each(q), "cached": cached, "cacheName": name, "what": what, "priceSource": price["source"],
+                              "measure": {"seconds": secs}})
         elif tool == "foley":
             wanted = shots_opt.get("foley")
             limit = int(options.get("max_foley", 4))
@@ -725,7 +803,8 @@ def plan(slug: str, tools: list[str], options: dict | None = None) -> list[dict]
                 q = qs(x["sec"])
                 items.append({**base, "target": x["i"], "quantity": round(q, 3), "unit": price["unit"], "unitPrice": price["unit_price"],
                               "usd": 0.0 if cached else max(each(q), 0.001), "cached": cached, "cacheName": name,
-                              "what": f"shot {x['i'] + 1} ({x['src'].name}, {why}): natural sound for {x['sec']:g} s", "priceSource": price["source"]})
+                              "what": f"shot {x['i'] + 1} ({x['src'].name}, {why}): natural sound for {x['sec']:g} s", "priceSource": price["source"],
+                              "measure": {"seconds": float(x["sec"])}})
         elif tool == "behind":
             why = behind_refusal(project)
             if why:
@@ -736,12 +815,13 @@ def plan(slug: str, tools: list[str], options: dict | None = None) -> list[dict]
             q = qs(max(20.0, float(first["sec"]) * 15))  # compute seconds: about 15 per second of 1080p video
             items.append({**base, "target": 0, "quantity": round(q, 3), "unit": price["unit"], "unitPrice": price["unit_price"],
                           "usd": 0.0 if cached else max(each(q), 0.001), "cached": cached, "cacheName": name,
-                          "what": f"the headline behind the subject of shot 1 ({float(first['sec']):g} s cut out)", "priceSource": price["source"]})
+                          "what": f"the headline behind the subject of shot 1 ({float(first['sec']):g} s cut out)", "priceSource": price["source"],
+                          "measure": {"seconds": float(first["sec"]), "compute": max(20.0, float(first["sec"]) * 15)}})
         elif tool == "music":
             q = qs(total_sec + 3)
             items.append({**base, "target": None, "quantity": q, "unit": price["unit"], "unitPrice": price["unit_price"], "usd": each(q),
                           "cached": False, "what": f"an instrumental bed of {math.ceil(total_sec) + 3} s ({_mood(project)}, {project.get('bpm') or 'free'} BPM)",
-                          "priceSource": price["source"]})
+                          "priceSource": price["source"], "measure": {"seconds": total_sec + 3}})
         elif tool == "voice":
             lines = _spoken(project)
             if not lines:
@@ -750,7 +830,7 @@ def plan(slug: str, tools: list[str], options: dict | None = None) -> list[dict]
             q = quantity(price["unit"], chars=chars)
             items.append({**base, "target": None, "quantity": q, "unit": price["unit"], "unitPrice": price["unit_price"],
                           "usd": max(each(q), 0.001), "cached": False, "what": f"{len(lines)} approved lines read aloud ({chars} characters)",
-                          "priceSource": price["source"]})
+                          "priceSource": price["source"], "measure": {"chars": chars, "calls": len(lines)}})
     return items
 
 
@@ -917,9 +997,10 @@ def tool_clip(item: dict, x: dict, slug: str) -> tuple[dict, float]:
         return {"file": str(final), "cached": True}, 0.0
     work = _clip_dir() / f"{item['cacheName']}_work_{os.getpid()}"  # two reels sharing a clip at once must not share a folder
     work.mkdir(exist_ok=True)
-    m = _model(item["provider"], item["model"])
 
-    def call():
+    def make(item):  # the step on item's provider: the chosen one, or a backup (reprice) when it is out
+        m = _model(item["provider"], item["model"])
+        made = {"file": str(final), "provider": item["provider"], "model": item["model"]}
         if tool == "living":
             import cv2
 
@@ -940,7 +1021,7 @@ def tool_clip(item: dict, x: dict, slug: str) -> tuple[dict, float]:
                 _save_output(item, gen, final)
             else:  # another provider's clip: made 9:16 like every reel shot
                 normalise.img2video(_save_output(item, gen, work / ("raw" + _ext(gen, ".mp4"))), final, _ffmpeg)
-            return {"file": str(final)}, _actual(item, gen)
+            return made, _actual(item, gen)
         seconds = round(x["sec"] * (0.5 if tool == "slowmo" else x["speed"]), 3)
         seg = cut_window(x["src"], float(x["start"]), seconds, work / "window.mp4")
         if tool == "slowmo":
@@ -951,13 +1032,15 @@ def tool_clip(item: dict, x: dict, slug: str) -> tuple[dict, float]:
             got = _save_output(item, gen, work / ("up" + _ext(gen, ".mp4")))
             # Upscalers return picture only: the clip's own sound goes back in, so the mix is unchanged.
             normalise.upscale(got, seg, final, _ffmpeg, h264=bool(m.get("input", {}).get("H264_output")))
-        return {"file": str(final)}, _actual(item, gen)
+        return made, _actual(item, gen)
 
     try:
-        result, usd = charge(item["provider"], item["model"], tool, slug, item["usd"], call, note=f"shot {x['i'] + 1} {x['src'].name}")
+        result, usd = charge(item["provider"], item["model"], tool, slug, item["usd"], lambda: make(item), note=f"shot {x['i'] + 1} {x['src'].name}",
+                             cap=_cap_of_tool(tool), backup=_backup_for(item, make))
     finally:
         shutil.rmtree(work, ignore_errors=True)
-    meta = {"tool": tool, "model": item["model"], "src": str(x["src"]), "start": x["start"], "made": datetime.now().isoformat(timespec="seconds"), "usd": usd}
+    meta = {"tool": tool, "model": result["model"], "provider": result["provider"], "src": str(x["src"]), "start": x["start"],
+            "made": datetime.now().isoformat(timespec="seconds"), "usd": usd}
     _write(final.with_suffix(".json"), meta)
     return result, usd
 
@@ -1006,9 +1089,9 @@ def tool_foley(item: dict, x: dict, project: dict) -> tuple[dict, float]:
         raise AiError(f"Shot {x['i'] + 1} has no rendered picture yet: render the reel once, then add natural sound.", "bad_input", 400)
     work = _clip_dir() / f"{item['cacheName']}_work_{os.getpid()}"
     work.mkdir(exist_ok=True)
-    m = _model(item["provider"], item["model"])
 
-    def call():
+    def make(item):  # the chosen provider, or a backup (reprice)
+        m = _model(item["provider"], item["model"])
         files = None
         if m.get("files"):  # made from the picture (MMAudio): the shot as rendered, 720 p, no sound
             seg = work / "shot.mp4"
@@ -1020,13 +1103,14 @@ def tool_foley(item: dict, x: dict, project: dict) -> tuple[dict, float]:
         gen = _generate(item, {"prompt": _foley_prompt(project, x), "negative_prompt": FOLEY_NEGATIVE, "seconds": seconds}, files)
         got = _save_output(item, gen, work / ("with_sound" + _ext(gen, ".mp4")))
         normalise.sfx(got, final, _ffmpeg)
-        return {"file": str(final)}, _actual(item, gen)
+        return {"file": str(final), "provider": item["provider"], "model": item["model"]}, _actual(item, gen)
 
     try:
-        result, usd = charge(item["provider"], item["model"], "foley", project["slug"], item["usd"], call, note=f"shot {x['i'] + 1} {x['src'].name}")
+        result, usd = charge(item["provider"], item["model"], "foley", project["slug"], item["usd"], lambda: make(item), note=f"shot {x['i'] + 1} {x['src'].name}",
+                             cap="sfx", backup=_backup_for(item, make))
     finally:
         shutil.rmtree(work, ignore_errors=True)
-    _write(final.with_suffix(".json"), {"tool": "foley", "model": item["model"], "src": str(x["src"]), "start": x["start"],
+    _write(final.with_suffix(".json"), {"tool": "foley", "model": result["model"], "provider": result["provider"], "src": str(x["src"]), "start": x["start"],
                                         "prompt": _foley_prompt(project, x), "made": datetime.now().isoformat(timespec="seconds"), "usd": usd})
     return result, usd
 
@@ -1065,22 +1149,23 @@ def tool_behind(item: dict, project: dict) -> tuple[dict, float]:
     work = _clip_dir() / f"{item['cacheName']}_work_{os.getpid()}"
     work.mkdir(exist_ok=True)
 
-    kind = _model(item["provider"], item["model"]).get("outputKind") or "mask"
-
-    def call():
+    def make(item):  # the chosen provider, or a backup (reprice)
+        kind = _model(item["provider"], item["model"]).get("outputKind") or "mask"
         small = work / "shot720.mp4"
         _ffmpeg(["-i", str(mezz), "-map", "0:v:0", "-an", "-vf", "scale=720:-2,format=yuv420p", "-c:v", "libx264", "-preset", "fast", "-crf", "16", str(small)])
         gen = _generate(item, {}, {"video": (small, "video/mp4")})
         got = _save_output(item, gen, work / ("mask" + _ext(gen, ".mp4")))
         # A mask is scaled back to the rendered shot, softened by a pixel, and becomes its alpha (a cut-out with alpha is fitted).
         normalise.bg_cut(got, mezz, final, _ffmpeg, kind=kind)
-        return {"file": str(final)}, _actual(item, gen)
+        return {"file": str(final), "provider": item["provider"], "model": item["model"]}, _actual(item, gen)
 
     try:
-        result, usd = charge(item["provider"], item["model"], "behind", project["slug"], item["usd"], call, note="shot 1 cut-out")
+        result, usd = charge(item["provider"], item["model"], "behind", project["slug"], item["usd"], lambda: make(item), note="shot 1 cut-out",
+                             cap="bg-cut", backup=_backup_for(item, make))
     finally:
         shutil.rmtree(work, ignore_errors=True)
-    _write(final.with_suffix(".json"), {"tool": "behind", "model": item["model"], "from": str(mezz), "made": datetime.now().isoformat(timespec="seconds"), "usd": usd})
+    _write(final.with_suffix(".json"), {"tool": "behind", "model": result["model"], "provider": result["provider"], "from": str(mezz),
+                                        "made": datetime.now().isoformat(timespec="seconds"), "usd": usd})
     return result, usd
 
 
@@ -1126,7 +1211,7 @@ def make_music(item: dict, prompt: str, seconds: int, stem: Path, wav: bool = Fa
         raw = _save_output(item, gen, stem.with_name(stem.name + ".src" + ext))
         dest = normalise.music(raw, stem.with_name(stem.name + ".wav"), seconds, _ffmpeg)
         raw.unlink(missing_ok=True)
-    return {"file": str(dest), "seed": base.dig(gen.get("raw") or {}, "seed")}, _actual(item, gen)
+    return {"file": str(dest), "seed": base.dig(gen.get("raw") or {}, "seed"), "provider": item["provider"], "model": item["model"]}, _actual(item, gen)
 
 
 def tool_music(item: dict, project: dict) -> tuple[dict, float]:
@@ -1140,12 +1225,13 @@ def tool_music(item: dict, project: dict) -> tuple[dict, float]:
     seconds = int(math.ceil(total)) + 3
     name = f"ai_{project['slug']}_{hashlib.sha1(prompt.encode()).hexdigest()[:8]}"
 
-    def call():
+    def make(item):  # the chosen provider, or a backup (reprice): the credit follows whoever made it
         return make_music(item, prompt, seconds, LIB / "music" / name)
 
-    result, usd = charge(item["provider"], item["model"], "music", project["slug"], item["usd"], call, note=f"{seconds}s bed")
+    result, usd = charge(item["provider"], item["model"], "music", project["slug"], item["usd"], lambda: make(item), note=f"{seconds}s bed",
+                         cap="music", backup=_backup_for(item, make))
     dest = Path(result["file"])
-    side = {"title": f"Made for {project['slug']}", "license": "AI-GENERATED", "ai": True, **music_credit(item["provider"], item["model"]),
+    side = {"title": f"Made for {project['slug']}", "license": "AI-GENERATED", "ai": True, **music_credit(result["provider"], result["model"]),
             "query": _mood(project), "prompt": prompt, "seed": result.get("seed"), "kind": "music", "made": datetime.now().isoformat(timespec="seconds"),
             "usd": usd, "lead": 0.0}
     try:
@@ -1153,7 +1239,7 @@ def tool_music(item: dict, project: dict) -> tuple[dict, float]:
     except Exception:
         pass
     _write(dest.with_suffix(dest.suffix + ".json"), side)
-    return {"id": dest.name, "file": str(dest)}, usd
+    return {"id": dest.name, "file": str(dest), "provider": result["provider"], "model": result["model"]}, usd
 
 
 def probe_audio(path: Path) -> float:
@@ -1168,12 +1254,20 @@ def tool_voice(item: dict, project: dict) -> tuple[dict, float]:
     folder.mkdir(parents=True, exist_ok=True)
     m = _model(item["provider"], item["model"])
     b = block("voice")
-    voice_id = (b["voice"] if (b["provider"], b["model"]) == (item["provider"], item["model"]) else None) or m.get("voiceDefault") or VOICE_ID
+
+    def voice_of(it: dict) -> str | None:
+        """The block's own voice on its own model; a backup's voice from its backup entry, else the model's default."""
+        mm = _model(it["provider"], it["model"])
+        if (b["provider"], b["model"]) == (it["provider"], it["model"]) and b["voice"]:
+            return b["voice"]
+        return it.get("voice") or mm.get("voiceDefault") or (None if mm.get("voiceRequired") else VOICE_ID)
+
     if m.get("voiceRequired") and not (b["voice"] and (b["provider"], b["model"]) == (item["provider"], item["model"])):
         raise AiError(f"Pick a voice for {m.get('label') or item['model']} in Settings › AI first (it has no default voice).", "no_voice", 409)
-    other = "" if (item["provider"], item["model"]) == TOOLS["voice"][:2] else f"{item['provider']}:{item['model']}:{voice_id}"
 
-    def call():
+    def make(item):  # the chosen provider, or a backup (only when auto-switch is on for voice: it changes the voice)
+        m, voice_id = _model(item["provider"], item["model"]), voice_of(item)
+        other = "" if (item["provider"], item["model"]) == TOOLS["voice"][:2] else f"{item['provider']}:{item['model']}:{voice_id}"
         made, actual = [], 0.0
         for n, ln in enumerate(lines, 1):
             _progress(n, len(lines), f"voice line {n} of {len(lines)}")
@@ -1191,10 +1285,15 @@ def tool_voice(item: dict, project: dict) -> tuple[dict, float]:
             made.append({"file": str(dest), "at": round(ln["start"] + 0.15, 2), "tempo": tempo, "seconds": round(dur, 2), "text": ln["text"]})
             got = _actual(item, gen)
             actual = None if actual is None or got is None else actual + got
-        return {"lines": made}, (round(actual, 6) if actual is not None else None)
+        return {"lines": made, "provider": item["provider"], "model": item["model"], "voiceId": voice_id}, (round(actual, 6) if actual is not None else None)
 
-    result, usd = charge(item["provider"], item["model"], "voice", project["slug"], item["usd"], call, note=f"{len(lines)} lines")
-    return {"model": item["model"], "voiceId": voice_id, "gain": 1.0, "lines": result["lines"]}, usd
+    def backup(provider: str, model: str, voice: str | None = None):
+        alt = reprice(item, provider, model, voice)
+        return (alt["usd"], lambda: make(alt)) if voice_of(alt) else None
+
+    result, usd = charge(item["provider"], item["model"], "voice", project["slug"], item["usd"], lambda: make(item), note=f"{len(lines)} lines",
+                         cap="voice", backup=backup)
+    return {"model": result["model"], "provider": result["provider"], "voiceId": result["voiceId"], "gain": 1.0, "lines": result["lines"]}, usd
 
 
 # ---------- the reviewer ----------
@@ -1459,25 +1558,34 @@ def chat_target(cap: str) -> dict | None:
             "source": b["source"], "chat": {**(p.get("chat") or {}), **(m.get("chat") or {})}, "openrouter": pid == "openrouter"}
 
 
-def _vision_elsewhere(t: dict, images: list[Path], system: str, prompt: str, slug: str, purpose: str, max_tokens: int) -> dict:
-    """vision_json on a chat provider other than OpenRouter (Together, Gemini), picked in this project's vision block:
-    its key, its registered price, charged like every AI call."""
-    pid, name = t["provider"], PROVIDER_NAMES.get(t["provider"], t["provider"])
-    key = key_for(pid)
-    if not key:
-        raise AiError(f"No {name} key: add one in Settings › AI, or pick another vision model.", "no_key", 400)
-    price = chat_price(pid, t["model"])
-    if price is None:
-        raise no_price(pid, t["model"])
-    content = [{"type": "text", "text": prompt}] + [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(Path(p).read_bytes()).decode("ascii")}} for p in images]
-    payload = {"model": t["remote"], "messages": [{"role": "system", "content": system}, {"role": "user", "content": content}],
-               "max_tokens": max_tokens, "temperature": 0.2, **(t["chat"].get("extra") or {})}
-    if t["chat"].get("jsonMode"):
-        payload["response_format"] = {"type": "json_object"}
+def _vision_attempt(pid: str, mid: str, images: list[Path], system: str, prompt: str, max_tokens: int):
+    """(ledger model, estimate, call) for one picture question on a chat provider: OpenRouter (the reviewer's model and
+    OpenRouter's own price list) or another one picked in the vision block or standing in as its backup (Together,
+    Gemini: its key, its registered price). None when the provider does not speak the chat protocol. The call raises
+    no_key without a key, so a missing key hands the question to a backup (studio.fallback)."""
+    p, m, name = registry.provider(pid), _model(pid, mid), PROVIDER_NAMES.get(pid, pid)
+    if base.protocol_of(p, m) != "openai_chat" or p.get("free"):
+        return None
+    content = [{"type": "text", "text": prompt}] + [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(Path(x).read_bytes()).decode("ascii")}} for x in images]
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": content}]
+    if pid == "openrouter":
+        key, price, remote, url = reviewer_key(), model_prices(mid), mid, f"{OPENROUTER}/chat/completions"
+        payload = {"model": mid, "messages": messages, "response_format": {"type": "json_object"}, "max_tokens": max_tokens, "temperature": 0.2,
+                   "usage": {"include": True}}
+    else:
+        key, price, remote, url = key_for(pid), chat_price(pid, mid), m.get("id") or mid, openai_chat.endpoint(p)
+        if price is None:
+            raise no_price(pid, mid)
+        chat = {**(p.get("chat") or {}), **(m.get("chat") or {})}
+        payload = {"model": remote, "messages": messages, "max_tokens": max_tokens, "temperature": 0.2, **(chat.get("extra") or {})}
+        if chat.get("jsonMode"):
+            payload["response_format"] = {"type": "json_object"}
     est = round((len(images) * 1400 + len(prompt) // 3 + 600) * price["prompt"] + max_tokens * price["completion"], 4)
 
     def call():
-        status, headers, body = openai_chat.post(_http, t["url"], payload, name, key, timeout=180)
+        if not key:
+            raise AiError(f"No {name} key: add one in Settings › Keys & AI, or pick another vision model.", "no_key", 400)
+        status, headers, body = openai_chat.post(_http, url, payload, name, key, timeout=180, openrouter=pid == "openrouter")
         if status >= 400 or body.get("error"):
             raise _provider_error(pid, status if status >= 400 else 502, body.get("error") if isinstance(body.get("error"), dict) else body, headers)
         actual, tin, tout = openai_chat.usage(body, price)
@@ -1486,8 +1594,7 @@ def _vision_elsewhere(t: dict, images: list[Path], system: str, prompt: str, slu
         except (KeyError, IndexError, TypeError, ValueError):
             raise AiError("The vision model sent back no JSON.", "upstream", 502, charged=True) from None
 
-    got, _ = charge(pid, t["remote"], purpose, slug, est, call, note=f"{len(images)} pictures")
-    return got["out"]
+    return remote, est, call
 
 
 def vision_json(images: list[Path], system: str, prompt: str, slug: str, purpose: str = "vision", max_tokens: int = 1200) -> dict:
@@ -1513,29 +1620,21 @@ def vision_json(images: list[Path], system: str, prompt: str, slug: str, purpose
             raise AiError(f"Your model ({own['model']}) sent back no JSON.", "upstream", 502) from None
     t = chat_target("vision")
     if t and t["on"] and t["provider"] != "openrouter" and t["source"] == "workflow":
-        return _vision_elsewhere(t, images, system, prompt, slug, purpose, max_tokens)
-    key = reviewer_key()
-    if not key:
-        raise AiError("No OpenRouter key: add one in Settings › Keys & AI.", "no_key", 400)
-    model = _review_model({}, env=False)
-    m = model_prices(model)
-    est = round((len(images) * 1400 + len(prompt) // 3 + 600) * m["prompt"] + max_tokens * m["completion"], 4)
-    content = [{"type": "text", "text": prompt}] + [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(Path(p).read_bytes()).decode("ascii")}} for p in images]
-    payload = {"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": content}],
-               "response_format": {"type": "json_object"}, "max_tokens": max_tokens, "temperature": 0.2, "usage": {"include": True}}
+        pid, mid = t["provider"], t["model"]
+        if not key_for(pid) and not fallback.enabled("vision"):
+            raise AiError(f"No {PROVIDER_NAMES.get(pid, pid)} key: add one in Settings › AI, or pick another vision model.", "no_key", 400)
+    else:
+        pid, mid = "openrouter", _review_model({}, env=False)
+        if not reviewer_key() and not fallback.enabled("vision"):
+            raise AiError("No OpenRouter key: add one in Settings › Keys & AI.", "no_key", 400)
+    remote, est, call = _vision_attempt(pid, mid, images, system, prompt, max_tokens)
 
-    def call():
-        status, headers, body = openai_chat.post(_http, f"{OPENROUTER}/chat/completions", payload, "OpenRouter", key, timeout=180, openrouter=True)
-        if status >= 400 or body.get("error"):
-            raise _provider_error("openrouter", status if status >= 400 else 502, body.get("error") if isinstance(body.get("error"), dict) else body, headers)
-        actual, _, _ = openai_chat.usage(body, m)
-        try:
-            return openai_chat.json_of(openai_chat.text_of(body)), actual
-        except (KeyError, IndexError, TypeError, ValueError):
-            raise AiError("The vision model sent back no JSON.", "upstream", 502, charged=True) from None
+    def backup(provider: str, model: str, voice: str | None = None):  # another chat provider's vision model
+        got = _vision_attempt(provider, model, images, system, prompt, max_tokens)
+        return None if got is None else (got[1], got[2])
 
-    out, _ = charge("openrouter", model, purpose, slug, est, call, note=f"{len(images)} pictures")
-    return out
+    got, _ = charge(pid, remote, purpose, slug, est, call, note=f"{len(images)} pictures", cap="vision", backup=backup)
+    return got["out"]
 
 
 def review(req: dict) -> dict:
@@ -1748,14 +1847,14 @@ def run(req: dict) -> dict:
                 res, cost = tool_clip(it, x, target)
                 usd += cost
                 shot = project["shots"][x["i"]]
-                clip = {"tool": tool, "file": res["file"], "model": it["model"], "start": 0.0,
+                clip = {"tool": tool, "file": res["file"], "model": res.get("model") or it["model"], "start": 0.0,
                         "speed": 0.5 if tool == "slowmo" else (x["speed"] if tool == "sharpen" else 1.5)}
                 if tool == "living":
                     clip["start"] = 0.2
                 shot["ai_clip"] = clip
-                done.append(it["what"] + (" (cached, free)" if res.get("cached") else ""))
+                done.append(it["what"] + (" (cached, free)" if res.get("cached") else _switched(it, res)))
             if done:
-                notes.append({"tool": tool, "model": rows[0]["model"], "usd": round(usd, 4), "what": "; ".join(done), "label_required": TOOLS[tool][2]})
+                notes.append({"tool": tool, "model": clip["model"], "usd": round(usd, 4), "what": "; ".join(done), "label_required": TOOLS[tool][2]})
         elif tool == "foley":
             done = []
             for k, it in enumerate(rows, 1):
@@ -1763,30 +1862,31 @@ def run(req: dict) -> dict:
                 x = info[it["target"]]
                 res, cost = tool_foley(it, x, project)
                 usd += cost
-                project["shots"][x["i"]]["ai_foley"] = {"tool": "foley", "file": res["file"], "model": it["model"], "seconds": x["sec"]}
-                done.append(it["what"] + (" (cached, free)" if res.get("cached") else ""))
+                used = (res.get("provider") or it["provider"], res.get("model") or it["model"])
+                project["shots"][x["i"]]["ai_foley"] = {"tool": "foley", "file": res["file"], "model": used[1], "seconds": x["sec"]}
+                done.append(it["what"] + (" (cached, free)" if res.get("cached") else _switched(it, res)))
             if done:
-                notes.append({"tool": "foley", "model": rows[0]["model"], "usd": round(usd, 4), "what": "; ".join(done), "label_required": False,
-                              "licence": _sfx_licence(rows[0]["provider"], rows[0]["model"])})
+                notes.append({"tool": "foley", "model": used[1], "usd": round(usd, 4), "what": "; ".join(done), "label_required": False,
+                              "licence": _sfx_licence(*used)})
         elif tool == "behind":
             res, usd = tool_behind(rows[0], project)
             first = project["shots"][0]
             # stamp: the rendered opening shot the cut-out was made from; a re-render that changes it (steadying, colour,
             # a new window) makes the cut-out stale, and the build then leaves it out (reels.behind_layer).
-            first["ai_behind"] = {"tool": "behind", "file": res["file"], "model": rows[0]["model"], "src": first["src"], "sec": first["sec"],
+            first["ai_behind"] = {"tool": "behind", "file": res["file"], "model": res.get("model") or rows[0]["model"], "src": first["src"], "sec": first["sec"],
                                   "stamp": _mezz_stamp(target)}
-            notes.append({"tool": "behind", "model": rows[0]["model"], "usd": round(usd, 4), "what": rows[0]["what"] + (" (cached, free)" if res.get("cached") else ""),
-                          "label_required": False})
+            notes.append({"tool": "behind", "model": res.get("model") or rows[0]["model"], "usd": round(usd, 4),
+                          "what": rows[0]["what"] + (" (cached, free)" if res.get("cached") else _switched(rows[0], res)), "label_required": False})
         elif tool == "music":
             res, usd = tool_music(rows[0], project)
             project["music"] = {"id": res["id"], "start": 0.0, "volume": 1.0}
-            notes.append({"tool": "music", "model": rows[0]["model"], "usd": round(usd, 4), "what": rows[0]["what"] + f" -> {res['id']}",
-                          "label_required": False, "licence": _music_licence(rows[0]["provider"], rows[0]["model"])})
+            notes.append({"tool": "music", "model": res["model"], "usd": round(usd, 4), "what": rows[0]["what"] + f" -> {res['id']}" + _switched(rows[0], res),
+                          "label_required": False, "licence": _music_licence(res["provider"], res["model"])})
         elif tool == "voice":
             res, usd = tool_voice(rows[0], project)
             project["voice"] = res
-            notes.append({"tool": "voice", "model": rows[0]["model"], "usd": round(usd, 4), "what": rows[0]["what"] + f" in the voice {res['voiceId']}",
-                          "label_required": True})
+            notes.append({"tool": "voice", "model": res["model"], "usd": round(usd, 4),
+                          "what": rows[0]["what"] + f" in the voice {res['voiceId']}" + _switched(rows[0], res), "label_required": True})
         spent_now += usd
         applied.append({"tool": tool, "usd": round(usd, 4), "items": len(rows)})
         if notes and notes[-1]["tool"] == tool:
@@ -2267,6 +2367,9 @@ ACTIONS = {"status": status, "estimate": estimate, "run": run, "review": review,
            "check-key": check_key, "save-key": save_key, "save-caps": save_caps, "credits": credits,
            "save-llm": save_llm, "llm-presets": llm_presets, "providers": providers_view, "select": select, "save-price": save_price,
            "voices": voices,
+           # When a service runs out (studio.fallback): each service's health, the backup lists and the problems they
+           # cause; "Try X again"; the switches, backup lists and the max price rise.
+           "health": lambda req: fallback.view(req), "health-reset": lambda req: fallback.reset(req), "fallback": lambda req: fallback.save(req),
            # The Workflow page (studio.workflow): the pipeline's blocks, templates with a preview, apply with a backup,
            # undo, and this month's spend by capability and provider. Imported when asked (it imports this module).
            "workflow": lambda req: _workflow().view(req), "workflow-apply": lambda req: _workflow().apply(req),

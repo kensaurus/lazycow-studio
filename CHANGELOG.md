@@ -2,6 +2,37 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.23.0 (2026-11-18)
+
+### Added
+- **Automatic switching to a backup AI service.**
+  - **When it switches:** when a service runs out of credit, has a key problem, or is busy or down, every block that
+    uses it moves to the next service you have set up.
+  - **How long it stays switched:** about 6 hours for credit, until the key changes for a key problem, and 10 minutes
+    for busy or down.
+  - **What it never does:** switch on a refusal or bad input, retry a failure that may already have been billed, or
+    use a backup dearer than 2× (you can change that limit).
+  - **Voice** stays on its service unless you turn switching on for it, because another service changes the voice.
+  - **Where to see it:** each block's backup list is on the Workflow page. The master switch and each service's
+    health are in Settings › Keys & AI › Automatic switching. "Needs you" says when it happened, with Top up and Try
+    again.
+- **A light/dark button** in the top bar (sun or moon), plus "Light colours" and "Dark colours" in Ctrl K.
+
+### Changed
+- **No more long pages.** Each view now fits in about one or two screens at 1440 × 900.
+  - **Settings › Keys & AI:** a side menu with one section at a time, each with a status line, and a search box.
+  - **Words:** tabs (Headlines, Lines, Suggestions waiting, Same words) and a sortable table, with details in a side
+    panel.
+  - **Review:** a queue on the left and one reel in focus.
+  - **Footage:** tabs (Fresh footage, Library, Sources).
+  - **Reels:** older days fold into one line each, with theme and network filters.
+  - **Versions, Results, Making, Accounts and Workflow:** shorter.
+- **Docs, npm and GitHub:** every page is recorded again from a real studio in light colours, with new loops for
+  Today, Workflow, Versions, Words and the Activity log.
+
+### Fixed
+- A folded reel group no longer hides its own heading.
+
 ## 0.22.0 (2026-11-18)
 
 ### Added

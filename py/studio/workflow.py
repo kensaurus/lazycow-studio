@@ -233,6 +233,20 @@ def check_template(t) -> list[str]:
             errs.append(f"{t['id']}.{cap}: {mid} is marked {m['risk']}; a template never picks it")
         elif m.get("voiceRequired") and not b.get("voice"):
             errs.append(f"{t['id']}.{cap}: {mid} needs a voice")
+    # A template's backups (studio.fallback): {cap: [{provider, model}]}, registered models of that capability, never an
+    # unofficial route (a template cannot accept a risk for you).
+    fb = t.get("fallback")
+    if fb is not None:
+        if not isinstance(fb, dict):
+            return errs + [f"{t['id']}: fallback is {{capability: [{{provider, model}}]}}"]
+        for cap, lst in fb.items():
+            if cap not in registry.CAPABILITIES or not isinstance(lst, list):
+                errs.append(f"{t['id']}.fallback.{cap}: a capability and a list")
+                continue
+            for x in lst:
+                m = registry.model(str((x or {}).get("provider") or ""), str((x or {}).get("model") or "")) if isinstance(x, dict) else None
+                if not m or m.get("capability") != cap or m.get("risk"):
+                    errs.append(f"{t['id']}.fallback.{cap}: {x} is not a registered official {cap} model")
     return errs
 
 
@@ -330,6 +344,7 @@ def preview(t: dict, caps: dict | None = None) -> dict:
     return {"id": t["id"], "name": t["name"], "summary": t["summary"], "who": t.get("who"), "tags": t.get("tags") or [],
             "icon": t.get("icon"), "on": [c for c in registry.CAPABILITIES if _after(blocks, c, caps[c])["on"]],
             "diff": diff, "notes": notes, "missingKeys": missing,
+            "fallback": {c: [ai.PROVIDER_NAMES.get(x["provider"], x["provider"]) for x in lst] for c, lst in (t.get("fallback") or {}).items()},
             "perReel": round(after_total, 4), "perReelNow": round(before_total, 4)}
 
 
@@ -367,6 +382,8 @@ def apply(req: dict) -> dict:
             w["blocks"][cap] = {**(w["blocks"].get(cap) or {}), "on": False}
         else:
             w["blocks"][cap] = b
+    if isinstance(t.get("fallback"), dict):  # the template's backups replace those blocks' lists (Undo puts them back)
+        w["fallback"] = {**(w.get("fallback") or {}), **{c: [{"provider": x["provider"], "model": x["model"]} for x in lst] for c, lst in t["fallback"].items()}}
     w["template"] = tid
     ai._save_workflow(w)
     return {"applied": tid, "notes": notes, "undo": undo_info(), "view": view({})}

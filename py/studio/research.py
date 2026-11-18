@@ -778,6 +778,38 @@ def _llm_route() -> tuple[str, str, dict] | None:
                                "chat": dict(p.get("chat") or {}), "openrouter": True, "on": True, "source": "default"}
 
 
+def _llm_attempt(pid: str, model: str, t: dict, key: str, payload: dict, system: str, user: str, max_tokens: int):
+    """(estimate, call) for one writing request on a chat provider, or None when no price is known for it. A refusal is
+    read into the shared error vocabulary (studio.providers.http), so an empty account or a refused key can hand the
+    request to a backup."""
+    from studio import ai
+
+    price = ai.chat_price(pid, model)
+    if price is None:
+        return None
+    est = round((len(system) + len(user)) / 2 * price["prompt"] + (max_tokens + 500) * price["completion"], 6)
+
+    def call():
+        if not key:
+            raise ai.AiError(f"No {ai.PROVIDER_NAMES.get(pid, pid)} key for the writing help.", "no_key", 400)
+        try:
+            status, headers, raw = _http("POST", t["url"], data=json.dumps(payload).encode("utf-8"),
+                                         headers=ai.openai_chat.headers(key, openrouter=t["openrouter"]), timeout=60)
+        except ResearchError as err:
+            raise ai.AiError(str(err), err.code, err.status, charged=err.code == "timeout") from None
+        body = _json(raw)
+        if status >= 400:
+            raise ai._provider_error(pid, status, body.get("error") if isinstance(body.get("error"), dict) else body, headers)
+        actual, tin, tout = ai.openai_chat.usage(body, price)
+        try:
+            out = ai.openai_chat.json_of(ai.openai_chat.text_of(body))
+        except (KeyError, IndexError, TypeError, ValueError, AttributeError):
+            out = None
+        return {"out": out, "_tokens": (tin, tout)}, actual
+
+    return est, call
+
+
 def _llm(system: str, user: str, purpose: str = "research", max_tokens: int = 700) -> dict | None:
     """A writing job (post angles, word ideas) answered as JSON by the llm block's provider: OpenRouter by default, or
     any chat provider picked in Settings › AI (Together, Gemini), priced first and charged through studio.ai.charge()
@@ -813,29 +845,25 @@ def _llm(system: str, user: str, purpose: str = "research", max_tokens: int = 70
     hit = _cache_get(ck)
     if hit is not None:
         return hit
-    price = ai.chat_price(pid, model)
-    if price is None:  # nothing in the price chain knows it: the limits need a number, so it is not asked
+    first = _llm_attempt(pid, model, t, key, payload, system, user, max_tokens)
+    if first is None:  # nothing in the price chain knows it: the limits need a number, so it is not asked
         return None
-    est = round((len(system) + len(user)) / 2 * price["prompt"] + (max_tokens + 500) * price["completion"], 6)
 
-    def call():
-        try:
-            status, _, raw = _http("POST", t["url"], data=json.dumps(payload).encode("utf-8"),
-                                   headers=ai.openai_chat.headers(key, openrouter=t["openrouter"]), timeout=60)
-        except ResearchError as err:
-            raise ai.AiError(str(err), err.code, err.status, charged=err.code == "timeout") from None
-        body = _json(raw)
-        if status >= 400:
-            raise ai.AiError(f"{pid} refused the writing request ({status}).", "upstream", 502)
-        actual, tin, tout = ai.openai_chat.usage(body, price)
-        try:
-            out = ai.openai_chat.json_of(ai.openai_chat.text_of(body))
-        except (KeyError, IndexError, TypeError, ValueError, AttributeError):
-            out = None
-        return {"out": out, "_tokens": (tin, tout)}, actual
+    def backup(bpid: str, bmid: str, voice=None):
+        """Another chat provider's writing model, when this one is out of credit, refuses its key or is down
+        (studio.fallback): its own key, price and options."""
+        p, m = ai.registry.provider(bpid), ai.registry.model(bpid, bmid) or {}
+        if ai.base.protocol_of(p, m) != "openai_chat" or p.get("free"):
+            return None
+        bt = {"remote": m.get("id") or bmid, "url": ai.openai_chat.endpoint(p), "chat": {**(p.get("chat") or {}), **(m.get("chat") or {})},
+              "openrouter": bpid == "openrouter"}
+        bpay = {"model": bt["remote"], "messages": payload["messages"], "max_tokens": max_tokens + 2000, **(bt["chat"].get("extra") or {})}
+        if bt["chat"].get("jsonMode", bpid == "openrouter"):
+            bpay["response_format"] = {"type": "json_object"}
+        return _llm_attempt(bpid, bmid, bt, _llm_key() if bpid == "openrouter" else ai.key_for(bpid), bpay, system, user, max_tokens)
 
     try:
-        got, _ = ai.charge(pid, t["remote"], "research", None, est, call, note="research", purpose=purpose)
+        got, _ = ai.charge(pid, t["remote"], "research", None, first[0], first[1], note="research", purpose=purpose, cap="llm", backup=backup)
     except ai.AiError:
         return None
     out = got["out"]

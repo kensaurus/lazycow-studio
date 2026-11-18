@@ -2003,7 +2003,7 @@ button.hchip { cursor: pointer; }
   #home :is(h2, h3, .fh-head, summary):hover > :is(.grip, .foldbtn), #home :is(.grip, .foldbtn):focus-visible { opacity: 1; }
   #home .grip:focus-visible, #home .foldbtn:focus-visible { outline: 2px solid var(--sky); }
   #home .folded .foldbtn { transform: rotate(-90deg); }
-  #home .folded > :not(h2):not(h3):not(.fh-head):not(summary) { display: none !important; }
+  #home .folded > :not(h2):not(h3):not(.fh-head):not(summary):not(.rg-head) { display: none !important; }
   #home .folded { padding-bottom: 0 !important; }
   #home .dragging { position: relative; z-index: 30; box-shadow: 10px 10px 0 color-mix(in srgb, var(--ink) 18%, transparent) !important; cursor: grabbing; transition: none; }
   #home .dropbefore { box-shadow: 0 -4px 0 var(--larch) !important; } #home .dropafter { box-shadow: 0 4px 0 var(--larch) !important; }
@@ -3252,6 +3252,57 @@ button.hchip { cursor: pointer; }
     .fw-steps { grid-template-columns: minmax(0, 1fr); }
     .ab { grid-template-columns: 34px minmax(0, 1fr); } .ab-acts { grid-column: 2; grid-row: auto; justify-content: flex-start; }
   }
+  /* ---- fallback (18 Nov): the automatic switch to a backup AI service (the graph's chips, the detail's backups, the
+     AI blocks card's health) and the top bar's colour button. House tokens only: amber (--warn) = running on a backup,
+     red (--bad) = stuck without one. Motion: the "switched" badge blinks twice on arrival, only without mo-calm. ---- */
+  #themeBtn { min-width: 28px; min-height: 24px; justify-content: center; }
+  /* Phones and the reel editor's narrow header: it steps aside like Refresh (Ctrl K › Dark colours and Settings › Colours do it). */
+  @media (max-width: 760px) { header #themeBtn { display: none; } }
+  @media (max-width: 1000px) { .app:not(.at-home) header #themeBtn { display: none; } }
+  .fb-chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; min-width: 0; }
+  .fb-chip { display: inline-block; max-width: 100%; padding: 0 5px; font: 600 10.5px/1.6 var(--mono); font-style: normal; color: var(--mute); border: 1px dashed var(--edge); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fb-chip.on { color: var(--text); border: 1px solid var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+  .fb-chip.bad { color: var(--bad); border: 1px solid var(--bad); }
+  .fb-badge { display: inline-block; padding: 0 5px; font: 700 10px/1.7 var(--mono); font-style: normal; letter-spacing: .05em; text-transform: uppercase; background: var(--warn); color: #000; }
+  .wfg .snode.fb-sw { outline: 3px solid var(--warn); outline-offset: 2px; }
+  .wfg .snode.fb-stuck { outline: 3px solid var(--bad); outline-offset: 2px; }
+  html:not(.mo-calm) .wfg .snode.fb-sw.in .fb-badge { animation: fbBlink 700ms ease-in-out 2 900ms; }
+  @keyframes fbBlink { 50% { opacity: .3; } }
+  .fb-sec { margin-top: 16px; }
+  .fb-st { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 0 10px; padding: 7px 10px; font-size: 13.5px; border: 1px solid var(--line); border-left: 4px solid var(--meadow); background: var(--panel); }
+  .fb-st.fb-onb { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 9%, var(--panel)); font-weight: 600; }
+  .fb-st.fb-stk { border-left-color: var(--bad); background: color-mix(in srgb, var(--bad) 8%, var(--panel)); font-weight: 600; }
+  .fb-st > span { flex: 1 1 260px; }
+  .fb-top { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin: 0 0 12px; }
+  .fb-top .meta { flex: 1 1 320px; max-width: 92ch; line-height: 1.5; }
+  .fb-listhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; margin: 0 0 6px; font-size: 13.5px; }
+  .fb-list { list-style: none; margin: 0; padding: 0; display: grid; }
+  .fb-row { display: grid; grid-template-columns: 24px minmax(170px, 1.3fr) minmax(0, 1fr) 104px auto; gap: 4px 12px; align-items: center; padding: 7px 0; border-top: 1px solid var(--line); }
+  .fb-n { width: 22px; height: 22px; display: grid; place-items: center; font: 700 12px var(--mono); border: 1.5px solid var(--ink); }
+  .fb-row.off .fb-n { border-style: dashed; color: var(--mute); border-color: var(--edge); }
+  .fb-row.off .fb-who b { color: var(--mute); }
+  .fb-who { display: grid; min-width: 0; } .fb-who b { font-size: 13.5px; }
+  .fb-cost { font: 700 12.5px var(--mono); white-space: nowrap; }
+  .fb-acts { display: flex; align-items: center; justify-content: flex-end; gap: 4px; flex-wrap: wrap; }
+  .fb-acts .icon { min-width: 28px; min-height: 28px; }
+  .fb-flip { display: inline-flex; transform: rotate(180deg); }
+  .fb-add { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin-top: 8px; } .fb-add select { max-width: min(100%, 460px); min-height: 30px; }
+  .fb-card { margin: 18px 0 0; padding: 12px 14px 14px; background: var(--panel); border: 1px solid var(--line); border-top: 4px solid var(--warn); }
+  .fb-card h3 { margin: 0 0 8px; font: 700 16px/1.3 var(--title); display: flex; gap: 8px; align-items: center; }
+  .fb-set { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .fb-set > div { display: grid; gap: 1px; flex: 1 1 280px; } .fb-set .meta { font-size: 12.5px; line-height: 1.45; } .fb-set select { min-height: 30px; }
+  .fb-h4 { margin: 12px 0 6px; font: 700 11px/1.3 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--mute); }
+  .fb-provs { list-style: none; margin: 0; padding: 0; display: grid; }
+  .fb-prov { display: grid; grid-template-columns: 12px minmax(110px, 170px) minmax(120px, 240px) minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 7px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
+  .fb-dot { width: 10px; height: 10px; border-radius: 50% !important; background: var(--meadow); }
+  .fb-dot.out_of_credit, .fb-dot.auth { background: var(--bad); } .fb-dot.rate_limited, .fb-dot.unavailable { background: var(--warn); }
+  .fb-prov.bad .fb-state { color: var(--bad); font-weight: 700; }
+  .fb-why summary { min-height: 24px; font-size: 12.5px; cursor: pointer; } .fb-why .meta { display: block; max-width: 60ch; }
+  @media (max-width: 760px) {
+    .fb-row { grid-template-columns: 24px minmax(0, 1fr) auto; } .fb-row .fb-cost { grid-column: 3; grid-row: 1; align-self: start; }
+    .fb-row .wfc-tags, .fb-row .fb-acts { grid-column: 2 / -1; } .fb-row .fb-acts { justify-content: flex-start; }
+    .fb-prov { grid-template-columns: 12px minmax(0, 1fr) auto; } .fb-prov > .meta, .fb-prov .fb-acts { grid-column: 2 / -1; } .fb-prov .fb-acts { justify-content: flex-start; }
+  }
   /* ---- batch D: click targets of at least 24 x 24 px (WCAG 2.5.8). Links inside a sentence are exempt; everything a
      person aims at on its own gets the room, mostly by a min-height on the box it already has, or by padding that a
      negative margin gives back so the line does not grow. ---- */
@@ -3648,6 +3699,137 @@ button.hchip { cursor: pointer; }
   .c-sw-last { margin: 0; font-size: 13px; overflow-wrap: anywhere; } .c-sw-last.bad { color: var(--bad); }
   .c-sw-lines { margin: 0; max-height: 260px; overflow: auto; padding: 8px 10px; background: var(--t-bg, #0e100c); color: var(--t-fg, #f4f1e6); font: 12px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
   @media (max-width: 760px) { .c-sw-body { grid-template-columns: 96px minmax(0, 1fr); } .c-sw-names li .meta, .c-sw-key { display: none; } }
+  /* ---- layout pass (18 Nov): no page is a long scroll. Settings side list, in-page tabs, master-detail, side panel ---- */
+  .kset { display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: 22px; align-items: start; }
+  .ks-nav { position: sticky; top: 0; display: flex; flex-direction: column; gap: 1px; padding: 10px; background: var(--panel); border: 1px solid var(--ink, var(--line)); border-radius: var(--r-md); max-height: calc(100vh - 150px); overflow-y: auto; }
+  .ks-search { display: flex; align-items: center; gap: 6px; padding: 0 8px; margin: 0 0 6px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--bg); color: var(--mute); }
+  .ks-search input { flex: 1; min-width: 0; border: 0; background: transparent; padding: 7px 0; font: inherit; color: var(--text); box-shadow: none; }
+  .ks-search input:focus { outline: none; } .ks-search:focus-within { box-shadow: var(--focus); }
+  .ks-g { margin: 10px 8px 3px; font: 600 11px/1.2 var(--mono, var(--ui)); letter-spacing: .08em; text-transform: uppercase; color: var(--mute); }
+  .ks-g:first-of-type { margin-top: 4px; }
+  .ks-nav a { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 0 9px; align-items: center; padding: 7px 8px; border-radius: var(--r-sm); color: var(--text); text-decoration: none; border-left: 3px solid transparent; }
+  .ks-nav a > svg { grid-row: 1 / 3; color: var(--mute); }
+  .ks-nav a b { font-weight: 600; font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ks-nav a .ks-st { grid-column: 2; display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ks-nav a .ks-st.ok { color: var(--moss2); } .ks-nav a .ks-st.warn { color: var(--warn); } .ks-nav a .ks-st svg { flex: none; }
+  .ks-nav a:hover { background: var(--panel2); }
+  .ks-nav a.on { background: var(--panel2); border-left-color: var(--accent); box-shadow: none !important; }
+  .ks-nav a.on > svg { color: var(--accent); }
+  .ks-nav a[hidden], .ks-g[hidden] { display: none; } .ks-none { margin: 6px 8px; }
+  .ks-body { min-width: 0; } .ks-body > .sheet { margin-top: 0; }
+  .ks-body .fbsheet .fb-card { border: 0; padding: 0; margin: 0; background: none; }
+  .ks-body .fbsheet .fb-card > h3 { font-size: var(--fs-lg); margin-top: 0; }
+  .ab-fb { margin: 10px 0 0; }
+  /* AI blocks inside Settings: one compact row per block (the Workflow page keeps the roomy rows) */
+  .ks-body .ab { padding: 6px 0; gap: 2px 14px; grid-template-columns: 30px minmax(150px, 1.1fr) minmax(220px, 1.5fr) minmax(110px, .6fr) auto; }
+  .ks-body .ab-ico { width: 30px; height: 30px; }
+  .ks-body .ab-main .meta { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+  .ks-body .ab-svc { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; } .ks-body .ab-svc .wfc-tags { margin-top: 0; }
+  .ks-body .ab-svc .wfmono { font-size: 11.5px; }
+  .ks-body .ab-acts button { min-height: 30px; padding-block: 3px; }
+  .ks-body .ab-head { margin-bottom: 6px; }
+  /* in-page tabs with a count, master-detail with a sticky side panel, compact tables, a pager */
+  .ly-tabs { margin: 4px 0 12px; } .ly-tabs a { gap: 7px; }
+  .ly-n { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 9px; background: var(--panel2); color: var(--mute); font: 600 11.5px/18px var(--mono, var(--ui)); text-align: center; }
+  .ly-n.warn { background: color-mix(in srgb, var(--pop) 70%, var(--panel)); color: var(--pop-ink, #1a1400); }
+  .ly-tiles { margin-bottom: 10px; }
+  .ly-md { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); gap: 16px; align-items: start; }
+  .ly-md > .panel { min-width: 0; margin: 0; }
+  .ly-side { position: sticky; top: 0; max-height: calc(100vh - 130px); overflow-y: auto; margin: 0; display: grid; gap: 8px; align-content: start; }
+  .ly-side h4 { margin: 6px 0 0; font-size: var(--fs-sm); }
+  .ly-sh { display: grid; gap: 3px; justify-items: start; padding-bottom: 8px; border-bottom: 1px solid var(--line); } .ly-sh .wja { font-size: var(--fs-lg); }
+  .ly-kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: var(--fs-sm); }
+  .ly-kv dt { color: var(--mute); } .ly-kv dd { margin: 0; }
+  .ly-reels { padding: 0; } .ly-reels a { width: 48px; height: 85px; }
+  .ly-posts { list-style: none; margin: 0; padding: 0; display: grid; font-size: var(--fs-sm); }
+  .ly-posts li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; padding: 4px 0; border-top: 1px solid var(--line); align-items: center; }
+  .ly-pst { font: 600 11px var(--mono, var(--ui)); padding: 0 5px; border: 1px solid var(--ink, var(--line)); } .ly-pst.o { background: var(--ink, var(--text)); color: var(--panel); }
+  .ly-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+  .ly-table th { text-align: left; font-weight: 600; color: var(--mute); padding: 4px 8px; border-bottom: 1px solid var(--ink, var(--line)); white-space: nowrap; }
+  .ly-table td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .ly-sort { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; } .ly-sort:hover, .ly-sort.on { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+  .ly-sort:focus-visible { box-shadow: var(--focus); }
+  .wt tbody tr { cursor: pointer; } .wt tbody tr:hover { background: var(--panel2); } .wt tbody tr.on { background: color-mix(in srgb, var(--pop) 22%, var(--panel)); box-shadow: inset 3px 0 0 var(--accent); }
+  .wt tbody tr.worn { box-shadow: inset 4px 0 0 var(--bad); } .wt tbody tr.worn.on { box-shadow: inset 4px 0 0 var(--bad), inset 0 0 0 1px var(--accent); }
+  .wt-mark { width: 64px; } @media (min-width: 701px) { .wt-text { max-width: 0; width: 46%; } } @media (max-width: 700px) { .wt-text { max-width: 220px; } } .wt-text .wja { display: block; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wt-text .meta { display: block; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wt-bar { width: 150px; } .wt-bar .cw-track { height: 9px; } .wt-bar .cw-num { font-size: 11px; } .wt tr.worn .cw-track { border-color: var(--bad); } .wt tr.worn .cw-track i.o { background: var(--bad); }
+  .wt-act { text-align: right; } .wt-act button { min-height: 28px; padding-block: 2px; }
+  .ly-wt .note { margin: 4px 0 8px; }
+  .ly-pager { display: inline-flex; align-items: center; gap: 4px; } .ly-pager .meta { margin-right: 4px; white-space: nowrap; }
+  .ly-filters { gap: 10px; margin-bottom: 8px; }
+  .ly-find { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--bg); color: var(--mute); }
+  .ly-find input { border: 0; background: transparent; padding: 6px 0; min-width: 180px; font: inherit; color: var(--text); box-shadow: none; } .ly-find input:focus { outline: none; } .ly-find:focus-within { box-shadow: var(--focus); }
+  @media (min-width: 761px) { .ly-table.wtable td { padding-block: 4px; } .ly-table.wtable td:nth-child(2) { max-width: 0; width: 60%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ly-table.wtable td:nth-child(2) > div { display: inline; white-space: nowrap; } }
+  .ly-table.wtable .wja { font-weight: 600; margin-right: 12px; }
+  .ly-table.wtable .chip { padding-block: 0; } .ly-table.wtable button { min-height: 26px; padding-block: 1px; }
+  /* Reels: one row of cards per open group, folded groups show their first pictures, the waiting four in one row */
+  @media (min-width: 1200px) { .rgroup .reels { grid-template-columns: repeat(8, minmax(0, 1fr)); } .lead.monlead .leadcol .reels { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; } }
+  /* The four waiting cards: their buttons float over the card on hover, as in the groups below (no 4-button stack each) */
+  @media (hover: hover) { .lead .rcard { position: relative; }
+    .lead .rcard .card-acts { position: absolute; left: 6px; right: 6px; bottom: 6px; z-index: 2; margin: 0; padding: 6px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 4px 14px rgb(0 0 0 / .18); opacity: 0; pointer-events: none; transition: opacity .12s ease; }
+    .lead .rcard:hover .card-acts, .lead .rcard:focus-within .card-acts { opacity: 1; pointer-events: auto; } }
+  .rg-thumbs { display: inline-flex; gap: 3px; flex: none; } .rg-thumbs i { width: 22px; height: 39px; background: var(--t-bg2, #333) center/cover; border: 1px solid color-mix(in srgb, var(--bg) 35%, transparent); }
+  .rgroup.folded .rg-rule { flex: 1; }
+  .rpick { display: inline-flex; align-items: center; gap: 8px; }
+  .rpick select { min-height: 32px; padding: 3px 8px; font: inherit; font-size: var(--fs-sm); max-width: 200px; } .rpick select.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  @media (max-width: 700px) { .rg-thumbs { display: none; } }
+  /* Results: the network table folds to one line; the post table is one line a post */
+  .rn-fold { margin: 10px 0; border: 1px solid var(--line); background: var(--panel); }
+  .rn-fold > summary { cursor: pointer; padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+  .rn-fold[open] > summary { border-bottom: 1px solid var(--line); } .rn-fold .rntable { margin: 0; }
+  .tbsheet .ptable td { padding-top: 3px; padding-bottom: 3px; vertical-align: middle; }
+  @media (min-width: 761px) { .tbsheet .ptable .reelcell { max-width: 0; width: 40%; } } .tbsheet .ptable .reelcell * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chsheet .ptable td { padding-top: 4px; padding-bottom: 4px; } @media (min-width: 761px) { .chsheet .vidcell { max-width: 0; width: 42%; } }
+  .chsheet .vidcell > a.clamp { display: block; -webkit-line-clamp: unset; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chsheet .vidcell > .meta { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+  .tbsheet .ptable .reelcell .mini { width: 18px !important; height: 30px !important; flex: none; } .tbsheet .ptable .reelcell a { display: flex; align-items: center; gap: 8px; }
+  /* Accounts: Ready (nothing to do) folds to one line with its networks' logos */
+  .acc-readyfold > summary { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; } .acc-readylogos { display: inline-flex; gap: 4px; }
+  /* Workflow: the templates three to a row with their summary clamped; this month's spend folds (the top shows it) */
+  @media (min-width: 1200px) { .wf-tplgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .wf-tpl .wft-sum { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 0; }
+  .wf-tpl { gap: 8px; padding-top: 12px; }
+  .ly-fold > summary { cursor: pointer; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; list-style: none; }
+  .ly-fold > summary::-webkit-details-marker { display: none; } .ly-fold > summary h2 { margin: 0; }
+  .ly-fold > summary::after { content: "▸"; margin-left: auto; color: var(--mute); } .ly-fold[open] > summary::after { content: "▾"; }
+  /* Making: the reels waiting for review in one compact row, buttons on hover (as the Reels groups) */
+  .mk-fresh { margin-top: 6px; }
+  /* Versions: one comparison at a time, the two videos beside what changed */
+  .ver-pick a { gap: 8px; } .ver-pick a span[lang] { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ver-body { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; align-items: start; margin-top: 8px; }
+  .ver-side { display: grid; gap: 10px; min-width: 0; align-content: start; } .ver-side > * { margin: 0; }
+  .ver-kept summary { cursor: pointer; margin-top: 6px; } .ver-kept[open] summary { margin-bottom: 4px; }
+  @media (max-width: 1000px) { .ver-body { grid-template-columns: minmax(0, 1fr); } }
+  /* Review: the queue on the left, one reel in focus on the right */
+  .rv-md { display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .rv-queue { position: sticky; top: 0; margin: 0; padding: 0; display: flex; flex-direction: column; max-height: calc(100vh - 210px); min-height: 0; }
+  .rvq-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--ink, var(--line)); }
+  .rvq-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; position: relative; }
+  .rvq { all: unset; box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 10px; width: 100%; padding: 7px 12px; border-bottom: 1px solid var(--line); border-left: 3px solid transparent; }
+  .rvq:hover { background: var(--panel2); } .rvq:focus-visible { box-shadow: var(--focus); }
+  .rvq.sel { background: color-mix(in srgb, var(--pop) 22%, var(--panel)); border-left-color: var(--accent); color: var(--text); }
+  .rvq-th { width: 36px; height: 64px; background: var(--line) center/cover; border: 1px solid var(--ink, var(--line)); }
+  .rvq-txt { display: grid; gap: 1px; min-width: 0; align-content: start; } .rvq-txt b { font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rvq-txt .meta { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+  .rvq-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; } .rvq-meta .scorebadge { margin: 0; }
+  .rvq-f { display: inline-grid; place-items: center; width: 20px; height: 20px; font-style: normal; } .rvq-f.warn { color: var(--warn); } .rvq-f.bad { color: var(--bad); }
+  .rv-md .rvfocus { margin: 0; padding: 16px; border-bottom: 1px solid var(--ink, var(--line)); grid-template-columns: 260px minmax(0, 1fr) 170px; }
+  .rv-md .rvfocus .rvposter, .rv-md .rvfocus .rvvid { width: 260px; height: 462px; }
+  .rv-md .rvfocus .rvstrip .rvshot { flex: 1 1 54px; max-width: 90px; height: auto; aspect-ratio: 9 / 16; }
+  .rv-md .rvfocus.kfocus { outline: 0; }
+  .rvkeys { font-size: 11.5px; margin-top: 6px; }
+  @media (max-width: 1100px) { .rv-md .rvfocus { grid-template-columns: 200px minmax(0, 1fr); } .rv-md .rvfocus .rvacts { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; } .rv-md .rvfocus .rvposter, .rv-md .rvfocus .rvvid { width: 200px; height: 356px; } }
+  @media (max-width: 760px) { .rv-md { grid-template-columns: minmax(0, 1fr); } .rv-queue { position: static; max-height: 260px; } .rv-md .rvfocus { grid-template-columns: minmax(0, 1fr); } .rv-md .rvfocus .rvposter, .rv-md .rvfocus .rvvid { width: 100%; max-width: 260px; height: auto; aspect-ratio: 9 / 16; } .rvkeys { display: none; } }
+  @media (max-width: 1100px) { .ly-md { grid-template-columns: minmax(0, 1fr); } .ly-side { position: static; max-height: none; } }
+  @media (max-width: 700px) { .wt-bar, .wt th:nth-child(3), .wt-nets, .wt th:nth-child(4), .wt td:nth-child(5), .wt th:nth-child(5) { display: none; } .ly-find input { min-width: 0; width: 120px; } }
+  @media (max-width: 860px) {
+    .kset { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    .ks-nav { position: static; max-height: none; flex-direction: row; flex-wrap: nowrap; overflow-x: auto; padding: 6px; }
+    .ks-nav .ks-search { flex: 0 0 160px; margin: 0 6px 0 0; } .ks-g, .ks-nav a .ks-st { display: none; }
+    .ks-nav a { display: flex; flex: none; border-left: 0; border-bottom: 3px solid transparent; } .ks-nav a.on { border-bottom-color: var(--accent); }
+  }
 </style>
 
 <!-- Icons: Lucide-style strokes, inline so the editor works offline. -->
@@ -3764,6 +3946,7 @@ button.hchip { cursor: pointer; }
     <div class="newswrap"><button id="newsBtn" class="langbtn" aria-haspopup="dialog" aria-expanded="false" title="What is happening with your posts"><svg class="i sm"><use href="#i-bell"/></svg><span id="newsNext">…</span><b id="newsDot" class="ndot" hidden></b></button>
       <div id="newsPanel" class="newspanel" role="dialog" aria-label="Posts" hidden></div></div>
     <button id="syncBtn" class="langbtn" title="Refresh: reels, posts and YouTube" aria-label="Refresh"><svg class="i sm"><use href="#i-refresh"/></svg><span id="syncInfo">…</span></button>
+    <button id="themeBtn" class="langbtn themebtn" type="button" title="Colours" aria-label="Colours"><svg class="i sm"><use href="#i-moon"/></svg></button>
     <button id="sysBtn" class="langbtn" title="Can this computer run the studio?" aria-label="System check"><span class="sysdot" id="sysDot"></span><span data-t="sys.short">System</span></button>
     <button id="lang" class="langbtn" title="English / 日本語">日本語</button>
     <span class="chip edit-only" id="status">…</span>
@@ -4481,11 +4664,13 @@ function route() {
   if (page === "log") { const want = lt ? lt[1] : "overview"; if (want !== logTab) { logTab = want; logPage = 0; logQ = ""; logKind = "all"; } if (lt?.[2]) { logQ = lt[2]; logPage = 0; } }
   const pt = /^#\/posting\/(\w+)(?:\/([\w-]+))?/.exec(location.hash);
   if (page === "posting") { const want = pt ? pt[1] : "schedule"; if (want !== postTab) { postTab = want; postQ = ""; postPage = 0; } const net = pt?.[2] || "all"; if (net !== postNet) { postNet = net; postPage = 0; } }
+  const an = /^#\/keys\/(\w+)/.exec(location.hash);
+  lyRoute();  // layout pass: the section or tab a page's address names (#/keys/llm, #/words/lines, #/footage/library…)
   showHome();
   const it = /^#\/ideas\/([\w-]+)/.exec(location.hash);
   if (page === "ideas" && it && IDEA_TOOLS.some((t) => t[0] === it[1])) ideaTab = it[1];
-  const an = /^#\/keys\/(\w+)/.exec(location.hash);
-  if (an) flashAnchor(an[1]);
+  // An address naming a part inside a section (#/keys/motion, #/keys/theme) marks that part; a section itself does not.
+  if (an && !KEYS_SECS.some((s) => s[0] === an[1])) flashAnchor(an[1]);
 }
 window.addEventListener("hashchange", () => {
   if (reel && edit && isDirty() && !/^#\/reel\/(.+)/.test(location.hash) && !confirm("Leave unsaved edits?")) { window.history.replaceState(null, "", "#/reel/" + reel.slug); return; }
@@ -5147,7 +5332,7 @@ const I18N = {
     "pl.dir.n": "north", "pl.dir.ne": "north-east", "pl.dir.e": "east", "pl.dir.se": "south-east", "pl.dir.s": "south", "pl.dir.sw": "south-west", "pl.dir.w": "west", "pl.dir.nw": "north-west",
     "pl.where": "{km} km {d}", "pl.read": "{w}: {n} files, {u} not used in a reel yet", "pl.athome": "at the home point", "pl.awaylabel": "{km} km away", "pl.awayn": "{km} km · {n}",
     "pl.aria": "Map of where {n} files were filmed", "pl.fence": "home place · {r} km", "pl.homemark": "Home", "pl.z.fence": "Whole area", "pl.z.close": "Close up",
-    "pl.k.unused": "not used yet", "pl.k.used": "used in a reel", "pl.k.size": "bigger = more files", "pl.hint": "{n} files have a position, {u} do not. Click a dot to see its files below.", "pl.chip": "Filmed: {w}",
+    "pl.k.unused": "not used yet", "pl.k.used": "used in a reel", "pl.k.size": "bigger = more files", "pl.hint": "{n} files have a position, {u} do not. Click a dot to see its files in the Library.", "pl.chip": "Filmed: {w}",
     "rf.lane": "Open {net}'s week in Posting", "rf.fold": "No numbers to read", "rf.foldn": "{n} posts", "rf.foldwhy": "These networks give the studio no numbers, so they sit outside the picture.",
     "rf.viewsscope": "Views · the studio's posts, {d} days", "rf.golane": "See its week in Posting",
     "yt.totalnew": "views on the newest {n} uploads", "ch.totalsscope": "channel total, all time",
@@ -5456,7 +5641,7 @@ const I18N = {
     "pl.dir.n": "北", "pl.dir.ne": "北東", "pl.dir.e": "東", "pl.dir.se": "南東", "pl.dir.s": "南", "pl.dir.sw": "南西", "pl.dir.w": "西", "pl.dir.nw": "北西",
     "pl.where": "{d}へ{km} km", "pl.read": "{w}：{n}件（うち未使用{u}件）", "pl.athome": "拠点", "pl.awaylabel": "{km} km先", "pl.awayn": "{km} km · {n}件",
     "pl.aria": "{n}件の素材を撮影した場所の地図", "pl.fence": "拠点 · 半径{r} km", "pl.homemark": "拠点", "pl.z.fence": "全体", "pl.z.close": "拡大",
-    "pl.k.unused": "未使用", "pl.k.used": "リールで使用済み", "pl.k.size": "大きいほど件数が多い", "pl.hint": "位置がある素材は{n}件、ない素材は{u}件です。点を押すと、その素材だけが下に表示されます。", "pl.chip": "撮影場所：{w}",
+    "pl.k.unused": "未使用", "pl.k.used": "リールで使用済み", "pl.k.size": "大きいほど件数が多い", "pl.hint": "位置がある素材は{n}件、ない素材は{u}件です。点を押すと、その素材だけがライブラリに表示されます。", "pl.chip": "撮影場所：{w}",
     "rf.lane": "{net}の週を「投稿」で開く", "rf.fold": "読める数字なし", "rf.foldn": "{n}件", "rf.foldwhy": "これらのSNSはスタジオに数字を出さないため、図の外に置いています。",
     "rf.viewsscope": "再生 · スタジオの投稿、{d}日間", "rf.golane": "「投稿」でこのSNSの週を見る",
     "yt.totalnew": "最新{n}本の視聴回数", "ch.totalsscope": "チャンネル全体の累計",
@@ -5530,6 +5715,48 @@ Object.assign(I18N.ja, {
     "d_th.label": "画面の色", "d_th.auto": "自動", "d_th.autod": "パソコンのライト・ダーク設定に合わせます。", "d_th.light": "ライト", "d_th.lightd": "いつも温かみのある紙に濃い文字。", "d_th.dark": "ダーク", "d_th.darkd": "暗い画面に明るい文字。夜に見やすくなります。",
     "d_th.sysdark": "このブラウザによると、パソコンはダークに設定されています。", "d_th.syslight": "このブラウザによると、パソコンはライトに設定されています。", "d_th.nowdark": "今はダークで表示しています。", "d_th.nowlight": "今はライトで表示しています。", "d_th.saved": "画面の色：{v}",
 });
+/* ---- fallback (18 Nov): labels for the automatic switch to a backup AI service, and the top bar's colour button.
+   Its own block and prefix (fb_) so it never meets another batch's lines. ---- */
+Object.assign(I18N.en, {
+    "fb_th.light": "Colours: Light. Click for Dark.", "fb_th.dark": "Colours: Dark. Click for Light.", "fb_th.autolight": "Colours: Auto, light now (your system is light). Click for Dark.",
+    "fb_th.autodark": "Colours: Auto, dark now (your system is dark). Click for Light.", "fb_th.where": "Auto again: Settings › Keys & AI › This studio › Colours.",
+    "fb_th.pl": "Light colours", "fb_th.pd": "Dark colours", "fb_th.pa": "Colours follow the system", "fb_th.psub": "Settings › Colours",
+    "fb_a.h": "If this service runs out or is down", "fb_a.auto": "Auto-switch", "fb_a.autod": "When {p} is out of credit, refuses its key, is busy or down, this block uses the next service below, and so does every other block on {p}. Never when a request is refused for what it shows.",
+    "fb_a.voiceoff": "Off at first: another service reads in another voice.", "fb_a.masteroff": "Auto-switch is off for every block (Settings › Keys & AI › AI blocks).",
+    "fb_a.list": "Backups, in order", "fb_a.src.auto": "Picked by the studio: services with a key and a price, the default first, then the cheapest.", "fb_a.src.yours": "Your own order.",
+    "fb_a.reset": "Back to the studio's order", "fb_a.up": "Move up", "fb_a.down": "Move down", "fb_a.remove": "Remove", "fb_a.add": "Add a backup", "fb_a.none": "No other service can stand in yet. Add a key for one on Keys & AI.",
+    "fb_a.empty": "No backups: if {p} runs out, this block waits.", "fb_a.reel": "{n} a reel",
+    "fb_a.st.ok": "Runs on {p}.", "fb_a.st.using": "Using {b} since {t}: {p} {why}.", "fb_a.st.next": "{p} {why}: the next job uses {b}.", "fb_a.st.stuck": "{p} {why}, and nothing can stand in: this block waits.",
+    "fb_a.st.noauto": "{p} {why}. Auto-switch is off here, so this block waits.",
+    "fb_a.k.out_of_credit": "is out of credit", "fb_a.k.auth": "did not accept its key", "fb_a.k.rate_limited": "is busy (too many requests)", "fb_a.k.unavailable": "is not answering",
+    "fb_a.s.nokey": "no key", "fb_a.s.noprice": "needs a price", "fb_a.s.risk": "unofficial: not accepted", "fb_a.s.voice": "pick a voice first",
+    "fb_a.h.ok": "OK", "fb_a.h.out_of_credit": "out of credit", "fb_a.h.auth": "key problem", "fb_a.h.rate_limited": "busy", "fb_a.h.unavailable": "down",
+    "fb_a.chip": "backup: {p}", "fb_a.switched": "switched", "fb_a.nobackup": "no backup",
+    "fb_a.card": "When a service runs out", "fb_a.master": "Switch to a backup service by itself", "fb_a.masterd": "One switch for every block; each block also has its own on the Workflow page. Voice-over is off at first, because another service changes the voice.",
+    "fb_a.rise": "A backup may cost up to", "fb_a.risex": "{n}× the first choice", "fb_a.riseh": "A pricier backup is skipped, and the reason kept with the job.",
+    "fb_a.health": "Services", "fb_a.until": "until {t}", "fb_a.keyfix": "until the key changes", "fb_a.try": "Try again", "fb_a.topup": "Top up", "fb_a.tried": "{p} will be asked first again.",
+    "fb_a.saved": "Saved.", "fb_a.uses": "used by {c}", "fb_a.nohealth": "No AI service has a key yet.", "fb_a.allok": "Every service answers normally.", "fb_a.why": "Why",
+});
+Object.assign(I18N.ja, {
+    "fb_th.light": "画面の色：ライト。クリックでダークにします。", "fb_th.dark": "画面の色：ダーク。クリックでライトにします。", "fb_th.autolight": "画面の色：自動（パソコンがライトなので今はライト）。クリックでダークにします。",
+    "fb_th.autodark": "画面の色：自動（パソコンがダークなので今はダーク）。クリックでライトにします。", "fb_th.where": "自動に戻すには：設定 › キーとAI › このスタジオ › 画面の色",
+    "fb_th.pl": "画面をライトにする", "fb_th.pd": "画面をダークにする", "fb_th.pa": "画面の色をパソコンに合わせる", "fb_th.psub": "設定 › 画面の色",
+    "fb_a.h": "このサービスが使えなくなったら", "fb_a.auto": "自動で切り替える", "fb_a.autod": "{p}のクレジットが切れたとき、キーが通らないとき、混み合っているとき、止まっているときは、下のサービスを順に使います。{p}を使うほかのブロックも同じです。内容を理由に断られたときは切り替えません。",
+    "fb_a.voiceoff": "初めはオフです。ほかのサービスでは声が変わるためです。", "fb_a.masteroff": "すべてのブロックで自動切り替えがオフです（設定 › キーとAI › AIブロック）。",
+    "fb_a.list": "予備のサービス（上から順に）", "fb_a.src.auto": "スタジオが選んだ順：キーと料金のあるサービスを、標準、安い順に並べています。", "fb_a.src.yours": "あなたが決めた順番です。",
+    "fb_a.reset": "スタジオの順に戻す", "fb_a.up": "上へ", "fb_a.down": "下へ", "fb_a.remove": "外す", "fb_a.add": "予備を追加", "fb_a.none": "代わりに使えるサービスがまだありません。キーとAIでどれかのキーを登録してください。",
+    "fb_a.empty": "予備がありません。{p}が使えなくなると、このブロックは止まります。", "fb_a.reel": "1本あたり{n}",
+    "fb_a.st.ok": "{p}で動いています。", "fb_a.st.using": "{t}から{b}を使っています：{p}{why}。", "fb_a.st.next": "{p}{why}。次の作業は{b}を使います。", "fb_a.st.stuck": "{p}{why}。代わりのサービスがないので、このブロックは止まっています。",
+    "fb_a.st.noauto": "{p}{why}。ここは自動切り替えがオフなので、このブロックは止まっています。",
+    "fb_a.k.out_of_credit": "のクレジットが切れました", "fb_a.k.auth": "のキーが通りません", "fb_a.k.rate_limited": "が混み合っています", "fb_a.k.unavailable": "が応答しません",
+    "fb_a.s.nokey": "キーなし", "fb_a.s.noprice": "料金の入力が必要", "fb_a.s.risk": "非公式（未承認）", "fb_a.s.voice": "先に声を選択",
+    "fb_a.h.ok": "正常", "fb_a.h.out_of_credit": "クレジット切れ", "fb_a.h.auth": "キーの問題", "fb_a.h.rate_limited": "混雑", "fb_a.h.unavailable": "停止中",
+    "fb_a.chip": "予備：{p}", "fb_a.switched": "切替中", "fb_a.nobackup": "予備なし",
+    "fb_a.card": "サービスが使えなくなったとき", "fb_a.master": "予備のサービスに自動で切り替える", "fb_a.masterd": "すべてのブロックに効くスイッチです。ブロックごとのスイッチはワークフローにあります。ナレーションは声が変わるので、初めはオフです。",
+    "fb_a.rise": "予備の料金の上限", "fb_a.risex": "最初の選択の{n}倍まで", "fb_a.riseh": "これより高い予備は使わず、その理由を作業の記録に残します。",
+    "fb_a.health": "サービスの状態", "fb_a.until": "{t}まで", "fb_a.keyfix": "キーが変わるまで", "fb_a.try": "もう一度試す", "fb_a.topup": "チャージ", "fb_a.tried": "次は{p}を先に使います。",
+    "fb_a.saved": "保存しました。", "fb_a.uses": "{c}で使用", "fb_a.nohealth": "キーを登録したAIサービスはまだありません。", "fb_a.allok": "すべてのサービスが正常に応答しています。", "fb_a.why": "理由",
+});
 /* ---- batch C: labels (making and reviewing). Its own block so the two batches never edit the same lines. ---- */
 Object.assign(I18N.en, {
   "c_ps.grade": "Best moments", "c_ps.r916": "9:16", "c_ps.r45": "4:5", "c_ps.r169": "16:9", "c_ps.sound": "Sound", "c_ps.nets": "Network copies", "c_ps.sheet": "Review sheet",
@@ -5599,6 +5826,78 @@ Object.assign(I18N.ja, {
   "c_sw.stopat": "{n}段階中{k}段階目で停止", "c_sw.newer": "この行はこのリールの最新の実行（{t}）のものです。それより前の実行の行は残っていません。",
   "c_sw.nolines": "この実行のログは残っていません。", "c_sw.onlylast": "この種類の処理は最後の1行だけを残します（上に表示）。",
 });
+/* ---- layout pass (18 Nov): Settings › Keys & AI side list ---- */
+Object.assign(I18N.en, {
+  "ly_ks.nav": "Settings sections", "ly_ks.search": "Find a setting…", "ly_ks.none": "No section has that word.",
+  "ly_ks.g.ai": "AI", "ly_ks.g.studio": "Studio", "ly_ks.g.links": "Links",
+  "ly_ks.t.keys": "AI and research keys", "ly_ks.t.blocks": "AI blocks", "ly_ks.t.llm": "Your own AI model", "ly_ks.t.fallback": "Automatic switching",
+  "ly_ks.t.caps": "Spending limits", "ly_ks.t.studio": "This studio", "ly_ks.t.brand": "This project", "ly_ks.t.chrome": "Chrome link",
+  "ly_ks.t.google": "YouTube: Google account", "ly_ks.t.connect": "Use with Claude or Cursor",
+  "ly_ks.st.keys": "{n}/{m} working", "ly_ks.st.refused": "{n} refused by the service", "ly_ks.st.on": "{n} of {m} on", "ly_ks.st.llmon": "On · {m}",
+  "ly_ks.st.notset": "Not set", "ly_ks.st.err": "Could not read", "ly_ks.st.off": "Off", "ly_ks.st.down": "{n} services down", "ly_ks.st.allok": "On · all services fine",
+  "ly_ks.st.caps": "{u} of {c} spent", "ly_ks.st.studio": "{t} · motion {m}", "ly_ks.st.notused": "Not used here", "ly_ks.st.linked": "Linked",
+  "ly_ks.st.notlinked": "Not linked", "ly_ks.st.noapp": "No Google app yet", "ly_ks.st.connect": "MCP server · HTTP API",
+  "ly_ks.capsoff": "The AI limits could not be read just now. They come back when the studio answers.",
+  "ly_ks.chromeoff": "This studio reaches the networks another way, so it does not need your Chrome. Accounts shows how each network is reached.",
+  "ly_ks.kw.keys": "key api firecrawl fal openrouter together credits balance research", "ly_ks.kw.blocks": "ai blocks service model price voice music writing vision capability",
+  "ly_ks.kw.llm": "own model ollama lm studio local openai groq vllm url vision", "ly_ks.kw.fallback": "fallback backup switch health out of credit try again top up price rise",
+  "ly_ks.kw.caps": "spending limits budget cap money dollar per reel daily total cost", "ly_ks.kw.studio": "motion animation theme colours colors dark light reduced",
+  "ly_ks.kw.brand": "project brand name link hashtags handle place banned words prices", "ly_ks.kw.chrome": "chrome extension browser link tiktok x linkedin",
+  "ly_ks.kw.google": "youtube google account channel app oauth analytics", "ly_ks.kw.connect": "claude cursor mcp api agent assistant openapi",
+});
+Object.assign(I18N.ja, {
+  "ly_ks.nav": "設定の項目", "ly_ks.search": "設定を探す…", "ly_ks.none": "その言葉を含む項目はありません。",
+  "ly_ks.g.ai": "AI", "ly_ks.g.studio": "スタジオ", "ly_ks.g.links": "つなぐ",
+  "ly_ks.t.keys": "AIとリサーチのキー", "ly_ks.t.blocks": "AIブロック", "ly_ks.t.llm": "自分のAIモデル", "ly_ks.t.fallback": "自動の切り替え",
+  "ly_ks.t.caps": "使う金額の上限", "ly_ks.t.studio": "このスタジオ", "ly_ks.t.brand": "このプロジェクト", "ly_ks.t.chrome": "Chromeとの連携",
+  "ly_ks.t.google": "YouTube: Googleアカウント", "ly_ks.t.connect": "ClaudeやCursorで使う",
+  "ly_ks.st.keys": "{m}件中{n}件が使える", "ly_ks.st.refused": "{n}件がサービスに拒否", "ly_ks.st.on": "{m}件中{n}件オン", "ly_ks.st.llmon": "オン・{m}",
+  "ly_ks.st.notset": "未設定", "ly_ks.st.err": "読み込めません", "ly_ks.st.off": "オフ", "ly_ks.st.down": "{n}件のサービスが停止中", "ly_ks.st.allok": "オン・すべて正常",
+  "ly_ks.st.caps": "{c}のうち{u}使用", "ly_ks.st.studio": "{t}・動き{m}", "ly_ks.st.notused": "ここでは使いません", "ly_ks.st.linked": "連携済み",
+  "ly_ks.st.notlinked": "未連携", "ly_ks.st.noapp": "Googleアプリ未登録", "ly_ks.st.connect": "MCPサーバー・HTTP API",
+  "ly_ks.capsoff": "AIの上限をいま読み込めませんでした。スタジオが応答すると戻ります。",
+  "ly_ks.chromeoff": "このスタジオは別の方法で各SNSにつなぐので、Chromeは使いません。各SNSへのつなぎ方はアカウントで確認できます。",
+  "ly_ks.kw.keys": "キー api クレジット 残高 リサーチ", "ly_ks.kw.blocks": "ブロック サービス モデル 料金 声 音楽 文章 画像",
+  "ly_ks.kw.llm": "自分 モデル ローカル ollama", "ly_ks.kw.fallback": "切り替え 予備 バックアップ 停止 残高切れ チャージ",
+  "ly_ks.kw.caps": "上限 予算 金額 お金 1本 1日 合計 費用", "ly_ks.kw.studio": "動き アニメーション 色 テーマ ダーク ライト",
+  "ly_ks.kw.brand": "プロジェクト 名前 リンク ハッシュタグ 場所 禁止 言葉 価格", "ly_ks.kw.chrome": "chrome 拡張 ブラウザ 連携",
+  "ly_ks.kw.google": "youtube google アカウント チャンネル アプリ 分析", "ly_ks.kw.connect": "claude cursor mcp api エージェント",
+});
+/* ---- layout pass: paging, Words tabs ---- */
+Object.assign(I18N.en, {
+  "ly_p.range": "{a}–{b} of {n}", "ly_p.prev": "Previous page", "ly_p.next": "Next page",
+  "ly_w.t.headlines": "Headlines", "ly_w.t.lines": "Lines", "ly_w.t.waiting": "Suggestions waiting", "ly_w.t.same": "Same words",
+  "ly_w.nowaiting": "No suggestions waiting. Ask for new lines above, or add your own.", "ly_w.nosame": "No reel repeats another reel's words.",
+  "ly_w.kind": "Which lines", "ly_w.k.all": "All", "ly_w.k.hook": "Headlines", "ly_w.k.line": "Lines", "ly_w.k.retired": "Not used",
+  "ly_w.find": "Find words…", "ly_w.nomatch": "No line matches.", "ly_w.detail": "The headline you picked",
+  "ly_w.near": "Networks within 2 weeks", "ly_w.when": "Last and next", "ly_w.result": "Result", "ly_w.reels": "Its reels ({n})",
+  "ly_w.posts": "Its posts ({n})", "ly_w.noposts": "Not posted or booked yet.", "ly_w.used": "Out · booked", "ly_w.nets": "Networks",
+  "ly_w.last": "Last out", "ly_w.bywear": "Back to most worn first",
+});
+Object.assign(I18N.ja, {
+  "ly_p.range": "{n}件中 {a}–{b}", "ly_p.prev": "前のページ", "ly_p.next": "次のページ",
+  "ly_w.t.headlines": "見出し", "ly_w.t.lines": "文", "ly_w.t.waiting": "確認待ちの提案", "ly_w.t.same": "同じ言葉",
+  "ly_w.nowaiting": "確認待ちの提案はありません。上で新しい文を頼むか、自分で追加できます。", "ly_w.nosame": "ほかのリールと同じ言葉のリールはありません。",
+  "ly_w.kind": "表示する文", "ly_w.k.all": "すべて", "ly_w.k.hook": "見出し", "ly_w.k.line": "文", "ly_w.k.retired": "使わない",
+  "ly_w.find": "言葉で探す…", "ly_w.nomatch": "一致する文はありません。", "ly_w.detail": "選んだ見出し",
+  "ly_w.near": "前後2週間のSNS", "ly_w.when": "前回と次回", "ly_w.result": "反応", "ly_w.reels": "使っているリール（{n}）",
+  "ly_w.posts": "投稿（{n}）", "ly_w.noposts": "まだ投稿も予約もされていません。", "ly_w.used": "投稿済み・予約", "ly_w.nets": "SNS",
+  "ly_w.last": "前回の投稿", "ly_w.bywear": "使い古した順に戻す",
+  "ly_rv.queue": "確認待ち", "ly_rv.pos": "{n}本中{i}本目", "ly_rv.keys": "J/K 次・前 · A 承認 · N 言葉を変える · Space 再生 · Enter 開く",
+});
+Object.assign(I18N.en, {
+  "ly_rv.queue": "Waiting for you", "ly_rv.pos": "{i} of {n}", "ly_rv.keys": "J/K next and previous · A approve · N new words · Space play · Enter open",
+  "ly_r.theme": "Theme", "ly_r.alltheme": "Every theme", "ly_r.net": "Network", "ly_r.allnet": "Every network", "ly_r.clear": "Clear filters",
+});
+Object.assign(I18N.ja, {
+  "ly_r.theme": "テーマ", "ly_r.alltheme": "すべてのテーマ", "ly_r.net": "SNS", "ly_r.allnet": "すべてのSNS", "ly_r.clear": "絞り込みを解除",
+  "ly_f.lib": "ライブラリ", "ly_f.src": "素材の入手先", "ly_f.moregroups": "次の{n}グループを表示（残り{of}）",
+});
+Object.assign(I18N.en, { "ly_f.lib": "Library", "ly_f.src": "Sources", "ly_f.moregroups": "Show {n} more groups ({of} left)", "ly_v.kept": "Booked reels kept as they are ({n}), and why" });
+Object.assign(I18N.ja, { "ly_v.kept": "そのまま残す予約済みリール（{n}）とその理由", "ly_rs.sum": "{n}のSNS", "ly_rs.lead": "1投稿あたり最多は{net}（{v}回）" });
+Object.assign(I18N.en, { "ly_rs.sum": "{n} networks", "ly_rs.lead": "most views per post: {net} ({v})", "ly_wf.more": "by service, and where the month is heading" });
+Object.assign(I18N.ja, { "ly_wf.more": "サービス別の内訳と、今月の見込み", "ly_px.sum": "{n}件中{i}件が予測の幅に収まりました" });
+Object.assign(I18N.en, { "ly_px.sum": "{i} of {n} landed inside their range" });
 /* English counts: "1 reels" reads "1 reel" (every label says {n} things; Japanese has no plural). */
 const ONE = /(^|[^\d.,])1 (reel|clip|theme|post|file|line|network|photo|video|day|minute|second|thing|place)s\b/g;
 const tr = (k, vars = {}) => {
@@ -5713,22 +6012,9 @@ function stateCounts(list) {
   for (const r of list) { if (r.house) continue; const s = reelState(r); c[s] = (c[s] || 0) + 1; }  // the built-in house reels are not counted anywhere
   return c;
 }
-/* Settings › Keys & AI is long: a row of its parts at the top, each a jump. */
-function keysJump() {
-  const secs = [...document.querySelectorAll("#home section.sheet")].filter((x) => x.querySelector("h2"));
-  if (secs.length < 3 || document.querySelector("#home .jump")) return;
-  const nav = document.createElement("nav");
-  nav.className = "jump"; nav.setAttribute("aria-label", tr("keys.jump"));
-  nav.innerHTML = `<span class="meta">${tr("keys.jump")}</span>` + secs.map((x, i) => `<button type="button" data-jump="${i}">${esc(x.querySelector("h2").textContent.replace(/\s*\d+\/\d+\s*$/, "").trim())}</button>`).join("");
-  secs[0].before(nav);
-}
-document.addEventListener("click", (e) => {
-  const j = e.target.closest("[data-jump]"); if (!j) return;
-  [...document.querySelectorAll("#home section.sheet")].filter((x) => x.querySelector("h2"))[+j.dataset.jump]?.scrollIntoView({ block: "start", behavior: "smooth" });
-});
 function renderHome(force) {
   const steady = { ...overview, reels: overview.reels.map((r) => (r.job ? { ...r, job: { status: r.job.status, position: r.job.position } } : r)) };
-  const sig = JSON.stringify([page, lang, steady, homeFilter, sys.health?.verdict, sys.health?.buildSeconds, [...(autoThemes || [])], autoDays, autoFaces, !!themes, postsLog, yt, ytVideos, showMaker, ytLists, foot.items.length, foot.f, foot.q, foot.open, foot.job, foot.g, autoCut, foot.group, foot.tag, [...foot.more], logData, logTab, logQ, logKind, logPage, capEdit, postTab, postNet, postQ, postPage, planner && [...planner.nets, planner.start, planner.approvedOnly, planner.days, planner.busy], drawer && 1, connections, profilesKit, channelsSpec, wsView, wordsView, wordsBusy, wordsAdd, page === "review" ? [Object.keys(revCache).length, revBusy, revPlay] : 0, page === "ideas" ? [ideaTab, Object.entries(ideasBusy), Object.keys(ideasRes), Math.floor(Date.now() / 1000)] : 0]);
+  const sig = JSON.stringify([page, lang, steady, homeFilter, sys.health?.verdict, sys.health?.buildSeconds, [...(autoThemes || [])], autoDays, autoFaces, !!themes, postsLog, yt, ytVideos, showMaker, ytLists, foot.items.length, foot.f, foot.q, foot.open, foot.job, foot.g, autoCut, foot.group, foot.tag, [...foot.more], logData, logTab, logQ, logKind, logPage, capEdit, postTab, postNet, postQ, postPage, planner && [...planner.nets, planner.start, planner.approvedOnly, planner.days, planner.busy], drawer && 1, connections, profilesKit, channelsSpec, wsView, wordsView, wordsBusy, wordsAdd, page === "review" ? [Object.keys(revCache).length, revBusy, revPlay] : 0, page === "ideas" ? [ideaTab, Object.entries(ideasBusy), Object.keys(ideasRes), Math.floor(Date.now() / 1000)] : 0, lySig()]);
   if (!force && sig === homeSig) {
     const q = document.querySelector("#home section.queue");  // only the progress moved: redraw that one panel
     if (q) { const open = q.querySelector("details")?.open; q.outerHTML = queueHtml(); const d = document.querySelector("#home section.queue details"); if (d && open !== undefined) d.open = open; }
@@ -5743,7 +6029,6 @@ function renderHome(force) {
   subTabs();
   WN.draw();  // "What needs you" under the header follows what the page knows now
   watchWires();  // any node-and-wire map on the page draws its wires once laid out
-  if (page === "keys") keysJump();
   // A tab row wider than the screen: the open tab in view, and a fade on each side that has more.
   document.querySelectorAll("#home .subtabs, #home .posttabs").forEach((row) => {
     const on = row.querySelector(".on"); if (!on || row.scrollWidth <= row.clientWidth + 1) return;
@@ -5910,7 +6195,7 @@ function renderMaking() {
     <div id="mkQueue">${q}</div>${q ? "" : `<div class="empty mascot" id="mkNone" ${[...board.jobs.values()].some(isActive) ? "hidden" : ""}>${kenji("nap")}<b>${tr("mk.nonet")}</b><span>${tr("mk.nonehint")}</span><button class="primary" data-openmaker="1">${ico("clapper", "sm")}${tr("act.make")}</button></div>`}
     <div id="board">${boardHtml()}</div>
     ${fresh.length ? `<h3 class="sub">${ico("eye", "sm")} ${tr("mk.fresh", { n: needsReview().length })} <a class="btn" href="#/review">${tr("act.review")}</a></h3>
-      <div class="reels">${fresh.map(reelCard).join("")}</div>` : ""}`;
+      <div class="rgroup mk-fresh"><div class="reels">${fresh.map(reelCard).join("")}</div></div>` : ""}`;
 }
 document.addEventListener("click", (e) => { if (e.target.closest("[data-helpkeys]")) palOpen("keys"); });
 document.addEventListener("click", (e) => {
@@ -6075,9 +6360,9 @@ function renderReels() {
   if (!autoThemes && themes) autoThemes = new Set();  // nothing ticked: one click never queues every theme by surprise
   if (!SEGMENTS.includes(homeFilter)) homeFilter = "all";
   const counts = stateCounts(R);
-  const shown = R.filter((r) => !r.house && (homeFilter === "all" || reelState(r) === homeFilter))
+  const shown = R.filter((r) => !r.house && (homeFilter === "all" || reelState(r) === homeFilter) && reelPicked(r))
     .sort((a, b) => STATE_ORDER.indexOf(reelState(a)) - STATE_ORDER.indexOf(reelState(b)));
-  const house = homeFilter === "all" ? R.filter((r) => r.house) : [];
+  const house = homeFilter === "all" && !rTheme && !rNet ? R.filter((r) => r.house) : [];
   $("#home").innerHTML = `
     <div class="pagehead">${crumbs([tr("nav.reels"), homeFilter === "all" ? null : "#/"], ...(homeFilter === "all" ? [] : [[tr(STATE_KEY[homeFilter])]]))}
       <span class="meta">${trR("home.sum", { n: counts.all, f: overview.library?.ranch ?? "…" })}${foot.h?.more ? ` · <a href="#/footage">${tr("fh.moreest", { r: moreReels() })}</a>` : ""}</span>
@@ -6090,11 +6375,26 @@ function renderReels() {
     ${showMaker ? makerHtml() : ""}
     <div id="queueBox">${queueBoxHtml()}</div>
     ${homeFilter === "all" ? vlogRowHtml() : ""}
-    ${none ? "" : `<div class="reeltools">${segBar(counts)}${shown.length ? groupBar() : ""}</div>
+    ${none ? "" : `<div class="reeltools">${segBar(counts)}${reelPickBar(R)}${shown.length ? groupBar() : ""}</div>
     ${shown.length ? groupReels(shown).map(groupHtml).join("") : `<div class="reels"><div class="empty mascot" style="grid-column:1/-1">${kenji("point")}<b>${tr("home.emptyfilter")}</b><span>${tr("home.emptyfilterhint")}</span>
-        <button data-hf="all">${tr("st.all")}</button></div></div>`}`}
-    ${house.length ? `<h3 class="sub">${ico("film", "sm")} ${tr("st.house")}</h3><div class="reels">${house.map(reelCard).join("")}</div>` : ""}`;
+        <button data-hf="all" data-rpickclear="1">${tr("st.all")}</button></div></div>`}`}
+    ${house.length ? groupHtml({ key: "house", items: house, house: true }, 99) : ""}`;
 }
+/* ---------- layout pass (18 Nov): Reels filters by theme and network (beside the state filter), and the groups past
+   the newest two folded to one line each with their counts and first pictures: 242 reels were a 9-screen stack. ---------- */
+let rTheme = "", rNet = "";
+const reelOpen = new Set();  // groups opened by hand this visit (past the second, a group starts folded)
+const reelPicked = (r) => (!rTheme || r.theme === rTheme) && (!rNet || !!postState(r.slug)[rNet]);
+function reelPickBar(R) {
+  const own = R.filter((r) => !r.house), ths = [...new Set(own.map((r) => r.theme).filter(Boolean))].sort();
+  const nets = POST_NETS.filter((n) => own.some((r) => postState(r.slug)[n]));
+  const opt = (v, label, on) => `<option value="${esc(v)}"${on ? " selected" : ""}>${esc(label)}</option>`;
+  return `<div class="rpick"><label><span class="sr-only">${esc(tr("ly_r.theme"))}</span><select data-rpick="theme" class="${rTheme ? "on" : ""}">${opt("", tr("ly_r.alltheme"), !rTheme)}${ths.map((k) => opt(k, themes?.[k]?.title || k, rTheme === k)).join("")}</select></label>
+    <label><span class="sr-only">${esc(tr("ly_r.net"))}</span><select data-rpick="net" class="${rNet ? "on" : ""}">${opt("", tr("ly_r.allnet"), !rNet)}${nets.map((n) => opt(n, NET_NAME[n] || n, rNet === n)).join("")}</select></label>
+    ${rTheme || rNet ? `<button type="button" class="linkbtn" data-rpickclear="1">${esc(tr("ly_r.clear"))}</button>` : ""}</div>`;
+}
+document.addEventListener("change", (e) => { const s = e.target.closest?.("[data-rpick]"); if (!s) return; if (s.dataset.rpick === "theme") rTheme = s.value; else rNet = s.value; renderHome(true); });
+document.addEventListener("click", (e) => { if (e.target.closest?.("[data-rpickclear]")) { rTheme = ""; rNet = ""; renderHome(true); } });
 /* Reels in groups, so 60+ reels are not one long list: by kind of content (each kind has its own colour
    and icon), by stage (what needs a person first), or by the week they were made. Remembered per browser. */
 const KINDS = {
@@ -6117,7 +6417,7 @@ const STAGES = {
 const stageOf = (r) => { const s = reelState(r); return s === "topost" && r.status === "rendered" ? "review" : s; };
 const lsGet = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* private window: keep it for this visit only */ } };
-let reelGroup = lsGet("lc.reels.group", "kind");
+let reelGroup = lsGet("lc.reels.group", "week");  // by day: the newest two days open, the rest one line each
 const reelFold = new Set(JSON.parse(lsGet("lc.reels.fold", "[]") || "[]"));
 const kTile = (t, cls = "") => `<span class="ktile ${cls}" style="--h:${t.hue}" aria-hidden="true">${ico(t.icon, "sm")}</span>`;
 // When a reel was made: being made counts as now (it showed under "January 1970", 14 Nov); never made, no time at all.
@@ -6158,25 +6458,27 @@ function groupReels(list) {
   return order.filter((k) => by.has(k)).map((key) => ({ key, items: by.get(key) }));
 }
 const reelMore = new Set();
-const REELS_SHOWN = 14;
+const REELS_SHOWN = 8;  // one row on a desktop (layout pass, 18 Nov); "Show all" opens the rest
 /** The first cards of a group, and a button for the rest: 110 reels were one 11,000 px page. */
 function groupCards(id, items) {
   const all = reelMore.has(id), shown = all ? items : items.slice(0, REELS_SHOWN);
   return `<div class="reels">${shown.map(reelCard).join("")}</div>${items.length > REELS_SHOWN ? `<button class="rg-more" data-rmore="${esc(id)}" aria-expanded="${all}">${ico(all ? "chev-u" : "plus", "sm")}${tr(all ? "grp.less" : "grp.more", { n: items.length })}</button>` : ""}`;
 }
 document.addEventListener("click", (e) => { const b = e.target.closest("[data-rmore]"); if (!b) return; const id = b.dataset.rmore; reelMore.has(id) ? reelMore.delete(id) : reelMore.add(id); renderHome(true); });
-function groupHtml(g) {
-  if (reelGroup === "none") return groupCards("none", g.items);
-  const id = `${reelGroup}:${g.key}`, fold = reelFold.has(id);
-  const t = reelGroup === "kind" ? KINDS[g.key] : reelGroup === "stage" ? STAGES[g.key] : { icon: "cal", hue: 45 };
-  const name = reelGroup === "week" ? weekLabel(g.key) : tr(t.label);
+function groupHtml(g, i = 0) {
+  if (reelGroup === "none" && !g.house) return groupCards("none", g.items);
+  const id = g.house ? "house" : `${reelGroup}:${g.key}`, fold = reelFold.has(id) || (i >= 2 && !reelOpen.has(id));
+  const t = g.house ? STAGES.house : reelGroup === "kind" ? KINDS[g.key] : reelGroup === "stage" ? STAGES[g.key] : { icon: "cal", hue: 45 };
+  const name = g.house ? tr("st.house") : reelGroup === "week" ? weekLabel(g.key) : tr(t.label);
+  // Folded: the group's first pictures on its one line, so a folded day still shows what is in it.
+  const thumbs = fold ? `<span class="rg-thumbs" aria-hidden="true">${g.items.slice(0, 8).map((r) => `<i style="background-image:url('${r.hook ? thumb(r.hook, 60) + "&v=" + (r.updated || 0) : ""}')"></i>`).join("")}</span>` : "";
   // What is inside, at a glance: how many need review, are ready, are out.
   const mix = reelGroup === "stage" ? "" : ["review", "topost", "scheduled", "posted"].map((k) => {
     const n = g.items.filter((r) => stageOf(r) === k).length;
     return n ? `<span class="rg-mix" style="--h:${STAGES[k].hue}">${ico(STAGES[k].icon, "sm")}${n} ${esc(tr(STAGES[k].label))}</span>` : "";
   }).join("");
   return `<section class="rgroup${fold ? " folded" : ""}" style="--h:${t.hue}">
-    <button class="rg-head" data-rfold="${esc(id)}" aria-expanded="${!fold}">${kTile(t)}<h2>${esc(name)}</h2><span class="rg-n">${tr(g.items.length === 1 ? "grp.n1" : "grp.n", { n: g.items.length })}</span>${mix}<span class="rg-rule"></span>${ico(fold ? "chev-r" : "chev-u", "sm")}</button>
+    <button class="rg-head" data-rfold="${esc(id)}" data-ri="${i}" aria-expanded="${!fold}">${kTile(t)}<h2>${esc(name)}</h2><span class="rg-n">${tr(g.items.length === 1 ? "grp.n1" : "grp.n", { n: g.items.length })}</span>${mix}<span class="rg-rule"></span>${thumbs}${ico(fold ? "chev-r" : "chev-u", "sm")}</button>
     ${fold ? "" : groupCards(id, g.items)}</section>`;
 }
 function groupBar() {
@@ -6187,7 +6489,11 @@ function groupBar() {
 document.addEventListener("click", (e) => {
   const g = e.target.closest?.("[data-rgroup]"), f = e.target.closest?.("[data-rfold]");
   if (g) { reelGroup = g.dataset.rgroup; lsSet("lc.reels.group", reelGroup); renderHome(true); return; }
-  if (f) { const id = f.dataset.rfold; reelFold.has(id) ? reelFold.delete(id) : reelFold.add(id); lsSet("lc.reels.fold", JSON.stringify([...reelFold])); renderHome(true); }
+  if (f) {
+    const id = f.dataset.rfold, folded = f.getAttribute("aria-expanded") === "false";
+    if (folded) { reelFold.delete(id); reelOpen.add(id); } else { reelFold.add(id); reelOpen.delete(id); }
+    lsSet("lc.reels.fold", JSON.stringify([...reelFold])); renderHome(true);
+  }
 });
 /* Make reels, in two steps anyone can follow: pick themes (none is picked to start, each with its own colour
    and icon, and a footage badge), then one big button. The rest has safe defaults and sits under
@@ -7148,24 +7454,31 @@ function renderVersions() {
   const head = `<div class="pagehead">${crumbs([tr("nav.versions")])}</div>`;
   if (!verView) { $("#home").innerHTML = head + loadingHtml(tr("nav.versions")); loadVersions(true); return; }
   const v = verView, busy = v.making?.status === "running" || (v.inline || 0) > 0;
-  const cards = v.ready.map((x) => `<article class="vercard" id="ver-${esc(x.slug)}">
+  // One comparison at a time, the others one click away in the row above it (layout pass, 18 Nov: three stacked
+  // comparisons were 4 screens). The videos and what changed sit side by side.
+  const sel = v.ready.find((x) => x.slug === verSel) || v.ready[0];
+  const pick = v.ready.length > 1 ? `<nav class="tabs posttabs ly-tabs ver-pick" role="tablist" aria-label="${esc(tr("ver.h"))}">${v.ready.map((x, i) => `<a href="#/versions" role="tab" data-versel="${esc(x.slug)}" aria-selected="${x === sel}" class="${x === sel ? "on" : ""}"><span class="ly-n">${i + 1}</span><span lang="ja">${esc(reelName(x.slug))}</span></a>`).join("")}</nav>` : "";
+  const cards = v.ready.filter((x) => x === sel).map((x) => `<article class="vercard" id="ver-${esc(x.slug)}">
       <div class="row wrap"><a href="#/reel/${esc(x.slug)}" title="${esc(x.slug)}"><b lang="ja">${esc(reelName(x.slug))}</b></a><span class="meta">${x.first ? tr("ver.first", { t: esc(whenText(x.first)) }) : ""}</span>
         <span class="meta">· ${esc(x.why || "")}</span>${VERDICT[x.verdict] ? `<span class="chip ${x.verdict === "better" ? "ok" : ""}">${tr(VERDICT[x.verdict])}</span>` : ""}${x.qa && !x.qa.ok ? `<span class="chip warn" title="${esc(x.qa.flags.join(" · "))}">${tr("ver.qaflag")}</span>` : ""}</div>
-      <div class="vercmp">${verSide(x.slug, x.live || 1, tr("ver.live"), x.before)}${verSide(x.slug, x.n, tr("ver.new"), x.after, "new")}</div>
-      ${cVerDiffHtml(x)}
+      <div class="ver-body"><div class="vercmp">${verSide(x.slug, x.live || 1, tr("ver.live"), x.before)}${verSide(x.slug, x.n, tr("ver.new"), x.after, "new")}</div>
+      <div class="ver-side">${cVerDiffHtml(x)}
       <ul class="verch">${x.changes.map((c) => `<li><b>${tr("ver.shot", { n: c.shot })}</b> <span>“${esc(c.line)}”</span>
         <span class="meta" title="${esc(`${c.from} → ${c.to} · ${tr("ver.match", { a: pct2(c.matchBefore), b: pct2(c.matchAfter) })}`)}">${tr("ver.swapped")}</span>${c.why ? `<span class="meta">${esc(c.why)}</span>` : ""}</li>`).join("")}</ul>
       <div class="row wrap"><button class="primary" data-veruse="${esc(x.slug)}" data-vern="${x.n}">${ico("check", "sm")}${tr("ver.use")}</button>
-        <button data-verkeep="${esc(x.slug)}" data-vern="${x.n}">${tr("ver.keep")}</button><span class="meta">${tr("ver.usewhy")}</span></div></article>`).join("");
+        <button data-verkeep="${esc(x.slug)}" data-vern="${x.n}">${tr("ver.keep")}</button><span class="meta">${tr("ver.usewhy")}</span></div></div></div></article>`).join("");
+  const kept = keptHtml(v.kept);
   $("#home").innerHTML = `${head}
     <section class="vlsum"><div class="row wrap"><b class="vlsumh">${tr("ver.h")}</b>
       <span class="chip ok">${tr("ver.ready", { n: v.ready.length })}</span>${v.open.length ? `<span class="chip warn">${tr("ver.open", { n: v.open.length })}</span>` : ""}
       ${v.making?.status === "running" ? `<span class="chip">${tr("ver.making", { p: v.making.pct || 0, l: esc(v.making.label || "") })}</span>` : ""}
       ${v.inline ? `<span class="chip">${ico("hourglass", "sm")} ${tr("ver.inline", { n: v.inline })}</span>` : ""}<span class="grow"></span>
       ${v.open.length && !busy ? `<button class="primary" data-verrecut="1">${ico("scissors", "sm")}${tr("ver.recutall", { n: v.open.length })}</button>` : ""}</div>
-      <p class="meta">${tr("ver.how")}</p>${keptHtml(v.kept)}</section>
-    ${cards || `<p class="note">${tr(busy ? "ver.wait" : v.open.length ? "ver.notyet" : "ver.none")}</p>`}`;
+      <p class="meta">${tr("ver.how")}</p>${kept ? `<details class="ver-kept"><summary class="meta">${esc(tr("ly_v.kept", { n: (v.kept || []).length }))}</summary>${kept}</details>` : ""}</section>
+    ${pick}${cards || `<p class="note">${tr(busy ? "ver.wait" : v.open.length ? "ver.notyet" : "ver.none")}</p>`}`;
 }
+let verSel = "";
+document.addEventListener("click", (e) => { const a = e.target.closest?.("[data-versel]"); if (!a) return; e.preventDefault(); verSel = a.dataset.versel; renderHome(true); });
 document.addEventListener("click", async (e) => {
   const rc = e.target.closest("[data-verrecut]"), use = e.target.closest("[data-veruse]"), keep = e.target.closest("[data-verkeep]");
   if (!rc && !use && !keep) return;
@@ -8167,6 +8480,10 @@ function palCatalog() {
   add("act", "a:projects", "folder", tr("ws.title"), wsView?.list?.find((x) => x.id === wsView.running)?.name || "", openProjects, "project switch workspace プロジェクト");
   add("act", "a:newproject", "plus", tr("ws.new"), "", () => { openProjects(); wsNew = true; paintWs(); }, "new project create 新しい");
   add("act", "a:lang", "globe", lang === "en" ? "日本語に切り替え" : "Switch to English", "", () => $("#lang").click(), "language english japanese 言語 英語 日本語");
+  // The colours, from anywhere (the top bar's button switches Light ⇄ Dark; these also give Auto back).
+  for (const [v, icon, key] of [["light", "sun", "fb_th.pl"], ["dark", "moon", "fb_th.pd"], ["auto", "refresh", "fb_th.pa"]])
+    add("act", "a:theme-" + v, icon, tr(key), tr("fb_th.psub"), () => { themeApply(v); toast(`${ico(icon, "sm")} ${esc(tr("d_th.saved", { v: tr("d_th." + v) }))}`, 2500); },
+      `colours colors theme ${v} dark light night mode system auto 画面 色 テーマ ライト ダーク 自動 夜`);
   add("act", "a:start", "list", tr("setup.title"), tr("pal.a.startSub"), () => palOpen("start"), "getting started onboarding setup はじめに");
   add("act", "a:keys", "list", tr("pal.keys"), "", () => palOpen("keys"), "keyboard shortcuts keys ショートカット");
   add("act", "a:about", "info", tr("foot.about"), "", () => openAbout(), "about version credits licence バージョン");
@@ -8440,16 +8757,17 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault(); location.hash = "#/" + cyc[(at + (e.key === "]" ? 1 : cyc.length - 1)) % cyc.length]; return;
   }
   if (page !== "review") return;
-  const rows = [...document.querySelectorAll(".rvrow")]; if (!rows.length) return;
+  const cur = document.querySelector(".rvrow.rvfocus"); if (!cur) return;
   const k = e.key.toLowerCase();
-  const cur = rows.find((r) => r.classList.contains("kfocus"));
   const move = k === "j" || k === "k" || e.key === "ArrowDown" || e.key === "ArrowUp";
   if (!move && !["a", "n", " ", "enter"].includes(k)) return;
   e.preventDefault();
-  if (move || !cur) {
-    const i = cur ? rows.indexOf(cur) + (k === "j" || e.key === "ArrowDown" ? 1 : -1) : 0;
-    const row = rows[Math.max(0, Math.min(rows.length - 1, i))];
-    revFocus = revSlug(row); paintRevFocus(); row.scrollIntoView({ block: "nearest" }); return;
+  if (move) {
+    // J/K walk the queue on the left; the reel on the right follows.
+    const q = [...document.querySelectorAll("[data-rvq]")].map((b) => b.dataset.rvq); if (q.length < 2) return;
+    const i = Math.max(0, Math.min(q.length - 1, q.indexOf(revFocus) + (k === "j" || e.key === "ArrowDown" ? 1 : -1)));
+    if (q[i] !== revFocus) { revFocus = q[i]; revPlay = ""; renderHome(true); }
+    return;
   }
   if (k === "a") cur.querySelector("[data-revok]")?.click();
   else if (k === "n") cur.querySelector("[data-reword]")?.click();
@@ -8703,8 +9021,7 @@ function paintUploads() {
   }
 }
 async function uploadFiles(files) {
-  if (page !== "footage") location.hash = "#/footage";
-  if (page === "footage" && foot.drawer !== "add") { foot.drawer = "add"; renderHome(true); }
+  if (foot.drawer !== "add" || page !== "footage") footTabGo("add");
   for (const f of files) uploads.push({ id: ++upSeq, name: f.name, file: f, pct: 0, state: "wait", err: "" });
   upNote = `${ico("clock", "sm")} ${esc(tr("ah.upstart", { n: files.length }))}`;
   upLive(tr("ah.upstart", { n: files.length }));
@@ -8950,15 +9267,15 @@ function renderWords() {
   const tile = (n, label, tone = "") => `<div class="wtile ${tone}"><b>${n}</b><span>${label}</span></div>`;
   const lineRow = (l) => `<tr class="w-${l.status}">
       <td><span class="chip ${l.kind === "hook" ? "ok" : ""}">${tr(l.kind === "hook" ? "w.hook" : "w.line")}</span></td>
-      <td><div class="wja">${esc(l.ja)}</div><div class="meta">${esc(l.en || "")}</div></td>
+      <td title="${esc(`${l.ja.replace(/\n/g, " ")}\n${l.en || ""}`)}"><div class="wja">${esc(l.ja)}</div><div class="meta">${esc(l.en || "")}</div></td>
       <td class="meta">${l.reels ? tr("w.used", { n: l.reels }) : tr("w.unused")}${l.months ? ` · ${tr("w.months", { m: l.months.join(", ") })}` : ""}</td>
       <td class="meta" title="${esc([l.source, l.why].filter(Boolean).join("\n"))}">${esc(/\.(ts|tsx|js|json|md)\b/.test(l.source || "") ? tr("w.src.site") : l.source || "")}</td>
       <td>${l.status === "retired" ? `<button data-wstatus="approved" data-ja="${esc(l.ja)}">${tr("w.use")}</button>` : `<button class="linkbtn" data-wstatus="retired" data-ja="${esc(l.ja)}">${tr("w.retire")}</button>`}</td></tr>`;
-  $("#home").innerHTML = `${head}
-    <p class="intro">${tr("w.intro")}</p>
-    <div class="wtiles" ${W.reels || W.lines.some((l) => l.status !== "suggested") ? "" : "hidden"}>${tile(W.reels, tr("w.reels"))}${tile(W.wordSets, tr("w.sets"), W.wordSets < W.reels / 2 ? "warn" : "")}${tile(W.hooksUsed, tr("w.hooks"))}${tile(repeats.length, tr("w.repeat"), repeats.length ? "warn" : "ok")}${tile(`${ap.hook} · ${ap.line}`, tr("w.bankn"))}</div>
-    ${perHook > 4 ? `<div class="notice warn">${ico("alert", "sm")}<span>${tr("w.low", { n: W.reels, k: perHook })}</span></div>` : ""}
-    <section class="panel"><div class="row"><h3>${ico("type")} ${tr("w.grow")}</h3></div>
+  const kept = W.lines.filter((l) => l.status !== "suggested");
+  const tabN = { headlines: kept.filter((l) => l.kind === "hook").length, lines: kept.length, waiting: waiting.length, same: repeats.length };
+  const tabWarn = { waiting: waiting.length > 0, same: repeats.length > 0 };
+  const tabs = `<nav class="tabs posttabs ly-tabs" role="tablist" aria-label="${esc(tr("nav.words"))}">${W_TABS.map((t) => `<a role="tab" href="#/words/${t}" aria-selected="${wTab === t}" class="${wTab === t ? "on" : ""}">${esc(tr("ly_w.t." + t))}<span class="ly-n${tabWarn[t] ? " warn" : ""}">${tabN[t]}</span></a>`).join("")}</nav>`;
+  const growHtml = `<section class="panel"><div class="row"><h3>${ico("type")} ${tr("w.grow")}</h3></div>
       <p class="note">${tr("w.growhint")}</p>
       ${ap.hook + ap.line ? "" : `<p class="note warnline">${ico("info", "sm")} ${tr("w.needfirst")}</p>`}
       <div class="row"><button class="${ap.hook + ap.line ? "primary" : ""}" data-wsug="1" ${wordsBusy || !(ap.hook + ap.line) ? "disabled" : ""}>${ico("type", "sm")}${wordsBusy === "suggest" ? tr("w.thinking") : tr("w.suggest")}</button><button class="${ap.hook + ap.line ? "" : "primary"}" data-waddopen="1">${ico("plus", "sm")}${tr("w.add")}</button></div>
@@ -8966,18 +9283,109 @@ function renderWords() {
         <label>${tr("w.ja")}<textarea name="ja" rows="2" maxlength="60" required></textarea></label><label>${tr("w.en")}<input name="en" maxlength="200" required></label>
         <div class="row"><button class="primary" type="submit">${tr("w.save")}</button><button type="button" data-waddopen="1">${tr("w.cancel")}</button></div><p class="note">${tr("w.addhint")}</p></form>` : ""}
       ${waiting.length ? `<h4>${tr("w.waiting", { n: waiting.length })}</h4><div class="wwait">${waiting.map((l) => `<div class="wsug"><div><div class="wja">${esc(l.ja)}</div><div class="meta">${esc(l.en)}</div>${l.why ? `<div class="meta">${tr("w.from")}: ${esc(l.why)}</div>` : ""}</div>
-        <div class="row"><button class="primary" data-wstatus="approved" data-ja="${esc(l.ja)}">${ico("check", "sm")}${tr("w.approve")}</button><button data-wstatus="retired" data-ja="${esc(l.ja)}">${tr("w.reject")}</button></div></div>`).join("")}</div>` : ""}
-    </section>
-    ${repeats.length || pending.length ? `<section class="panel"><div class="row"><h3>${ico("alert")} ${tr("w.dups", { n: repeats.length })}</h3><span class="grow"></span>
+        <div class="row"><button class="primary" data-wstatus="approved" data-ja="${esc(l.ja)}">${ico("check", "sm")}${tr("w.approve")}</button><button data-wstatus="retired" data-ja="${esc(l.ja)}">${tr("w.reject")}</button></div></div>`).join("")}</div>` : `<p class="meta">${esc(tr("ly_w.nowaiting"))}</p>`}
+    </section>`;
+  const sameHtml = repeats.length || pending.length ? `<section class="panel"><div class="row"><h3>${ico("alert")} ${tr("w.dups", { n: repeats.length })}</h3><span class="grow"></span>
         ${repeats.length ? `<button class="primary" data-rewordall="1" ${wordsBusy ? "disabled" : ""}>${wordsBusy === "all" ? tr("w.working") : tr("w.rewordall", { n: repeats.length })}</button>` : ""}
         ${pending.length ? `<button data-renderall="1" ${wordsBusy ? "disabled" : ""}>${ico("clapper", "sm")}${tr("w.renderall", { n: pending.length, t: span(pending.length * 6 * 60) })}</button>` : ""}</div>
       <p class="note">${tr("w.dupshint")}</p>
-      <div class="wdups">${repeats.slice(0, 40).map((r) => `<div class="wdup"><a href="#/reel/${esc(r.slug)}"><b>${esc(r.slug)}</b></a><span class="meta clamp">${esc(r.hookText || "")}</span><span class="warnline meta">${tr("w.same", { n: r.sameWords })}</span><button class="linkbtn" data-reword="${esc(r.slug)}">${tr("w.reword")}</button></div>`).join("")}</div></section>` : ""}
-    ${cWearHtml()}
-    <section class="panel"><h3>${ico("type")} ${tr("w.all")}</h3>
-      <div class="tablewrap" ${W.lines.some((l) => l.status !== "suggested") ? "" : "hidden"}><table class="wtable"><thead><tr><th></th><th>${tr("w.text")}</th><th>${tr("w.usedh")}</th><th>${tr("w.src")}</th><th></th></tr></thead>
-      <tbody>${W.lines.filter((l) => l.status !== "suggested").map(lineRow).join("")}</tbody></table></div>${W.lines.some((l) => l.status !== "suggested") ? "" : `<p class="note">${tr("w.nolines")}</p>`}</section>`;
+      <div class="wdups">${repeats.slice(0, 40).map((r) => `<div class="wdup"><a href="#/reel/${esc(r.slug)}"><b>${esc(r.slug)}</b></a><span class="meta clamp">${esc(r.hookText || "")}</span><span class="warnline meta">${tr("w.same", { n: r.sameWords })}</span><button class="linkbtn" data-reword="${esc(r.slug)}">${tr("w.reword")}</button></div>`).join("")}</div>
+      ${repeats.length > 40 ? `<p class="meta">${esc(tr("rv.more", { n: repeats.length - 40 }))}</p>` : ""}</section>`
+    : `<div class="empty">${ico("check")}<b>${esc(tr("ly_w.nosame"))}</b><span>${tr("w.dupshint")}</span></div>`;
+  // Lines: every kept line, filtered by kind and words, a page at a time.
+  const lq = lQ.trim().toLowerCase();
+  const lines = kept.filter((l) => (lKind === "all" || (lKind === "retired" ? l.status === "retired" : l.kind === lKind)) && (!lq || `${l.ja} ${l.en || ""} ${l.source || ""}`.toLowerCase().includes(lq)));
+  const LP = 20, lAt =Math.min(lPage, Math.max(0, Math.ceil(lines.length / LP) - 1));
+  const linesHtml = `<section class="panel"><div class="row wrap ly-filters"><div class="seg" role="toolbar" aria-label="${esc(tr("ly_w.kind"))}">${["all", "hook", "line", "retired"].map((k) => `<button class="${lKind === k ? "on" : ""}" aria-pressed="${lKind === k}" data-wlkind="${k}">${esc(tr("ly_w.k." + k))}<span>${k === "all" ? kept.length : kept.filter((l) => (k === "retired" ? l.status === "retired" : l.kind === k)).length}</span></button>`).join("")}</div>
+      <label class="ly-find">${ico("search", "sm")}<input type="search" data-lq="1" data-lyfocus="lq" value="${esc(lQ)}" placeholder="${esc(tr("ly_w.find"))}" aria-label="${esc(tr("ly_w.find"))}"></label><span class="grow"></span>${lyPager(lAt, lines.length, LP, "data-wlpage")}</div>
+      ${lines.length ? `<div class="tablewrap"><table class="wtable ly-table"><thead><tr><th></th><th>${tr("w.text")}</th><th>${tr("w.usedh")}</th><th>${tr("w.src")}</th><th></th></tr></thead>
+      <tbody>${lines.slice(lAt * LP, lAt * LP + LP).map(lineRow).join("")}</tbody></table></div>` : `<p class="note">${tr(kept.length ? "ly_w.nomatch" : "w.nolines")}</p>`}</section>`;
+  const body = { headlines: () => wHeadlinesHtml(), lines: () => linesHtml, waiting: () => growHtml, same: () => sameHtml }[wTab] || (() => wHeadlinesHtml());
+  lyKeepFocus(() => { $("#home").innerHTML = `${head}
+    <p class="intro">${tr("w.intro")}</p>
+    <div class="wtiles ly-tiles" ${W.reels || kept.length ? "" : "hidden"}>${tile(W.reels, tr("w.reels"))}${tile(W.wordSets, tr("w.sets"), W.wordSets < W.reels / 2 ? "warn" : "")}${tile(W.hooksUsed, tr("w.hooks"))}${tile(repeats.length, tr("w.repeat"), repeats.length ? "warn" : "ok")}${tile(`${ap.hook} · ${ap.line}`, tr("w.bankn"))}</div>
+    ${perHook > 4 ? `<div class="notice warn">${ico("alert", "sm")}<span>${tr("w.low", { n: W.reels, k: perHook })}</span></div>` : ""}
+    ${tabs}${body()}`; });
 }
+/* ---------- layout pass (18 Nov): Words in four tabs (#/words/headlines · lines · waiting · same). Headlines is a compact
+   sortable table with the wear bar, a page at a time; a headline's reels, dates and networks open in the side panel
+   beside it instead of folding open inside the list (the page was 13 screens). ---------- */
+const W_TABS = ["headlines", "lines", "waiting", "same"];
+let wTab = "headlines", wSel = "", wSort = "wear", wPage = 0, lPage = 0, lKind = "all", lQ = "";
+function lyPager(at, total, per, attr) {
+  if (total <= per) return "";
+  const pages = Math.ceil(total / per);
+  return `<div class="ly-pager"><span class="meta">${esc(tr("ly_p.range", { a: at * per + 1, b: Math.min(total, (at + 1) * per), n: total }))}</span>
+    <button type="button" class="icon" ${attr}="${at - 1}" ${at <= 0 ? "disabled" : ""} aria-label="${esc(tr("ly_p.prev"))}" title="${esc(tr("ly_p.prev"))}">${ico("chev-l", "sm")}</button>
+    <button type="button" class="icon" ${attr}="${at + 1}" ${at >= pages - 1 ? "disabled" : ""} aria-label="${esc(tr("ly_p.next"))}" title="${esc(tr("ly_p.next"))}">${ico("chev-r", "sm")}</button></div>`;
+}
+/* A redraw keeps the caret in a search box the person is typing in (the boxes carry data-lyfocus). */
+function lyKeepFocus(draw) {
+  const a = document.activeElement, key = a?.dataset?.lyfocus, at = key ? [a.selectionStart, a.selectionEnd] : null;
+  draw();
+  if (!key) return;
+  const b = document.querySelector(`[data-lyfocus="${key}"]`); b?.focus(); try { b?.setSelectionRange(at[0], at[1]); } catch { /* not a text box */ }
+}
+function wHeadlinesHtml() {
+  if (!postsLoaded) return `<section class="panel"><div class="skel skel-line"></div><div class="skel skel-line"></div><div class="skel skel-line" style="width:70%"></div></section>`;
+  const all = cWearData();
+  if (!all.length) return `<p class="note">${tr("w.nolines")}</p>`;
+  const by = { wear: () => 0, uses: (a, b) => (b.out + b.booked) - (a.out + a.booked), last: (a, b) => (b.last || 0) - (a.last || 0),
+    result: (a, b) => (b.ratio ?? -1) - (a.ratio ?? -1), text: (a, b) => a.l.ja.localeCompare(b.l.ja, "ja") };
+  const rows = [...all].sort(by[wSort] || by.wear);
+  const PER = 20, at = Math.min(wPage, Math.ceil(rows.length / PER) - 1);
+  const top = Math.max(1, ...rows.map((x) => x.out + x.booked)), worn = rows.filter((x) => x.worn).length, L = lang === "ja" ? "ja-JP" : "en-GB";
+  const day = (t) => new Date(t).toLocaleDateString(L, { day: "numeric", month: "short" });
+  const sel = rows.find((x) => x.l.ja === wSel) || rows[0];
+  const fresh = !moCalm() && !moState().shown.has("c:wear");
+  if (fresh) moState().shown.add("c:wear");
+  const res = (x) => x.ratio == null ? `<span class="cw-res none">${esc(tr(x.measured ? "c_wr.few" : "c_wr.nonum"))}</span>`
+    : `<span class="cw-res ${x.ratio >= 1.15 ? "up" : x.ratio <= 0.85 ? "down" : "even"}" title="${esc(tr("c_wr.restip", { n: x.measured }))}">${x.ratio >= 1.15 ? "▲" : x.ratio <= 0.85 ? "▼" : "＝"} ${esc(tr("c_wr.ratio", { r: x.ratio.toFixed(1) }))}</span>`;
+  const act = (x) => x.l.status === "retired" ? `<button data-wstatus="approved" data-ja="${esc(x.l.ja)}">${tr("w.use")}</button>` : x.worn ? `<button data-wstatus="retired" data-ja="${esc(x.l.ja)}">${tr("w.retire")}</button>` : "";
+  const mark = (x) => x.worn ? `<b class="cw-worn">${esc(tr("c_wr.worn"))}</b>` : !x.out && !x.booked ? `<b class="cw-fresh">${esc(tr("c_wr.fresh"))}</b>` : "";
+  const th = (k, label) => `<th${wSort === k ? ' aria-sort="descending"' : ""}><button type="button" class="ly-sort${wSort === k ? " on" : ""}" data-wsort="${k}">${esc(label)}${wSort === k ? ico("chev-u", "sm") : ""}</button></th>`;
+  const row = (x, i) => `<tr class="${x.worn ? "worn" : ""}${x === sel ? " on" : ""}" data-wsel="${esc(x.l.ja)}" tabindex="0" aria-selected="${x === sel}" style="--i:${i}">
+      <td class="wt-mark">${mark(x)}</td>
+      <td class="wt-text"><span class="wja" lang="ja">${esc(x.l.ja.replace(/\n/g, " "))}</span><span class="meta">${esc(x.l.en || "")}</span></td>
+      <td class="wt-bar"><span class="cw-track" role="img" aria-label="${esc(tr("c_wr.bararia", { o: x.out, b: x.booked, n: x.near, m: x.nets }))}"><i class="o" style="--w:${(x.out / top).toFixed(3)}"></i><i class="b" style="--w:${(x.booked / top).toFixed(3)}"></i></span><span class="cw-num"><b>${x.out}</b> · <b>${x.booked}</b></span></td>
+      <td class="meta wt-nets" title="${esc(tr("c_wr.netstip"))}">${x.near}/${x.nets}</td>
+      <td class="meta">${x.last ? esc(day(x.last)) : "—"}</td>
+      <td>${res(x)}</td><td class="wt-act">${act(x)}</td></tr>`;
+  // The side panel: the selected headline's numbers, its reels and every post that carries it.
+  const slugs = new Set(sel.reels.map((r) => r.slug));
+  const posts = postsLog.filter((p) => slugs.has(p.slug) && p.network !== "all" && holdsSlot(p)).sort((a, b) => new Date(b.at) - new Date(a.at));
+  const side = `<aside class="ly-side panel" aria-label="${esc(tr("ly_w.detail"))}">
+      <div class="ly-sh">${mark(sel)}<b class="wja" lang="ja">${esc(sel.l.ja.replace(/\n/g, " "))}</b><span class="meta">${esc(sel.l.en || "")}</span></div>
+      <dl class="ly-kv"><dt>${esc(tr("c_wr.out"))}</dt><dd>${sel.out}</dd><dt>${esc(tr("c_wr.booked"))}</dt><dd>${sel.booked}</dd>
+        <dt>${esc(tr("ly_w.near"))}</dt><dd>${esc(tr("c_wr.nets", { n: sel.near, m: sel.nets }))}</dd>
+        <dt>${esc(tr("ly_w.when"))}</dt><dd>${esc([sel.last ? tr("c_wr.last", { d: day(sel.last) }) : tr("c_wr.never"), sel.next ? tr("c_wr.next", { d: day(sel.next) }) : ""].filter(Boolean).join(" · "))}</dd>
+        <dt>${esc(tr("ly_w.result"))}</dt><dd>${res(sel)}</dd></dl>
+      ${act(sel) ? `<div class="row">${act(sel)}</div>` : ""}
+      <h4>${esc(tr("ly_w.reels", { n: sel.reels.length }))}</h4>
+      <div class="cw-reels ly-reels">${sel.reels.length ? sel.reels.slice(0, 24).map((r) => `<a href="#/reel/${esc(r.slug)}" title="${esc(reelName(r.slug))}" style="background-image:url('${r.hook ? thumb(r.hook, 120) + "&v=" + (r.updated || 0) : ""}')"><span>${esc(stateLine(r, reelState(r)))}</span></a>`).join("") + (sel.reels.length > 24 ? `<span class="meta">+${sel.reels.length - 24}</span>` : "") : `<span class="meta">${esc(tr("c_wr.noreels"))}</span>`}</div>
+      <h4>${esc(tr("ly_w.posts", { n: posts.length }))}</h4>
+      ${posts.length ? `<ul class="ly-posts">${posts.slice(0, 40).map((p) => `<li><b>${esc(NET_NAME[p.network] || p.network)}</b><span class="meta">${esc(new Date(p.at).toLocaleDateString(L, { day: "numeric", month: "short", weekday: "short" }))}</span><span class="ly-pst ${isLive(p) ? "o" : "b"}">${esc(tr(isLive(p) ? "c_wr.out" : "c_wr.booked"))}</span></li>`).join("")}</ul>` : `<p class="meta">${esc(tr("ly_w.noposts"))}</p>`}</aside>`;
+  return `<div class="ly-md"><section class="panel cw ly-wt${fresh ? " in" : ""}"><div class="row wrap">${worn ? `<span class="chip warn">${esc(tr("c_wr.nworn", { n: worn }))}</span>` : `<span class="chip ok">${esc(tr("c_wr.noworn"))}</span>`}
+      <span class="cw-key meta"><i class="o"></i>${esc(tr("c_wr.out"))} <i class="b"></i>${esc(tr("c_wr.booked"))}</span><span class="grow"></span>${lyPager(at, rows.length, PER, "data-wpage")}</div>
+    <p class="note">${esc(tr("c_wr.how", { k: Math.max(2, Math.ceil(Math.max(1, PLAN_NETS().length) * 0.6)), m: PLAN_NETS().length }))}</p>
+    <div class="tablewrap"><table class="ly-table wt"><thead><tr><th></th>${th("text", tr("w.text"))}${th("uses", tr("ly_w.used"))}<th>${esc(tr("ly_w.nets"))}</th>${th("last", tr("ly_w.last"))}${th("result", tr("ly_w.result"))}<th></th></tr></thead>
+      <tbody>${rows.slice(at * PER, at * PER + PER).map(row).join("")}</tbody></table></div>
+    ${wSort !== "wear" ? `<p class="meta"><button type="button" class="linkbtn" data-wsort="wear">${esc(tr("ly_w.bywear"))}</button></p>` : ""}</section>${side}</div>`;
+}
+document.addEventListener("click", (e) => {
+  const t = e.target;
+  const so = t.closest?.("[data-wsort]"); if (so) { wSort = so.dataset.wsort; wPage = 0; renderHome(true); return; }
+  const wp = t.closest?.("[data-wpage]"); if (wp) { wPage = Math.max(0, +wp.dataset.wpage); renderHome(true); return; }
+  const lp = t.closest?.("[data-wlpage]"); if (lp) { lPage = Math.max(0, +lp.dataset.wlpage); renderHome(true); return; }
+  const lk = t.closest?.("[data-wlkind]"); if (lk) { lKind = lk.dataset.wlkind; lPage = 0; renderHome(true); return; }
+  const r = t.closest?.("tr[data-wsel]"); if (r && !t.closest("button, a")) { wSel = r.dataset.wsel; renderHome(true); document.querySelector(`tr[data-wsel="${CSS.escape(wSel)}"]`)?.focus({ preventScroll: true }); }
+});
+document.addEventListener("keydown", (e) => {
+  const r = e.target.closest?.("tr[data-wsel]"); if (!r) return;
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); r.click(); return; }
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); const n = e.key === "ArrowDown" ? r.nextElementSibling : r.previousElementSibling; if (n) { n.focus(); n.click(); } }
+});
+document.addEventListener("input", (e) => { const q = e.target.closest?.("[data-lq]"); if (!q) return; lQ = q.value; lPage = 0; renderHome(true); });
 document.addEventListener("click", async (e) => {
   const rw = e.target.closest("[data-reword]");
   if (rw) {
@@ -9076,8 +9484,12 @@ function renderReview() {
     $("#home").innerHTML = head + `<div class="empty mascot">${kenji("lounge")}<b>${tr("rv.none")}</b><span>${tr("rv.nonehint")}</span>${any ? `<a class="btn" href="#/posting">${tr("rv.toposting")}</a>` : `<button class="primary" data-openmaker="1">${ico("clapper", "sm")}${tr("act.make")}</button>`}</div>`;
     return;
   }
-  const shown = list.slice(0, 10);
-  shown.forEach((r) => { if (!revCache[r.slug]) loadRev(r.slug); });
+  // Master-detail (layout pass, 18 Nov): the queue on the left, one reel in focus on the right. A reel that left the
+  // queue (approved) hands the focus to the one now in its place.
+  let at = list.findIndex((r) => r.slug === revFocus);
+  if (at < 0) at = Math.min(rvAt, list.length - 1);
+  rvAt = at; revFocus = list[at].slug;
+  list.slice(at, at + 3).forEach((r) => { if (!revCache[r.slug]) loadRev(r.slug); });  // the one in focus and the next two
   const row = (r) => {
     const m = revCache[r.slug];
     const ready = m && m !== "loading" && !m.error;
@@ -9089,7 +9501,7 @@ function renderReview() {
       (m?.layers || []).length ? `<span class="tag" title="${esc(tr("rv.layerstip"))}">${ico("layers", "sm")}${tr((m.layers || []).length === 1 ? "rv.layers1" : "rv.layers", { n: (m.layers || []).length })}</span>` : ""].join("");
     const video = ready && revPlay === r.slug ? `<video class="rvvid" src="${file(m.outputs["9x16"])}" controls autoplay playsinline></video>`
       : `<button class="rvposter" data-revplay="${esc(r.slug)}" data-vid="${esc(reelVid(r))}" style="background-image:url('${r.hook ? thumb(r.hook, 240) + "&v=" + (r.updated || 0) : ""}')" aria-label="${esc(tr("rv.play"))}">${ico("play")}</button>`;
-    return `<article class="rvrow">${video}
+    return `<article class="rvrow rvfocus panel" aria-label="${esc(reelName(r.slug))}">${video}
       <div class="rvbody"><div class="row-tight"><a href="#/reel/${esc(r.slug)}" title="${esc(r.slug)}"><b lang="ja">${esc(reelName(r.slug))}</b></a>${scoreBadge(r.slug)}<span class="meta">${tr("rv.meta", { s: r.seconds, n: r.clips, look: esc(nameOf("looks", r.look || "") || "") })}</span></div>
         ${scoreMap?.[r.slug] ? `<div class="meta">${esc(scoreTitle(scoreMap[r.slug]))}</div>` : ""}
         <div class="rvwords">${words.map((b) => `<span class="${b.kind === "hook" ? "rvhook" : ""}">${esc(b.ja.replace(/\n/g, " "))}</span>`).join("")}</div>
@@ -9099,16 +9511,31 @@ function renderReview() {
       <div class="rvacts">${r.status === "approved" ? `<span class="okline">${ico("check", "sm")}${tr("ed.st.approved")}</span>`
           : `<button class="primary" data-revok="${esc(r.slug)}" ${revBusy ? "disabled" : ""}>${tr("rv.approve")}</button>`}
         <button data-reword="${esc(r.slug)}">${ico("type", "sm")}${tr("w.reword")}</button>
-        ${one ? `<span class="meta">${tr("rv.phoneedit")}</span>` : `<a class="btn" href="#/reel/${esc(r.slug)}">${ico("film", "sm")}${tr("rv.open")}</a>`}</div></article>`;
+        ${one ? `<span class="meta">${tr("rv.phoneedit")}</span>` : `<a class="btn" href="#/reel/${esc(r.slug)}">${ico("film", "sm")}${tr("rv.open")}</a>`}
+        <span class="meta rvkeys">${esc(tr("ly_rv.keys"))}</span></div></article>`;
   };
+  const qflags = (r) => [r.faces > 0 && !r.consent && !r.blurFaces && !consentAll() ? `<i class="rvq-f warn" title="${esc(tr("rv.faces", { n: r.faces }))}">${ico("user", "sm")}</i>` : "",
+    lookChecks(r).length ? `<i class="rvq-f warn" title="${esc(tr(lookChecks(r).length === 1 ? "card.check1" : "card.checkn", { n: lookChecks(r).length }))}">${ico("alert", "sm")}</i>` : "",
+    r.sameWords > 0 ? `<i class="rvq-f bad" title="${esc(tr("w.same", { n: r.sameWords }))}">${ico("type", "sm")}</i>` : ""].join("");
+  const queue = `<aside class="rv-queue panel" aria-label="${esc(tr("ly_rv.queue"))}"><div class="rvq-head"><b>${esc(tr("ly_rv.queue"))}</b><span class="meta">${esc(tr("ly_rv.pos", { i: at + 1, n: list.length }))}</span></div>
+    <ol class="rvq-list">${list.map((r, i) => `<li><button type="button" class="rvq${i === at ? " sel" : ""}" data-rvq="${esc(r.slug)}" ${i === at ? 'aria-current="true"' : ""}>
+      <span class="rvq-th" style="background-image:url('${r.hook ? thumb(r.hook, 120) + "&v=" + (r.updated || 0) : ""}')"></span>
+      <span class="rvq-txt"><b lang="ja">${esc(reelName(r.slug))}</b><span class="meta">${tr("rv.meta", { s: r.seconds, n: r.clips, look: esc(nameOf("looks", r.look || "") || "") })}</span><span class="rvq-meta">${scoreBadge(r.slug)}${qflags(r)}</span></span></button></li>`).join("")}</ol></aside>`;
   const faces = list.some((r) => r.faces > 0 && !r.blurFaces);
   $("#home").innerHTML = `${head}<p class="intro keep">${tr("rv.intro")}</p>
     ${faces || consentAll() ? `<label class="chk rvconsent" title="${esc(tr("rv.consentall.why"))}"><input type="checkbox" data-consentall="1" ${consentAll() ? "checked" : ""}> ${ico("users", "sm")} ${tr("rv.consentall")}</label>
       <p class="meta rvconsentwhy">${tr("rv.consentall.why")}</p>` : ""}
-    <div class="rvlist">${shown.map(row).join("")}</div>
-    ${list.length > shown.length ? `<p class="meta">${tr("rv.more", { n: list.length - shown.length })}</p>` : ""}`;
+    <div class="rv-md">${one ? "" : queue}${row(list[at])}</div>`;
   paintRevFocus();
+  rvqInView();
 }
+let rvAt = 0;
+/* The queue scrolls by itself (never the page) to keep the reel in focus in view. */
+function rvqInView() {
+  const q = document.querySelector(".rvq-list"), on = q?.querySelector(".rvq.sel")?.parentElement; if (!on) return;
+  if (on.offsetTop < q.scrollTop || on.offsetTop + on.offsetHeight > q.scrollTop + q.clientHeight) q.scrollTop = on.offsetTop - (q.clientHeight - on.offsetHeight) / 2;
+}
+document.addEventListener("click", (e) => { const b = e.target.closest?.("[data-rvq]"); if (!b) return; revFocus = b.dataset.rvq; revPlay = ""; renderHome(true); });
 document.addEventListener("change", async (e) => {
   const c = e.target.closest?.("[data-consentall]");
   if (!c) return;
@@ -9425,15 +9852,19 @@ document.addEventListener("keydown", (e) => {
 /* Every network with posts out, side by side: posts, views per post, reactions and its best post. Fills the column
    beside the "not being shown" alert with the comparison the bars alone do not give (owner, 17 Nov: data left out,
    empty space). Views per post is what compares networks fairly: totals favour the one posted to most. */
+let rnOpen = false;
+document.addEventListener("toggle", (e) => { if (e.target.classList?.contains("rn-fold")) rnOpen = e.target.open; }, true);
 function resNetTable(R, name, n) {
   const rows = R.networks.filter((x) => x.out > 0).sort((a, b) => (b.avgViews || 0) - (a.avgViews || 0) || b.reactions - a.reactions);
   if (rows.length < 2) return "";
   const cell = (x) => x.hasViews ? n(Math.round(x.avgViews || 0)) : "–";
-  return `<table class="rntable"><caption>${esc(tr("rs.tab.h"))}</caption>
+  // Folded to its one line with the leader named (layout pass, 18 Nov); opening it is remembered while the studio is open.
+  const lead = rows.find((x) => x.hasViews);
+  return `<details class="rn-fold" ${rnOpen ? "open" : ""}><summary><b>${esc(tr("rs.tab.h"))}</b> <span class="meta">${esc(tr("ly_rs.sum", { n: rows.length }))}${lead ? " · " + esc(tr("ly_rs.lead", { net: name(lead.network), v: n(Math.round(lead.avgViews || 0)) })) : ""}</span></summary><table class="rntable">
     <thead><tr><th scope="col">${esc(tr("rs.tab.net"))}</th><th scope="col">${esc(tr("rs.tab.posts"))}</th><th scope="col">${esc(tr("rs.tab.per"))}</th><th scope="col">${esc(tr("rs.tab.react"))}</th><th scope="col" class="rn-wkh" title="${esc(tr("wk.headhint"))}">${esc(tr("wk.head"))}</th><th scope="col">${esc(tr("rs.tab.best"))}</th></tr></thead>
     <tbody>${rows.map((x) => `<tr class="${x.stalled ? "stall" : ""}"><th scope="row">${netLogo(chOf(x.network), "sm")} ${esc(name(x.network))}</th>
       <td>${x.out}${x.measured !== x.out ? `<span class="meta"> (${x.measured})</span>` : ""}</td><td>${x.verdict === "unmeasured" ? "?" : cell(x)}</td><td>${n(x.reactions)}</td>${weeklyCell(x.network, n)}
-      <td class="best">${x.best ? `<a href="#/reel/${esc(x.best.slug)}" lang="ja" title="${esc(x.best.slug)}">${esc(reelName(x.best.slug))}</a> <span class="meta">${x.best.views != null ? n(x.best.views) : n(x.best.reactions)}</span>` : "–"}</td></tr>`).join("")}</tbody></table>`;
+      <td class="best">${x.best ? `<a href="#/reel/${esc(x.best.slug)}" lang="ja" title="${esc(x.best.slug)}">${esc(reelName(x.best.slug))}</a> <span class="meta">${x.best.views != null ? n(x.best.views) : n(x.best.reactions)}</span>` : "–"}</td></tr>`).join("")}</tbody></table></details>`;
 }
 /* ---------- Results pictures (batch B, 17 Nov): expected against actual, views by week, the best time to post ----------
    Each is ONE inline svg drawn at the width the page gives it (as the flow above), with the house motion: an entrance
@@ -9499,12 +9930,14 @@ function predChart(v) {
     <div class="px-top"><div class="px-num"><b><span data-count="${inside}">${inside}</span><small>/${measured}</small></b><span class="meta">${esc(tr("px.inrange"))}</span></div>
       <div class="px-num"><b class="${r != null && r < 0 ? "neg" : ""}">${r == null ? "–" : signed(r)}</b><span class="meta">${esc(tr("px.rank"))}</span></div>${gauge}
       <p class="px-say"><b>${esc(coin)}</b> <span class="meta">${esc(tr("px.cover", { i: inside, n: measured }))}</span></p></div>
-    <h3 id="pxTitle" class="rf-title">${esc(tr("px.title"))}</h3>
+    <details class="px-fold ly-fold" ${pxOpen ? "open" : ""}><summary><h3 id="pxTitle" class="rf-title">${esc(tr("px.title"))}</h3><span class="meta">${esc(tr("ly_px.sum", { i: inside, n: measured }))}</span></summary>
     <svg class="px-svg" viewBox="0 0 ${W} ${H}" style="max-width:${W}px" role="group" aria-label="${esc(tr("px.title"))}" preserveAspectRatio="xMinYMin meet">${ticks}${body}</svg>
     <div class="px-foot"><span class="px-key"><i class="k-band"></i>${esc(tr("px.k.band"))}</span><span class="px-key"><i class="k-mid"></i>${esc(tr("px.k.mid"))}</span>
       <span class="px-key"><i class="k-dot s-up"></i>${esc(tr("px.s.up"))}</span><span class="px-key"><i class="k-dot s-in"></i>${esc(tr("px.s.in"))}</span><span class="px-key"><i class="k-dot s-down"></i>${esc(tr("px.s.down"))}</span>
-      <span class="grow"></span><span class="meta px-read" aria-live="polite">${esc(tr("px.hint"))}</span></div></section>`;
+      <span class="grow"></span><span class="meta px-read" aria-live="polite">${esc(tr("px.hint"))}</span></div></details></section>`;
 }
+let pxOpen = false;  // the per-post chart folds to its title line (layout pass); opening it is remembered this visit
+document.addEventListener("toggle", (e) => { if (e.target.classList?.contains("px-fold")) pxOpen = e.target.open; }, true);
 document.addEventListener("click", (e) => { const g = e.target.closest?.("[data-pxslug]"); if (g) location.hash = "#/reel/" + g.dataset.pxslug; });
 document.addEventListener("keydown", (e) => { const g = e.target.closest?.("[data-pxslug]"); if (g && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); location.hash = "#/reel/" + g.dataset.pxslug; } });
 /* The line under a chart says what is under the pointer or focus (the expected-vs-actual rows, the heatmap's cells). */
@@ -9725,6 +10158,7 @@ function tableHtml() {
     ${rows.length > 12 ? `<button class="linkish" data-tblall="1">${tblAll ? tr("tb.less") : tr("tb.more", { n: rows.length })}</button>` : ""}
     <p class="meta">${tr("tb.hint", { d: tableView.days })}</p></section>`;
 }
+const CH_SHOWN = 12;  // videos listed before "Show all" (layout pass, 18 Nov: 20 two-line rows were 2 screens alone)
 function channelHtml() {
   if (chanView === null) { chanView = undefined; loadChannel(false); }
   if (!chanView) return `<section class="sheet"><h2>${tr("ch.h")}</h2>${loadingHtml(tr("ch.h"))}</section>`;
@@ -9736,7 +10170,7 @@ function channelHtml() {
     const made = (c.items || []).filter((v) => v.slug).length;
     const mine = chanMine && made > 0;  // a personal channel lists 600 videos; the ones this studio made come first
     const items = (c.items || []).filter((v) => (!mine || v.slug) && (chanKind === "all" || v.kind === chanKind) && (chanPriv || mine || v.privacy !== "private"));
-    const shown = chanAll ? items : items.slice(0, 20);
+    const shown = chanAll ? items : items.slice(0, CH_SHOWN);
     const bk = c.byKind || {};
     const sum = ["short", "long", "live"].filter((k) => bk[k]).map((k) => `<div class="kstat"><b>${tr(CH_KIND[k])}</b><span>${tr("ch.kline", { n: bk[k].videos, v: Number(bk[k].views).toLocaleString(), m: Number(bk[k].median).toLocaleString(), l: Number(bk[k].likes).toLocaleString(), c: Number(bk[k].comments).toLocaleString() })}</span></div>`).join("");
     return `<section class="sheet chsheet"><div class="row-tight sheethead"><h2>${ico("play", "sm")} ${esc(c.channel || tr("ch.h"))}</h2><span class="meta">${tr("ch.totals", { s: Number(c.subscribers || 0).toLocaleString(), v: Number(c.views || 0).toLocaleString(), n: Number(c.videos || 0).toLocaleString() })} (${esc(tr("ch.totalsscope"))})</span><span class="grow"></span>
@@ -9748,10 +10182,10 @@ function channelHtml() {
         <label class="meta"><input type="checkbox" data-chpriv="1" ${chanPriv ? "checked" : ""}> ${tr("ch.priv")}</label>`}</div>
       <div class="tscroll"><table class="facts ptable"><thead><tr><th>${tr("ch.video")}</th><th>${tr("tb.when")}</th><th class="num">${tr("tb.views")}</th><th class="num" title="${esc(tr("ch.engagedhint"))}">${tr("ch.engaged")}</th><th class="num">${tr("tb.likes")}</th><th class="num">${tr("tb.comments")}</th>
         <th class="num">${tr("ch.watch")}</th><th class="num">${tr("tb.pct")}</th></tr></thead>
-      <tbody>${shown.map((v) => `<tr class="${v.privacy !== "public" ? "unread" : ""}"><td class="vidcell"><a href="${escUrl(v.url)}" target="_blank" rel="noopener" class="clamp">${esc(v.title)}</a>
+      <tbody>${shown.map((v) => `<tr class="${v.privacy !== "public" ? "unread" : ""}"><td class="vidcell"><a href="${escUrl(v.url)}" target="_blank" rel="noopener" class="clamp" title="${esc(v.title)}">${esc(v.title)}</a>
           <span class="meta">${tr(CH_KIND1[v.kind] || "ch.k1.long")}${v.seconds ? ` · ${fmtS(v.seconds)}` : ""}${v.privacy !== "public" ? ` · ${v.booked ? tr("ch.booked", { t: whenText(v.booked) }) : tr(CH_PRIV[v.privacy] || "ch.p.private")}` : ""}${v.slug ? ` · <a href="#/reel/${esc(v.slug)}">${esc(v.slug)}</a>` : ""}</span></td>
           <td class="meta">${esc(whenText(v.at))}</td>${numCell(v.views)}${numCell(v.engaged)}${numCell(v.likes)}${numCell(v.comments)}${numCell(v.watchMin, (m) => tr("ch.min", { m: Number(m).toLocaleString() }))}${numCell(v.avgPct, (x) => `${Math.round(x)}%`)}</tr>`).join("")}</tbody></table></div>
-      ${items.length > 20 ? `<button class="linkish" data-chall="1">${chanAll ? tr("tb.less") : tr("tb.more", { n: items.length })}</button>` : ""}
+      ${items.length > CH_SHOWN ? `<button class="linkish" data-chall="1">${chanAll ? tr("tb.less") : tr("tb.more", { n: items.length })}</button>` : ""}
       <p class="meta">${tr("ch.hint", { n: c.listed })}</p></section>`;
   }).join("");
 }
@@ -10087,27 +10521,105 @@ function renderKeys() {
   const meter = (used, cap, label) => { const f = cap > 0 ? Math.min(1, used / cap) : 1;
     return `<div class="meter ${f >= 1 ? "full" : f >= 0.8 ? "near" : ""}"><div class="meter-top"><b>${usd(used)}</b><span class="meta">${tr("key.of", { n: usd(cap) })} · ${label}</span></div>
       <div class="bar" role="meter" aria-valuemin="0" aria-valuemax="${cap}" aria-valuenow="${used}" aria-label="${esc(label)}"><i style="transform:scaleX(${f.toFixed(3)})"></i></div></div>`; };
-  const ready = KEY_FIELDS.filter(([k]) => keySet(k)).length;
-  $("#home").innerHTML = `<div class="pagehead">${crumbs([tr("nav.settings")])}</div>
-    <p class="intro">${tr("key.intro")}</p>
-    <section class="sheet"><h2>${ico("shield", "sm")} ${tr("key.h")}<span class="count">${ready}/${KEY_FIELDS.length}</span></h2>
+  const ready = KEY_FIELDS.filter(([k]) => keySet(k)).length, refused = KEY_FIELDS.filter(([k]) => keySet(k) && keyRejected(k)).length;
+  const keysBody = () => `<section class="sheet"><h2>${ico("shield", "sm")} ${tr("key.h")}<span class="count">${ready}/${KEY_FIELDS.length}</span></h2>
       <p class="credhead"><span class="meta">${creditsAt() ? tr("key.checked", { t: ago(new Date(creditsAt()).toISOString()) }) : aiCredits?.providers ? "" : aiCredits?.error ? esc(aiCredits.error) : tr("key.checking")}</span>
         <button data-credits="1" ${creditsBusy ? "disabled" : ""}>${tr(creditsBusy ? "key.checking" : "key.recheck")}</button></p>
-      <ul class="kled">${KEY_FIELDS.map(row).join("")}</ul></section>
-    ${aiBlocksCard()}
-    ${ownLlmCard()}
-    ${chromeLinkCard()}
-    ${aiView && !aiView.unavailable ? `<section class="sheet spend" data-anchor="caps"><h2>${ico("shield", "sm")} ${tr("key.caps")}</h2><p class="meta">${tr("key.capshint")} <a href="#/log/overview">${tr("key.seespend")} ›</a></p>
+      <ul class="kled">${KEY_FIELDS.map(row).join("")}</ul></section>`;
+  const capsBody = () => aiView && !aiView.unavailable ? `<section class="sheet spend" data-anchor="caps"><h2>${ico("shield", "sm")} ${tr("key.caps")}</h2><p class="meta">${tr("key.capshint")} <a href="#/log/overview">${tr("key.seespend")} ›</a></p>
       <div class="meters">${meter(spent.today ?? 0, caps.daily ?? 0, tr("key.today"))}${meter(spent.total ?? 0, caps.total ?? 20, tr("key.alltime"))}</div>
       <form class="capgrid" data-capform="1">
         <label><span class="meta">${tr("key.perreel")}</span><input name="ai_reel_cap_usd" type="number" min="0" max="100" required step="0.5" inputmode="decimal" value="${esc(caps.reel ?? 2)}"></label>
         <label><span class="meta">${tr("key.daily")}</span><input name="daily_usd_budget" type="number" min="0" max="500" required step="1" inputmode="decimal" value="${esc(caps.daily ?? 2)}"></label>
         <label><span class="meta">${tr("key.total")}</span><input name="ai_total_cap_usd" type="number" min="0" max="1000" required step="1" inputmode="decimal" value="${esc(caps.total ?? 20)}"></label>
-        <button class="primary" type="submit">${ico("check", "sm")}${tr("key.savecaps")}</button></form></section>` : ""}
-    ${brandCard()}
-    ${connectCard()}
-    ${ytGoogleCard()}
-    ${motionCard()}`;
+        <button class="primary" type="submit">${ico("check", "sm")}${tr("key.savecaps")}</button></form></section>`
+    : `<section class="sheet"><h2>${ico("shield", "sm")} ${tr("key.caps")}</h2><p class="meta">${esc(tr("ly_ks.capsoff"))}</p></section>`;
+  const fallbackBody = () => `<section class="sheet fbsheet">${fbCard()}</section>`;
+  const chromeBody = () => chromeLinkCard() || (helperView ? `<section class="sheet chromelink"><h2>${ico("link", "sm")} ${tr("cl.title")}</h2><p class="meta">${esc(tr("ly_ks.chromeoff"))}</p><p><a class="btn" href="#/accounts">${ico("user", "sm")}${esc(tr("nav.accounts"))} ›</a></p></section>` : "");
+  const bodies = { keys: keysBody, blocks: aiBlocksCard, llm: ownLlmCard, fallback: fallbackBody, caps: capsBody, studio: motionCard, brand: brandCard, chrome: chromeBody, google: ytGoogleCard, connect: connectCard };
+  const cur = KEYS_SECS.some((s) => s[0] === keysSec) ? keysSec : "keys";
+  // Every section's status shows in the side list, so each part's data is asked for now (its card asks when it is empty).
+  for (const [id] of KEYS_SECS) if (id !== cur && ["blocks", "llm", "brand", "chrome", "fallback"].includes(id)) bodies[id]();
+  const st = { ready, refused, spent, caps };
+  const typing = document.activeElement?.matches?.("[data-kssearch]") ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
+  $("#home").innerHTML = `<div class="pagehead">${crumbs([tr("nav.settings")])}</div>
+    <p class="intro">${tr("key.intro")}</p>
+    <div class="kset">${keysNav(cur, st)}
+      <div class="ks-body" role="region" aria-label="${esc(tr(KEYS_SECS.find((s) => s[0] === cur)[2]))}">${bodies[cur]() || `<div class="sheet"><div class="skel skel-line"></div><div class="skel skel-line"></div><div class="skel skel-line" style="width:60%"></div></div>`}</div></div>`;
+  ksFilter();
+  if (typing) { const s = document.querySelector("[data-kssearch]"); s?.focus(); try { s?.setSelectionRange(typing[0], typing[1]); } catch { /* type=search */ } }
+}
+/* ---------- layout pass (18 Nov): Settings › Keys & AI as a settings page — a side list of its sections, each with a
+   one-line status, and one section open at a time at its own address (#/keys/<section>). The owner: "stop making long
+   page like settings key and ai". Old addresses land on their section: #/keys/motion and #/keys/theme open This studio
+   and mark that switch, #/keys/caps opens Spending limits, #/keys/google YouTube, #/keys/llm Your own AI model. ---------- */
+let keysSec = "keys", keysQ = "";
+// [id, icon, title, group]
+const KEYS_SECS = [["keys", "shield", "ly_ks.t.keys", "ai"], ["blocks", "layers", "ly_ks.t.blocks", "ai"], ["llm", "type", "ly_ks.t.llm", "ai"], ["fallback", "refresh", "ly_ks.t.fallback", "ai"],
+  ["caps", "wave", "ly_ks.t.caps", "ai"], ["studio", "sun", "ly_ks.t.studio", "studio"], ["brand", "user", "ly_ks.t.brand", "studio"], ["chrome", "link", "ly_ks.t.chrome", "links"],
+  ["google", "play", "ly_ks.t.google", "links"], ["connect", "chat", "ly_ks.t.connect", "links"]];
+const KEYS_ALIAS = { motion: "studio", theme: "studio", colours: "studio", colors: "studio", spend: "caps", limits: "caps", youtube: "google", project: "brand", claude: "connect", mcp: "connect", ai: "keys" };
+const keysSecOf = (x) => (KEYS_SECS.some((s) => s[0] === x) ? x : KEYS_ALIAS[x] || "keys");
+function ksStatus(id, x) {
+  const L = (k, v) => tr(k, v);
+  if (id === "keys") return x.refused ? [L("ly_ks.st.refused", { n: x.refused }), "warn"] : [L("ly_ks.st.keys", { n: x.ready, m: KEY_FIELDS.length }), x.ready ? "ok" : "warn"];
+  if (id === "blocks") return wfView?.capabilities ? [L("ly_ks.st.on", { n: WF_CAPS.filter((c) => wfView.capabilities[c]?.on).length, m: WF_CAPS.length }), ""] : ["…", ""];
+  if (id === "llm") { const c = aiView?.ownLlm || llmPresets?.ownLlm; return c ? [L("ly_ks.st.llmon", { m: c.model }), "ok"] : [L("ly_ks.st.notset"), ""]; }
+  if (id === "fallback") {
+    if (!fbView) return ["…", ""]; if (fbView.error) return [L("ly_ks.st.err"), "warn"];
+    const down = (fbView.providers || []).filter((p) => p.state !== "ok").length;
+    return fbView.settings?.on === false ? [L("ly_ks.st.off"), ""] : down ? [L("ly_ks.st.down", { n: down }), "warn"] : [L("ly_ks.st.allok"), "ok"];
+  }
+  if (id === "caps") return aiView && !aiView.unavailable ? [L("ly_ks.st.caps", { u: usd(x.spent.total ?? 0), c: usd(x.caps.total ?? 20) }), (x.spent.total ?? 0) >= (x.caps.total ?? 20) * 0.8 ? "warn" : ""] : ["—", ""];
+  if (id === "studio") return [L("ly_ks.st.studio", { t: tr("d_th." + themePref()), m: tr("mo." + moPref()) }), ""];
+  if (id === "brand") return [brandView ? brandView.name || "—" : "…", ""];
+  if (id === "chrome") { if (!helperView) return ["…", ""]; const b = helperView.browser || {}; return b.mode !== "extension" ? [L("ly_ks.st.notused"), ""] : b.connected ? [L("ly_ks.st.linked"), "ok"] : [L("ly_ks.st.notlinked"), "warn"]; }
+  if (id === "google") return yt.connected ? [yt.channel?.title || L("ly_ks.st.linked"), "ok"] : [L(yt.appInfo?.set ? "ly_ks.st.notlinked" : "ly_ks.st.noapp"), "warn"];
+  if (id === "connect") return [L("ly_ks.st.connect"), ""];
+  return ["", ""];
+}
+function keysNav(cur, x) {
+  const kw = (id, title) => [I18N.en[title], I18N.ja[title], I18N.en["ly_ks.kw." + id], I18N.ja["ly_ks.kw." + id]].filter(Boolean).join(" ").toLowerCase();
+  let group = "";
+  const items = KEYS_SECS.map(([id, icon, title, g]) => {
+    const [s, tone] = ksStatus(id, x), head = g !== group ? `<span class="ks-g" data-ksg="${g}">${esc(tr("ly_ks.g." + g))}</span>` : "";
+    group = g;
+    return `${head}<a href="#/keys/${id}" class="${id === cur ? "on" : ""}" ${id === cur ? 'aria-current="page"' : ""} data-kssec="${id}" data-ksgrp="${g}" data-kw="${esc(kw(id, title) + " " + s.toLowerCase())}">
+      ${ico(icon, "sm")}<b>${esc(tr(title))}</b><span class="ks-st ${tone}">${tone === "warn" ? ico("alert", "sm") : ""}${esc(s)}</span></a>`;
+  }).join("");
+  return `<nav class="ks-nav" aria-label="${esc(tr("ly_ks.nav"))}">
+    <label class="ks-search">${ico("search", "sm")}<input type="search" data-kssearch="1" placeholder="${esc(tr("ly_ks.search"))}" aria-label="${esc(tr("ly_ks.search"))}" value="${esc(keysQ)}" autocomplete="off" spellcheck="false"></label>
+    ${items}<p class="meta ks-none" hidden>${esc(tr("ly_ks.none"))}</p></nav>`;
+}
+function ksFilter() {
+  const q = keysQ.trim().toLowerCase(), nav = document.querySelector(".ks-nav"); if (!nav) return;
+  let any = 0;
+  for (const a of nav.querySelectorAll("[data-kssec]")) { const hit = !q || q.split(/\s+/).every((w) => a.dataset.kw.includes(w)); a.hidden = !hit; if (hit) any++; }
+  for (const g of nav.querySelectorAll("[data-ksg]")) g.hidden = ![...nav.querySelectorAll(`[data-ksgrp="${g.dataset.ksg}"]`)].some((a) => !a.hidden);
+  nav.querySelector(".ks-none").hidden = !!any;
+}
+document.addEventListener("input", (e) => { const s = e.target.closest?.("[data-kssearch]"); if (!s) return; keysQ = s.value; ksFilter(); });
+document.addEventListener("keydown", (e) => {
+  const s = e.target.closest?.("[data-kssearch]"); if (!s || e.key !== "Enter") return;
+  const a = [...document.querySelectorAll(".ks-nav [data-kssec]")].find((x) => !x.hidden); if (a) { e.preventDefault(); location.hash = a.getAttribute("href"); }
+});
+/* The tab or section a page's address names, read before the page draws. */
+function lyRoute() {
+  const h = location.hash;
+  const top = () => { const home = $("#home"); if (home) home.scrollTop = 0; };
+  if (page === "keys") { const m = /^#\/keys\/(\w+)/.exec(h), want = m ? keysSecOf(m[1]) : "keys"; if (want !== keysSec) { keysSec = want; top(); } }
+  if (page === "words") { const m = /^#\/words\/(\w+)/.exec(h), want = m && W_TABS.includes(m[1]) ? m[1] : "headlines"; if (want !== wTab) { wTab = want; top(); } }
+  if (page === "footage") {
+    const m = /^#\/footage\/(\w+)/.exec(h);
+    if (m && FOOT_TABS[m[1]]) { if (foot.drawer !== FOOT_TABS[m[1]]) { foot.drawer = FOOT_TABS[m[1]]; top(); } }
+    else if (lyRoute.prev !== "footage") foot.drawer = "auto";  // a fresh visit opens what needs attention
+  }
+  lyRoute.prev = page;
+}
+/* What the layout pass adds to the page's redraw check: a new section, tab, sort, page or pick redraws the page. */
+function lySig() {
+  return page === "keys" ? [keysSec] : page === "words" ? [wTab, wSel, wSort, wPage, lPage, lKind, lQ, postsLoaded, cWear.perf?.length ?? -1]
+    : page === "review" ? [revFocus, !!scoreMap] : page === "reels" ? [rTheme, rNet] : page === "footage" ? [footTabNow(), !!foot.h && !foot.h.loading] : 0;
 }
 /* Chrome link: with the key from the extension's Welcome page saved, the studio links to your Chrome by itself
    (at start and whenever the link drops), so TikTok, X, LinkedIn, Google Maps, LINE and Pinterest stay Ready. */
@@ -10627,7 +11139,7 @@ function drawAccounts() {
         : helperTodo.length && helperView?.browser?.mode === "extension" ? `<div class="helpnote">${ico("link", "sm")}<div><b>${tr(helperView.browser.connected ? "acc.chrome.on" : "acc.chrome.title")}</b><p class="meta">${esc(helperView.browser.pending?.message || (helperView.browser.connected ? helperView.browser.note : "") || helperView.browser.error || tr("acc.chrome.why"))}</p>${waitChrome.length ? `<ul class="waitnets">${waitChrome.map((n) => `<li>${netLogo(n, 18)}${esc(NET_NAME[n] || n)}</li>`).join("")}</ul>` : ""}${helperView.browser.autoConnect ? "" : `<p class="meta"><a href="#/keys">${tr("cl.nudge")}</a></p>`}</div>${helperView.browser.connected ? "" : `<button class="primary" data-chromeconnect="1">${ico("link", "sm")}${tr(helperView.browser.pending ? "acc.chrome.again" : "acc.chrome.go")}</button>`}</div>`
         : helperTodo.length ? `<div class="helpnote">${ico("info", "sm")}<div><b>${tr("acc.help.title")}</b><p class="meta">${tr("acc.help.group")}</p></div>${helperTodo.length > 1 ? `<button class="primary" data-helpsign="*">${ico("link", "sm")}${tr("acc.help.all", { k: helperTodo.length })}</button>` : ""}</div>` : ""}
       ${todoCards.length ? `<ul class="acrows">${todoCards.map(rowOf).join("")}</ul>` : ""}</section>` : ""}
-    ${ready.length ? `<section class="accsec"><h2>${ico("check", "sm")}${tr("acc.g.ready")}<span class="count">${ready.length}</span></h2><p class="meta">${tr("acc.g.readynote")}</p><div class="agrid acready">${ready.map(card).join("")}</div></section>` : ""}
+    ${ready.length ? `<details class="accsec accfold acc-readyfold" ${todo.length ? "" : "open"}><summary><h2>${ico("check", "sm")}${tr("acc.g.ready")}<span class="count">${ready.length}</span></h2><span class="acc-readylogos" aria-hidden="true">${ready.map((n) => netLogo(chOf(n), "sm")).join("")}</span></summary><p class="meta">${tr("acc.g.readynote")}</p><div class="agrid acready">${ready.map(card).join("")}</div></details>`: ""}
     ${off.length ? `<details class="accsec accfold"><summary><h2>${ico("eye", "sm")}${tr("acc.g.off")}<span class="count">${off.length}</span></h2></summary><p class="meta">${tr("acc.g.offnote")}</p><ul class="offlist">${offRows}</ul></details>` : ""}
     ${playbooks.length ? `<details class="accsec accfold" id="strategy"><summary><h2>${ico("info", "sm")}${tr("pb.all")}</h2></summary><p class="meta">${tr("pb.allnote")}</p>
       <div class="agrid pbgrid">${nets.filter((n) => st[n].group !== "off" && pbOf(n)).map((n) => `<article class="acard pbcard">${`<div class="row">${netLogo(n === "youtube" ? "youtube" : n, 24)}<div class="acname"><b>${esc(NET_NAME[n] || n)}</b><div class="meta">${esc(pbOf(n).role || "")}</div></div></div>`}${playbookHtml(n).replace('<details class="pb">', '<details class="pb pball" open>')}</article>`).join("")}</div></details>` : ""}
@@ -11499,7 +12011,8 @@ function wfCapNode(cap, i, fresh, chg) {
   const kind = !c.on ? "k-off wire-dash" : c.local ? "k-local" : "k-cloud";
   const st = !c.on ? ["", tr("d_wf.off")] : !c.provider ? ["warn", tr("d_wf.noservice")] : !c.hasKey ? ["warn", `${c.providerName} · ${tr("d_wf.nokey")}`] : ["ok", `${c.provider === "own" ? tr("d_wf.ownname") : c.providerName} · ${wfWhere(c)}`];
   const cost = c.on ? (c.perReel?.usd == null ? esc(tr("d_wf.bytokens")) : c.perReel.usd === 0 ? `<em>${esc(tr("d_wf.free"))}</em>` : `<b>${usd(c.perReel.usd)}</b> ${esc(tr("d_wf.areel"))}`) : esc(tr("d_wf.skipped"));
-  return mapNode({ kcls: kind + (chg ? " wf-chg" : ""), status: st, name: capName(cap), nums: cost, icon: WF_ICON[cap], i, fresh, on: wfOpen === cap, controls: "wfDetail",
+  const fb = c.on ? fbNodeBits(cap) : { cls: "", html: "" };  // fallback: "backup: X", and "switched" while it runs on its backup
+  return mapNode({ kcls: kind + (chg ? " wf-chg" : "") + fb.cls, status: st, name: capName(cap), nums: cost + fb.html, icon: WF_ICON[cap], i, fresh, on: wfOpen === cap, controls: "wfDetail",
     attr: `data-wfnode="${cap}"`, label: `${capName(cap)}: ${st[1]}${c.on && c.perReel?.usd != null ? " · " + usd(c.perReel.usd) : ""}`, after: chg || "" });
 }
 function wfStudioNode(id, i, fresh, nums, st) {
@@ -11731,7 +12244,7 @@ function wfDetail(id) {
       ${c.source === "workflow" ? `<button type="button" class="ghost" data-wfreset="${id}" ${wfBusy ? "disabled" : ""}>${ico("refresh", "sm")}${esc(tr("d_wf.reset"))}</button>` : ""}
       <a class="btn ghost" href="#/keys">${ico("shield", "sm")}${esc(tr("d_wf.keys"))}</a>`;
     return mapDetail({ id: "wfDetail", kcls: kind, icon: WF_ICON[id], name: capName(id), sub: `${tr("d_wf.s." + wfStageOf(id))}${c.labelRequired ? " · " + tr("d_wf.ailabel") : ""}`, status, facts, fresh, closeAttr: close,
-      note: `${extra ? `<p class="meta wf-note">${ico("info", "sm")} ${esc(extra)}</p>` : ""}<h5 class="wf-h5">${esc(tr("d_wf.others"))}</h5>${wfChoices(id)}`, acts });
+      note: `${extra ? `<p class="meta wf-note">${ico("info", "sm")} ${esc(extra)}</p>` : ""}<h5 class="wf-h5">${esc(tr("d_wf.others"))}</h5>${wfChoices(id)}${fbSection(id)}`, acts });
   }
   const lib = overview.library || {}, nets = typeof PLAN_NETS === "function" ? PLAN_NETS() : [];
   const S = {
@@ -11764,7 +12277,7 @@ function wfTemplates() {
   const card = (t, i) => `<li class="wf-tpl${cur === t.id ? " cur" : ""}${wfPrev === t.id ? " open" : ""}" style="--i:${i}">
       <div class="wft-top"><span class="wft-ico" aria-hidden="true">${ico(t.icon || "layers")}</span><div><b>${esc(t.name[lang] || t.name.en)}</b>${t.who ? `<span class="meta">${esc(t.who[lang] || t.who.en)}</span>` : ""}</div>
         ${cur === t.id ? `<span class="wft-badge">${ico("check", "sm")}${esc(tr("d_wf.inuse"))}</span>` : ""}</div>
-      <p class="wft-sum">${esc(t.summary[lang] || t.summary.en)}</p>
+      <p class="wft-sum" title="${esc(t.summary[lang] || t.summary.en)}">${esc(t.summary[lang] || t.summary.en)}</p>
       ${wfLego(t)}
       <div class="wft-foot"><span class="wft-cost"><b>${t.perReel === 0 ? esc(tr("d_wf.free")) : usd(t.perReel)}</b> ${t.perReel === 0 ? "" : esc(tr("d_wf.areel"))} ${wfDelta(t.perReelNow, t.perReel)}</span>
         <button type="button" data-wftpl="${esc(t.id)}" aria-expanded="${wfPrev === t.id}" aria-controls="wfPreview">${ico("eye", "sm")}${esc(tr(wfPrev === t.id ? "d_wf.hide" : "d_wf.preview"))}</button></div></li>`;
@@ -11814,7 +12327,7 @@ function renderWorkflow() {
     ${wfOpen ? wfDetail(wfOpen) : `<p class="meta sm-hint">${ico("info", "sm")} ${esc(tr("d_wf.hint"))}</p>`}
     ${wfTemplates()}
     ${wfRejected()}
-    <section class="sheet wf-month" data-anchor="spend"><h2>${ico("wave", "sm")} ${esc(tr("d_cm.title"))}</h2>${costMeter(v.spend)}</section>`;
+    <details class="sheet wf-month ly-fold" data-anchor="spend"><summary><h2>${ico("wave", "sm")} ${esc(tr("d_cm.title"))}</h2><span class="meta">${esc(tr("ly_wf.more"))}</span></summary>${costMeter(v.spend)}</details>`;
 }
 document.addEventListener("click", (e) => { if (e.target.closest?.("[data-wfretry]")) { wfView = null; renderHome(true); } });
 /* ---------- Settings › Keys & AI › AI blocks: one block per capability, the service, key, price and on/off ---------- */
@@ -11828,7 +12341,7 @@ function aiBlocksCard() {
       const unit = c.perReel?.unitPrice != null && c.perReel?.unit ? `${usd(c.perReel.unitPrice)} / ${c.perReel.unit}` : "";
       return `<li class="ab ${c.on ? (c.local ? "k-local" : "k-cloud") : "k-off"}${open ? " open" : ""}">
         <span class="ab-ico" aria-hidden="true">${ico(WF_ICON[cap], "sm")}</span>
-        <div class="ab-main"><b>${esc(capName(cap))}</b><span class="meta">${esc(tr("d_wf.w." + cap))}</span></div>
+        <div class="ab-main"><b>${esc(capName(cap))}</b><span class="meta" title="${esc(tr("d_wf.w." + cap))}">${esc(tr("d_wf.w." + cap))}</span></div>
         <div class="ab-svc">${c.provider ? `<b>${esc(c.provider === "own" ? tr("d_wf.ownname") : c.providerName)}</b><span class="meta wfmono">${esc(c.modelLabel || x?.label || "")}</span>` : `<span class="meta">${esc(tr("d_wf.noservice"))}</span>`}
           <span class="wfc-tags">${c.provider ? `<i class="wtag ${c.local ? "local" : "cloud"}">${esc(wfWhere(c))}</i>` : ""}${c.provider && c.provider !== "own" ? (c.hasKey ? `<i class="wtag ok">${ico("check", "sm")}${esc(tr("d_wf.keyok"))}</i>` : `<a class="wtag warn" href="#/keys">${esc(tr("d_wf.nokey"))}</a>`) : ""}</span></div>
         <div class="ab-price">${c.on ? `<b>${esc(wfCost(c.perReel?.usd))}</b>${unit ? `<span class="meta">${esc(unit)}</span>` : ""}` : `<span class="meta">${esc(tr("d_wf.skipped"))}</span>`}</div>
@@ -11838,8 +12351,145 @@ function aiBlocksCard() {
     }).join("")}</ul>`;
   return `<section class="sheet aiblocks" data-anchor="blocks"><h2>${ico("layers", "sm")} ${esc(tr("d_ab.h"))}${v && !v.error ? `<span class="count">${WF_CAPS.filter((c) => v.capabilities[c].on).length}/${WF_CAPS.length}</span>` : ""}</h2>
     <div class="ab-head"><p class="meta">${esc(tr("d_ab.lead"))} <a href="#/workflow">${esc(tr("d_ab.open"))} ›</a></p>${v && !v.error ? costMeter(v.spend, { compact: true }) : ""}</div>
-    ${body}${v && !v.error ? wfRejected() : ""}</section>`;
+    ${body}${v && !v.error ? wfRejected() : ""}
+    <p class="meta ab-fb">${ico("refresh", "sm")} <a href="#/keys/fallback">${esc(tr("ly_ks.t.fallback"))} ›</a></p></section>`;
 }
+/* ---------- fallback (18 Nov): when an AI service runs out, the next one takes over (py/studio/fallback.py) ----------
+   GET /api/ai/health: each service's health, each block's backup list and what it runs on now. The Workflow graph shows
+   "backup: X" on each AI block and an amber "switched" block while it runs on its backup; the detail panel has the
+   block's auto-switch and its ordered backups; Settings › AI blocks has the master switch, the max price rise and the
+   services' health with Try again. Every change goes through POST /api/ai/fallback or /api/ai/health/reset. */
+let fbView = null, fbBusy = false, fbAt = 0;
+function loadFb(force) {
+  if (loadFb.busy || (!force && fbView && Date.now() - fbAt < 60e3)) return;
+  loadFb.busy = true;
+  api("/api/ai/health").then((v) => { fbView = v; fbAt = Date.now(); })
+    .catch((e) => { if (!fbView) fbView = { error: e.message }; fbAt = Date.now(); })
+    .finally(() => { loadFb.busy = false; if (atHome() && ["workflow", "keys"].includes(page)) renderHome(true); });
+}
+const fbName = (pid) => (pid === "own" ? tr("d_wf.ownname") : fbView?.providers?.find((p) => p.id === pid)?.name || wfView?.capabilities && Object.values(wfView.capabilities).flatMap((c) => c.choices || []).find((x) => x.provider === pid)?.providerName || pid);
+const fbTime = (s) => new Date(s * 1000).toLocaleTimeString(lang === "ja" ? "ja-JP" : "en-GB", { hour: "2-digit", minute: "2-digit" });
+const fbWhen = (s) => { const d = new Date(s * 1000), L = lang === "ja" ? "ja-JP" : "en-GB"; return d.toDateString() === new Date().toDateString() ? fbTime(s) : d.toLocaleString(L, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); };
+function fbSkip(why) {
+  const w = String(why || "");
+  return /^no key/.test(w) ? tr("fb_a.s.nokey") : /^no price/.test(w) ? tr("fb_a.s.noprice") : /^marked/.test(w) ? tr("fb_a.s.risk") : /voice/.test(w) ? tr("fb_a.s.voice") : w;
+}
+/** The graph node's extra: a "backup: X" chip, and a "switched" badge with an amber outline while it runs on its backup. */
+function fbNodeBits(cap) {
+  if (!fbView || fbView.error) { if (!fbView) loadFb(); return { cls: "", html: "" }; }
+  const f = fbView.capabilities?.[cap]; if (!f) return { cls: "", html: "" };
+  const u = f.using;
+  if (u && u.backup && u.provider) return { cls: " fb-sw", html: `<span class="fb-chips"><i class="fb-badge">${esc(tr("fb_a.switched"))}</i><i class="fb-chip on">${esc(tr("fb_a.chip", { p: u.providerName || fbName(u.provider) }))}</i></span>` };
+  if (u) return { cls: " fb-stuck", html: `<span class="fb-chips"><i class="fb-chip bad">${esc(tr("fb_a.h." + u.kind))}</i></span>` };
+  if (!f.auto) return { cls: "", html: "" };
+  return { cls: "", html: `<span class="fb-chips"><i class="fb-chip${f.backup ? "" : " none"}">${esc(f.backup ? tr("fb_a.chip", { p: f.backupName }) : tr("fb_a.nobackup"))}</i></span>` };
+}
+/** One line: what the block runs on now and why. */
+function fbStatus(cap) {
+  const f = fbView?.capabilities?.[cap], c = wfView?.capabilities?.[cap];
+  if (!f || !c?.on || !c.provider) return "";
+  const u = f.using, p = c.provider === "own" ? tr("d_wf.ownname") : c.providerName;
+  if (!u) return `<p class="fb-st">${ico("check", "sm")}<span>${esc(tr("fb_a.st.ok", { p }))}</span></p>`;
+  const why = tr("fb_a.k." + u.kind);
+  if (u.backup && u.since) return `<p class="fb-st fb-onb" role="status">${ico("refresh", "sm")}<span>${esc(tr("fb_a.st.using", { b: u.providerName, t: fbWhen(u.since), p: u.fromName, why }))}</span></p>`;
+  if (u.backup) return `<p class="fb-st fb-onb" role="status">${ico("refresh", "sm")}<span>${esc(tr("fb_a.st.next", { p: u.fromName, why, b: u.providerName }))}</span></p>`;
+  return `<p class="fb-st fb-stk" role="status">${ico("alert", "sm")}<span>${esc(tr(u.auto ? "fb_a.st.stuck" : "fb_a.st.noauto", { p: u.fromName, why }))}</span>
+    <button type="button" data-fbtry="${esc(u.from)}">${esc(tr("fb_a.try"))}</button></p>`;
+}
+/** The detail panel's section: auto-switch, the ordered backups (move, add, remove), each with key, price a reel and docs. */
+function fbSection(cap) {
+  if (!WF_CAPS.includes(cap)) return "";
+  if (!fbView) { loadFb(); return `<h5 class="wf-h5">${esc(tr("fb_a.h"))}</h5><div class="skel skel-line"></div>`; }
+  if (fbView.error) return `<h5 class="wf-h5">${esc(tr("fb_a.h"))}</h5><p class="bad">${ico("alert", "sm")} ${esc(fbView.error)}</p>`;
+  const f = fbView.capabilities?.[cap], c = wfView.capabilities[cap];
+  if (!f || c.provider === "own") return "";
+  const master = fbView.settings?.on !== false, p = c.providerName || c.provider || "";
+  const rows = f.chain || [];
+  const row = (x, i) => {
+    const health = x.health && x.health !== "ok" ? `<i class="wtag warn">${esc(tr("fb_a.h." + x.health))}</i>` : "";
+    const skip = x.skip ? `<i class="wtag warn" title="${esc(x.skip)}">${esc(fbSkip(x.skip))}</i>` : "";
+    const key = x.hasKey ? `<i class="wtag ok">${ico("check", "sm")}${esc(tr("d_wf.keyok"))}</i>` : "";
+    return `<li class="fb-row${x.skip || health ? " off" : ""}"><span class="fb-n" aria-hidden="true">${i + 1}</span>
+      <span class="fb-who"><b>${esc(x.providerName)}</b><span class="wfmono">${esc(x.label)}</span></span>
+      <span class="wfc-tags">${key}${skip}${health}</span>
+      <span class="fb-cost">${x.perReel == null ? "—" : esc(tr("fb_a.reel", { n: x.perReel === 0 ? tr("d_wf.free") : usd(x.perReel) }))}</span>
+      <span class="fb-acts">${x.docs ? `<a class="btn ghost" href="${escUrl(x.docs)}" target="_blank" rel="noopener">${esc(tr("d_wf.docs"))} ↗</a>` : ""}
+        <button type="button" class="icon" data-fbmove="${esc(cap)}|${i}|-1" ${i === 0 || fbBusy ? "disabled" : ""} aria-label="${esc(tr("fb_a.up"))}: ${esc(x.providerName)}" title="${esc(tr("fb_a.up"))}">${ico("chev-u", "sm")}</button>
+        <button type="button" class="icon" data-fbmove="${esc(cap)}|${i}|1" ${i === rows.length - 1 || fbBusy ? "disabled" : ""} aria-label="${esc(tr("fb_a.down"))}: ${esc(x.providerName)}" title="${esc(tr("fb_a.down"))}"><span class="fb-flip">${ico("chev-u", "sm")}</span></button>
+        <button type="button" class="icon" data-fbdel="${esc(cap)}|${i}" ${fbBusy ? "disabled" : ""} aria-label="${esc(tr("fb_a.remove"))}: ${esc(x.providerName)}" title="${esc(tr("fb_a.remove"))}">${ico("x", "sm")}</button></span></li>`;
+  };
+  const listed = new Set(rows.map((x) => x.provider + "|" + x.model));
+  const addable = (c.choices || []).filter((x) => x.provider !== "own" && !x.risk && !x.priceNeeded && !(x.voiceRequired && !x.voiceDefault)
+    && !(x.provider === c.provider && x.model === c.model) && !listed.has(x.provider + "|" + x.model));
+  const add = addable.length ? `<div class="fb-add"><label class="sr-only" for="fbAdd-${esc(cap)}">${esc(tr("fb_a.add"))}</label><select id="fbAdd-${esc(cap)}" data-fbaddsel="${esc(cap)}">${addable.map((x) => `<option value="${esc(x.provider + "|" + x.model)}">${esc(x.providerName)} · ${esc(x.label)}${x.perReel?.usd != null ? ` · ${esc(tr("fb_a.reel", { n: x.perReel.usd === 0 ? tr("d_wf.free") : usd(x.perReel.usd) }))}` : ""}${!x.hasKey ? ` · ${esc(tr("d_wf.nokey"))}` : ""}</option>`).join("")}</select>
+      <button type="button" data-fbadd="${esc(cap)}" ${fbBusy ? "disabled" : ""}>${ico("plus", "sm")}${esc(tr("fb_a.add"))}</button></div>` : "";
+  return `<section class="fb-sec${f.using?.backup ? " fb-onb" : ""}" aria-label="${esc(tr("fb_a.h"))}"><h5 class="wf-h5">${esc(tr("fb_a.h"))}</h5>
+    ${fbStatus(cap)}
+    <div class="fb-top"><button type="button" class="ab-sw${f.auto ? " on" : ""}" role="switch" aria-checked="${f.auto}" data-fbauto="${esc(cap)}" ${!master || fbBusy ? "disabled" : ""}><i aria-hidden="true"></i><span>${esc(tr("fb_a.auto"))}</span></button>
+      <span class="meta">${esc(!master ? tr("fb_a.masteroff") : tr("fb_a.autod", { p }))}${cap === "voice" ? " " + esc(tr("fb_a.voiceoff")) : ""}</span></div>
+    <div class="fb-listhead"><b>${esc(tr("fb_a.list"))}</b><span class="meta">${esc(tr(f.source === "yours" ? "fb_a.src.yours" : "fb_a.src.auto"))}</span>${f.source === "yours" ? `<button type="button" class="linkbtn" data-fbreset="${esc(cap)}" ${fbBusy ? "disabled" : ""}>${esc(tr("fb_a.reset"))}</button>` : ""}</div>
+    ${rows.length ? `<ol class="fb-list">${rows.map(row).join("")}</ol>` : `<p class="meta">${esc(tr(f.source === "yours" ? "fb_a.empty" : "fb_a.none", { p }))}</p>`}${add}</section>`;
+}
+/** Settings › AI blocks: the master switch, the max price rise, and every service's health with Try again and Top up. */
+function fbCard() {
+  if (!fbView || Date.now() - fbAt > 60e3) loadFb();
+  if (!fbView) return `<div class="fb-card"><div class="skel skel-line"></div></div>`;
+  if (fbView.error) return `<div class="fb-card"><p class="bad">${ico("alert", "sm")} ${esc(fbView.error)}</p></div>`;
+  const s = fbView.settings || {}, provs = fbView.providers || [];
+  const rises = [1.25, 1.5, 2, 3, 5];
+  if (!rises.includes(s.maxRise)) rises.push(s.maxRise), rises.sort((a, b) => a - b);
+  const prov = (p) => {
+    const bad = p.state !== "ok";
+    const when = !bad ? "" : p.state === "auth" ? tr("fb_a.keyfix") : p.until ? tr("fb_a.until", { t: fbWhen(p.until) }) : "";
+    return `<li class="fb-prov${bad ? " bad" : ""}"><i class="fb-dot ${esc(p.state)}" aria-hidden="true"></i><b>${esc(p.name)}</b>
+      <span class="fb-state">${esc(tr("fb_a.h." + p.state))}${when ? ` · ${esc(when)}` : ""}</span>
+      <span class="meta">${p.caps.length ? esc(tr("fb_a.uses", { c: p.caps.map(capName).join(lang === "ja" ? "、" : ", ") })) : ""}</span>
+      <span class="fb-acts">${bad && p.message ? `<details class="fb-why"><summary>${esc(tr("fb_a.why"))}</summary><span class="meta">${esc(p.message)}</span></details>` : ""}${bad ? `<button type="button" data-fbtry="${esc(p.id)}" ${fbBusy ? "disabled" : ""}>${ico("refresh", "sm")}${esc(tr("fb_a.try"))}</button>` : ""}${bad && p.billing ? `<a class="btn ghost" href="${escUrl(p.billing)}" target="_blank" rel="noopener">${esc(p.state === "out_of_credit" ? tr("fb_a.topup") : tr("d_wf.keys"))} ↗</a>` : ""}</span></li>`;
+  };
+  return `<div class="fb-card" data-anchor="fallback"><h3>${ico("refresh", "sm")} ${esc(tr("fb_a.card"))}</h3>
+    <div class="fb-set"><button type="button" class="ab-sw${s.on ? " on" : ""}" role="switch" aria-checked="${!!s.on}" data-fbmaster="1" ${fbBusy ? "disabled" : ""}><i aria-hidden="true"></i><span>${esc(tr(s.on ? "d_wf.on" : "d_wf.off"))}</span></button>
+      <div><b>${esc(tr("fb_a.master"))}</b><span class="meta">${esc(tr("fb_a.masterd"))}</span></div></div>
+    <div class="fb-set"><label for="fbRise"><b>${esc(tr("fb_a.rise"))}</b></label><select id="fbRise" data-fbrise="1" ${fbBusy || !s.on ? "disabled" : ""}>${rises.map((r) => `<option value="${r}"${r === s.maxRise ? " selected" : ""}>${esc(tr("fb_a.risex", { n: r }))}</option>`).join("")}</select><span class="meta">${esc(tr("fb_a.riseh"))}</span></div>
+    <h4 class="fb-h4">${esc(tr("fb_a.health"))}</h4>
+    ${provs.length ? `<ul class="fb-provs">${provs.map(prov).join("")}</ul>${provs.every((p) => p.state === "ok") ? `<p class="okline">${ico("check", "sm")} ${esc(tr("fb_a.allok"))}</p>` : ""}` : `<p class="meta">${esc(tr("fb_a.nohealth"))}</p>`}</div>`;
+}
+async function fbPost(url, body, done) {
+  const here = () => atHome() && ["workflow", "keys"].includes(page);
+  fbBusy = true; if (here()) renderHome(true);
+  try {
+    const r = await post(url, body);
+    fbView = r; fbAt = Date.now();
+    toast(`${ico("check", "sm")} ${esc(done || tr("fb_a.saved"))}${(r.warnings || []).length ? `<br><span class="meta">${esc(r.warnings.join(" "))}</span>` : ""}`, (r.warnings || []).length ? 7000 : 3000);
+  } catch (e) { toast(`${ico("alert", "sm")} ${esc(e.message)}`, 7000); }
+  fbBusy = false; if (here()) renderHome(true); PROB.load(); loadWf();
+}
+/* The backups as a plain list to send back: what the page shows, in its order. */
+const fbChainOf = (cap) => (fbView?.capabilities?.[cap]?.chain || []).map((x) => ({ provider: x.provider, model: x.model, ...(x.voice ? { voice: x.voice } : {}), ...(x.acceptRisk ? { acceptRisk: true } : {}) }));
+document.addEventListener("click", (e) => {
+  const t = e.target.closest?.("[data-fbauto], [data-fbmaster], [data-fbmove], [data-fbdel], [data-fbadd], [data-fbreset], [data-fbtry], [data-aitry]");
+  if (!t || fbBusy) return;
+  if (t.dataset.fbauto) { const cap = t.dataset.fbauto; return fbPost("/api/ai/fallback", { capability: cap, auto: !fbView.capabilities[cap].auto }); }
+  if (t.dataset.fbmaster) return fbPost("/api/ai/fallback", { on: !fbView.settings.on });
+  if (t.dataset.fbmove) {
+    const [cap, i, d] = t.dataset.fbmove.split("|"), list = fbChainOf(cap), a = +i, b = a + +d;
+    if (b < 0 || b >= list.length) return;
+    [list[a], list[b]] = [list[b], list[a]];
+    return fbPost("/api/ai/fallback", { capability: cap, chain: list });
+  }
+  if (t.dataset.fbdel) { const [cap, i] = t.dataset.fbdel.split("|"), list = fbChainOf(cap); list.splice(+i, 1); return fbPost("/api/ai/fallback", { capability: cap, chain: list }); }
+  if (t.dataset.fbadd) {
+    const cap = t.dataset.fbadd, sel = document.querySelector(`[data-fbaddsel="${CSS.escape(cap)}"]`); if (!sel?.value) return;
+    const [provider, model] = sel.value.split("|");
+    return fbPost("/api/ai/fallback", { capability: cap, chain: [...fbChainOf(cap), { provider, model }] });
+  }
+  if (t.dataset.fbreset) return fbPost("/api/ai/fallback", { capability: t.dataset.fbreset, chain: null });
+  const pid = t.dataset.fbtry || t.dataset.aitry;
+  if (pid) { e.preventDefault(); return fbPost("/api/ai/health/reset", { provider: pid }, tr("fb_a.tried", { p: fbName(pid) })); }
+});
+document.addEventListener("change", (e) => {
+  const r = e.target.closest?.("[data-fbrise]"); if (!r || fbBusy) return;
+  fbPost("/api/ai/fallback", { maxRise: Number(r.value) });
+});
 /* ---------- Reels › Today: the first week, from what the studio can see (never ticked by hand) ---------- */
 let fwAi = null, fwAsked = false;
 function firstWeekCard() {
@@ -11882,9 +12532,28 @@ function themePref() { let v = null; try { v = localStorage.getItem("studio.them
 function themeApply(v) {
   try { if (v === "auto") localStorage.removeItem("studio.theme"); else localStorage.setItem("studio.theme", v); } catch { /* private window: this visit only */ }
   if (v === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = v;
-  themeColor(); if (atHome()) renderHome(true); else renderAll();
+  themeColor(); themeBtnPaint(); if (atHome()) renderHome(true); else renderAll();
   requestAnimationFrame(() => { drawWires(); drawLanes(); });
 }
+/* The top bar's colour button (owner, 18 Nov: the Colours setting was hard to find and Auto followed a dark system):
+   one click switches Light ⇄ Dark; from Auto it goes to the opposite of what shows. The icon is where a click goes.
+   Same setting as Settings › Colours (themePref / themeApply), so the radio there stays in step. */
+function themeBtnPaint() {
+  const b = document.getElementById("themeBtn"); if (!b) return;
+  const p = themePref(), dark = themeDark();
+  const tip = `${tr(p === "auto" ? (dark ? "fb_th.autodark" : "fb_th.autolight") : dark ? "fb_th.dark" : "fb_th.light")} ${tr("fb_th.where")}`;
+  b.title = tip; b.setAttribute("aria-label", tip); b.setAttribute("aria-pressed", String(dark));
+  b.innerHTML = ico(dark ? "sun" : "moon", "sm");
+}
+function themeToggle() {
+  const v = themeDark() ? "light" : "dark";
+  themeApply(v);
+  toast(`${ico(v === "dark" ? "moon" : "sun", "sm")} ${esc(tr("d_th.saved", { v: tr("d_th." + v) }))}`, 2500);
+}
+document.getElementById("themeBtn")?.addEventListener("click", themeToggle);
+document.getElementById("lang")?.addEventListener("click", () => setTimeout(themeBtnPaint, 0));
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", themeBtnPaint);
+themeBtnPaint();
 function themeDark() { const v = themePref(); return v === "dark" || (v === "auto" && matchMedia("(prefers-color-scheme: dark)").matches); }
 function themeColor() { document.querySelector('meta[name="theme-color"]')?.setAttribute("content", themeDark() ? "#13140f" : "#fffdf6"); }
 matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => { if (themePref() === "auto") { themeColor(); if (atHome() && page === "keys") renderHome(true); } });
@@ -12545,7 +13214,7 @@ function runwayHtml(h) {
     ${(h.shoot || []).length ? `<ol class="rw-next">${h.shoot.slice(0, 3).map((t) => `<li>${ico(THEME_ICON[t.theme] || "film", "sm")}<span>${esc(t.need)}</span>${t.camera ? `<span class="meta">${esc(t.camera)}</span>` : ""}</li>`).join("")}</ol>` : ""}</section>`;
 }
 function fhShootGo() {
-  if (foot.drawer !== "health") { foot.drawer = "health"; renderHome(true); }
+  if (footTabNow() !== "health") footTabGo("health");
   requestAnimationFrame(() => {
     const el = document.getElementById("fhShoot"); if (!el) return;
     el.scrollIntoView({ block: "center", behavior: moCalm() ? "auto" : "smooth" });
@@ -12637,7 +13306,9 @@ document.addEventListener("click", (e) => {
   const d = e.target.closest?.("[data-plkey]"); if (!d) return;
   const k = d.dataset.plkey, p = foot.placeKeys?.[k];
   foot.place = foot.place?.key === k || !p ? null : { key: k, ids: new Set(p.ids), label: p.label };
-  foot.open = null; renderHome(true);
+  foot.open = null;
+  if (foot.place && footTabNow() !== "lib") { footTabGo("lib"); return; }  // the place's files are in the Library tab
+  renderHome(true);
   if (foot.place) requestAnimationFrame(() => document.querySelector("#home .fbar, #home .fgrid, #home .fgroups")?.scrollIntoView({ block: "start", behavior: moCalm() ? "auto" : "smooth" }));
 });
 document.addEventListener("keydown", (e) => { const d = e.target.closest?.("g[data-plkey]"); if (d && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); d.dispatchEvent(new MouseEvent("click", { bubbles: true })); } });
@@ -12664,39 +13335,52 @@ function footGrid() {
   for (const i of items) { const k = footKey(i); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(i); }
   const newest = (l) => l.reduce((m, i) => (i.captured || "") > m ? i.captured : m, "");
   const order = [...groups].sort((a, b) => ["event", "month"].includes(foot.group) ? newest(b[1]).localeCompare(newest(a[1])) || b[0].localeCompare(a[0]) : b[1].length - a[1].length);
-  return `<div class="fgroups">${order.map(([k, list], gi) => {
+  // The newest group open, the rest folded to their one-line summary, ten groups at a time (layout pass, 18 Nov).
+  const gN = 10 * (1 + (foot.gPage || 0)), gShown = order.slice(0, gN);
+  return `<div class="fgroups">${gShown.map(([k, list], gi) => {
     const all = foot.more.has(k), shown = all ? list : list.slice(0, 16);
-    return `<details class="fgroup" data-fg="${esc(k)}" ${foot.openG.has(k) || (gi < 2 && !foot.closedG.has(k)) ? "open" : ""}>${footHead(k, list)}<div class="fgrid">${shown.map(ftile).join("")}</div>
+    return `<details class="fgroup" data-fg="${esc(k)}" ${foot.openG.has(k) || (gi < 1 && !foot.closedG.has(k)) ? "open" : ""}>${footHead(k, list)}<div class="fgrid">${shown.map(ftile).join("")}</div>
       ${list.length > shown.length ? `<p class="row"><button data-fmore="${esc(k)}">${tr("f.showall", { n: list.length })}</button></p>` : ""}</details>`;
-  }).join("")}</div>`;
+  }).join("")}</div>${order.length > gN ? `<p class="row"><button type="button" data-fgmore="1">${ico("plus", "sm")}${esc(tr("ly_f.moregroups", { n: Math.min(10, order.length - gN), of: order.length - gN }))}</button></p>` : ""}`;
 }
 foot.openG = new Set(); foot.closedG = new Set();
 /* The top of Footage is one line with two parts: Add footage (the ways in and the map of where footage comes from)
    and Fresh footage (how much is left). Each opens its panel under the line (one at a time, remembered); the clips
    follow right after, so adding and browsing never share a box. "places" and "collect" were the old two parts that
    Add footage now holds. */
-foot.drawer = (() => { let v = "add"; try { v = localStorage.getItem("studio.footDrawer") ?? "add"; } catch { /* private window */ } return v === "places" || v === "collect" ? "add" : v; })();
+/* Footage is three tabs (layout pass, 18 Nov; the page was 7.7 screens): Health (#/footage/health), Library
+   (#/footage/library) and Sources (#/footage/sources). foot.drawer holds the open one: "health", "lib" or "add";
+   "auto" (a fresh visit to #/footage) opens Health when footage is running low, else Library. */
+foot.drawer = "auto";
+const FOOT_TABS = { health: "health", library: "lib", sources: "add" };
+const footAttention = () => { const h = foot.h; return !!h && !h.loading && !h.error && (h.reelsLeft < 4 || (runwayOf(h)?.days ?? Infinity) < 30); };
+const footTabNow = () => (foot.drawer === "auto" ? (footAttention() ? "health" : "lib") : foot.drawer || "lib");
 function footStrip() {
   const s = foot.src, last = s?.last || {}, counts = new Map((last.sources || []).map((x) => [x.path, x]));
   const files = s ? s.sources.reduce((n, x) => n + (counts.get(x.path)?.files || 0), 0) : null;
   const d = collect?.drop, h = foot.h;
   if (!s && !foot.srcLoading) { foot.srcLoading = true; loadSources().finally(() => { foot.srcLoading = false; }); }
   if (collect === null) { collect = undefined; loadCollect(); }
-  const tab = (key, icon, label, info, cls = "") => `<button class="fs-tab ${foot.drawer === key ? "on" : ""} ${cls}" data-fdrawer="${key}" aria-expanded="${foot.drawer === key}">
-      <b>${ico(icon, "sm")} ${label}</b><span>${info}</span><i aria-hidden="true">▾</i></button>`;
-  return `<nav class="footstrip" aria-label="${esc(tr("fs.label"))}">
-    ${tab("add", "plus", tr("fs.add"), (s ? esc(tr("fs.placesinfo", { n: s.sources.length, f: Number(files).toLocaleString(), t: ago(last.checked) })) + (last.new ? ` · <em>${esc(tr("src.new", { n: last.new }))}</em>` : "") : "…") + (d?.open ? ` · ${esc(tr("fs.dropopen"))}` : ""), "addtab " + (d?.open ? "live" : ""))}
-    ${tab("health", "camera", tr("fs.health"), h && !h.loading && !h.error ? esc(runwayOf(h)?.days != null ? tr("rw.tab", { n: Math.round(runwayOf(h).days) }) : h.more ? tr("fh.moreest", { r: moreReels() }) : tr(h.reelsLeft === 1 ? "fs.left1" : "fs.left", { n: h.reelsLeft })) : "…", h && h.reelsLeft < 4 ? "warn" : "")}
+  const cur = footTabNow();
+  const tab = (key, icon, label, info, cls = "") => `<a href="#/footage/${Object.keys(FOOT_TABS).find((k) => FOOT_TABS[k] === key)}" role="tab" class="fs-tab ${cur === key ? "on" : ""} ${cls}" data-fdrawer="${key}" aria-selected="${cur === key}">
+      <b>${ico(icon, "sm")} ${label}</b><span>${info}</span></a>`;
+  return `<nav class="footstrip" role="tablist" aria-label="${esc(tr("fs.label"))}">
+    ${tab("health", "camera", tr("fs.health"), h && !h.loading && !h.error ? esc(runwayOf(h)?.days != null ? tr("rw.tab", { n: Math.round(runwayOf(h).days) }) : h.more ? tr("fh.moreest", { r: moreReels() }) : tr(h.reelsLeft === 1 ? "fs.left1" : "fs.left", { n: h.reelsLeft })) : "…", footAttention() ? "warn" : "")}
+    ${tab("lib", "layers", tr("ly_f.lib"), foot.loading && !foot.items.length ? "…" : esc(tr("f.count", { n: foot.items.length })))}
+    ${tab("add", "plus", tr("ly_f.src"), (s ? esc(tr("fs.placesinfo", { n: s.sources.length, f: Number(files).toLocaleString(), t: ago(last.checked) })) + (last.new ? ` · <em>${esc(tr("src.new", { n: last.new }))}</em>` : "") : "…") + (d?.open ? ` · ${esc(tr("fs.dropopen"))}` : ""), "addtab " + (d?.open ? "live" : ""))}
     <span class="grow"></span>
     <button id="srcWatch" title="${esc(tr("src.checknowtip"))}" ${foot.job?.status === "running" ? "disabled" : ""}>${ico("refresh", "sm")}${tr("src.checknow")}</button>
   </nav>`;
 }
-document.addEventListener("click", (e) => {
-  const t = e.target.closest("[data-fdrawer]"); if (!t) return;
-  foot.drawer = foot.drawer === t.dataset.fdrawer ? "" : t.dataset.fdrawer;
-  try { localStorage.setItem("studio.footDrawer", foot.drawer); } catch { /* private window */ }
-  renderHome(true);
-});
+/* Open a Footage tab from code (an upload, Film next): its address too, without a second redraw from the hash. */
+function footTabGo(key) {
+  foot.drawer = key;
+  const want = "#/footage/" + Object.keys(FOOT_TABS).find((k) => FOOT_TABS[k] === key);
+  if (page === "footage" && atHome()) { if (location.hash !== want) history.replaceState(null, "", want); lyKeepFocus(() => renderHome(true)); } else location.hash = want;
+}
+document.addEventListener("click", (e) => { if (e.target.closest?.("[data-fgmore]")) { foot.gPage = (foot.gPage || 0) + 1; renderHome(true); } });
+// Searching the clips is the Library's job: typing in the search box opens that tab.
+document.addEventListener("input", (e) => { if (e.target.id === "footQ" && footTabNow() !== "lib") footTabGo("lib"); });
 /* Add footage: four kinds of way in, each with its own colour and icon (the map below uses the same ones), one big
    drop target, the upload bars, and the map. The whole box takes dropped files. */
 function addCard(kind, title, desc, actions, extra = "") {
@@ -12742,16 +13426,17 @@ function renderFootage() {
   loadFootHealth();
   const segs = [["all", "f.all"], ["video", "f.video"], ["photo", "f.photo"], ["360", "f.360"], ["unused", "f.unused"], ["used", "f.used"]];
   const it = foot.open ? foot.items.find((i) => i.id === foot.open) : null;
+  const tab = footTabNow();
   $("#home").innerHTML = `
     <div class="pagehead">${crumbs([tr("nav.footage")])}<span class="meta">${foot.loading && !foot.items.length ? "" : tr("f.count", { n: foot.items.length })}</span><span class="grow"></span>
-      <div class="search" style="width:min(420px,36vw);margin:0">${ico("search", "sm")}<input id="footQ" value="${esc(foot.q)}" placeholder="${esc(trR("f.search"))}"></div></div>
+      <div class="search" style="width:min(420px,36vw);margin:0">${ico("search", "sm")}<input id="footQ" data-lyfocus="footq" value="${esc(foot.q)}" placeholder="${esc(trR("f.search"))}"></div></div>
     ${footStrip()}
-    ${foot.drawer === "add" ? addHub() : foot.drawer === "health" ? footHealth() : ""}
+    ${tab === "add" ? addHub() : tab === "health" ? footHealth() || `<section class="panel"><div class="skel skel-line"></div><div class="skel skel-line"></div></section>` : ""}
     ${foot.job && (foot.job.status !== "done" || (foot.job.result?.added ?? foot.job.result?.downloaded ?? 0) > 0) ? `<div class="jobline s-${foot.job.status === "error" ? "skip" : foot.job.status === "done" ? "posted" : "scheduled"}">${ico(foot.job.status === "done" ? "check" : foot.job.status === "error" ? "alert" : "clock", "sm")} ${esc(foot.job.kind === "import" ? "Google Photos" : tr("src.title"))} · ${esc(foot.job.status === "error" ? (foot.job.lines || []).slice(-1)[0] || "failed" : foot.job.status === "done" && foot.job.result ? tr("src.donemsg", { n: foot.job.result.added ?? foot.job.result.new ?? 0 }) : foot.job.label || "")}${foot.job.status === "running" && foot.job.of ? ` · ${foot.job.done}/${foot.job.of}` : ""}</div>` : ""}
     ${foot.session ? `<div class="jobline s-scheduled">${ico("clock", "sm")} ${tr("f.gwait")} <span class="meta">${trA("f.gpick")}</span> <a href="${escUrl(foot.session.pickerUri)}" target="_blank" rel="noopener">Google Photos ↗</a></div>` : ""}
-    <div class="seg">${segs.map(([k, label]) => `<button class="${foot.f === k ? "on" : ""}" data-foot="${k}">${tr(label)}</button>`).join("")}</div>
+    ${tab === "lib" ? `<div class="seg">${segs.map(([k, label]) => `<button class="${foot.f === k ? "on" : ""}" data-foot="${k}">${tr(label)}</button>`).join("")}</div>
     ${footGroupBar()}
-    ${footGrid()}
+    ${footGrid()}` : ""}
     ${it ? `<div class="lightbox" data-fclose="1"><div class="lb-card" role="dialog" aria-modal="true" aria-label="${esc(it.file)}">
       ${it.kind === "video" ? `<video src="/proxy?id=${it.id}" controls autoplay muted playsinline></video>` : `<img src="${file(it.thumbs[0] || it.path)}" alt="">`}
       <div class="lb-meta"><b>${esc(it.file)}</b>
@@ -12762,7 +13447,7 @@ function renderFootage() {
           <button class="primary" data-addto="${it.id}">${ico("plus", "sm")}${tr("f.addto")}</button></div>
         <p><button data-fclose="1">${ico("x", "sm")}Close</button></p></div></div></div>` : ""}
     ${pickerHtml()}`;
-  if (foot.drawer === "add") { paintUploads(); watchWires(); }
+  if (tab === "add") { paintUploads(); watchWires(); }
 }
 let footTimer = null, logTimer = null;
 document.addEventListener("change", (e) => {
@@ -14173,6 +14858,7 @@ const PROB_CAUSE = {
   reach: ["Networks not showing your posts", "投稿が表示されていないSNS", "Check the account on the network itself. A better reel will not fix this; the network has to show your posts first.", "SNS側でアカウントを確かめてください。リールを良くしても直りません。まずSNSが投稿を表示する必要があります。"],
   "vlog-shape": ["Long videos", "長い動画", "", ""],
   switch: ["Project notes", "プロジェクトのお知らせ", "Nothing to fix: a note that the studio changed project.", "直すことはありません。プロジェクトを切り替えたお知らせです。"],
+  ai: ["AI services", "AIサービス", "Top up the service, or give the block a backup on the Workflow page. Try again asks it first once more.", "サービスにチャージするか、ワークフローでブロックに予備を追加してください。「もう一度試す」で、またそのサービスを先に使います。"],
   other: ["Other", "その他", "", ""],
 };
 const sort3 = (items) => [...items].sort((a, b) => ({ red: 0, amber: 1, info: 2 }[a.level] ?? 3) - ({ red: 0, amber: 1, info: 2 }[b.level] ?? 3));
@@ -14243,7 +14929,7 @@ const PROB = {
     const tone = (l) => ["red", "amber", "info"][worst(l)] || "info";
     const item = (i) => `<li class="${esc(i.level)}"><b>${esc(this.nice(i.title))}</b><span class="why">${esc(this.nice(i.detail))}</span>
         <span class="meta">${ja ? "最初" : "First seen"} ${esc(new Date(i.first).toLocaleString(ja ? "ja-JP" : "en-GB"))}</span>
-        <span class="row"><a class="btn primary" href="${escUrl(i.fix?.href || "#/")}" data-probclose="1">${esc(i.fix?.label || (ja ? "直す" : "Fix"))}</a>${i.also?.href ? `<a class="btn" href="${escUrl(i.also.href)}" target="_blank" rel="noopener">${ico("globe", "sm")}${esc(i.also.label || "")}</a>` : ""}${i.dismissable ? `<button data-probdismiss="${esc(i.id)}">${ja ? "閉じる" : "Dismiss"}</button>` : `<span class="meta">${ja ? "直すまで残ります" : "Stays until it is fixed"}</span>`}</span></li>`;
+        <span class="row">${i.fix?.action?.ai === "retry" ? `<button type="button" class="primary" data-aitry="${esc(i.fix.action.provider)}">${ico("refresh", "sm")}${esc(i.fix.label)}</button>` : `<a class="btn primary" href="${escUrl(i.fix?.href || "#/")}" data-probclose="1">${esc(i.fix?.label || (ja ? "直す" : "Fix"))}</a>`}${i.also?.href ? `<a class="btn" href="${escUrl(i.also.href)}" target="_blank" rel="noopener">${ico("globe", "sm")}${esc(i.also.label || "")}</a>` : ""}${i.dismissable ? `<button data-probdismiss="${esc(i.id)}">${ja ? "閉じる" : "Dismiss"}</button>` : `<span class="meta">${ja ? "直すまで残ります" : "Stays until it is fixed"}</span>`}</span></li>`;
     const summary = order.length > 1 ? `<nav class="pgroups${opening && !moCalm() ? " in" : ""}" aria-label="${ja ? "原因別" : "By cause"}">
         <div class="pgbar" role="img" aria-label="${esc(order.map(([c, l]) => `${this.causeName(c, ja)} ${l.length}`).join(", "))}">${order.map(([c, l], i) => `<i class="${tone(l)}" style="flex:${l.length};--i:${i}" title="${esc(this.causeName(c, ja))}: ${l.length}"></i>`).join("")}</div>
         <div class="pgchips">${order.map(([c, l]) => `<button type="button" class="pgchip ${tone(l)}" data-probjump="${esc(c)}"><i aria-hidden="true"></i>${esc(this.causeName(c, ja))}<b>${l.length}</b></button>`).join("")}</div></nav>` : "";
@@ -14286,7 +14972,7 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape" && PROB.ope
    1 Being made: each reel's real stages as a strip (psStrip), the live one moving, a failed one red with its cause.
    2 Review: where a reel would land if approved, by the Plan posts rules (cLandsHtml). Read only: it books nothing.
    3 Editor: the Issues lane under the ruler, from ONE list (edIssues) that the rules chip and Properties read too.
-   4 Words: how worn each headline is (cWearHtml). 5 Versions: the shot diff (cVerDiffHtml). 6 Hover-scrub on reel
+   4 Words: how worn each headline is (cWearData; drawn by wHeadlinesHtml). 5 Versions: the shot diff (cVerDiffHtml). 6 Hover-scrub on reel
    cards (cScrub*, beside the quick player). 7 Results › Activity log: the job swimlane, with the other project's jobs
    hidden by default (cSwim*). */
 
@@ -14563,31 +15249,6 @@ function cWearData() {
     return { l, reels, out: out.length, booked: booked.length, last, next, near: near.size, nets, worn: near.size >= wornAt, ratio, measured: ratios.length };
   }).sort((a, b) => b.worn - a.worn || (b.out + b.booked) - (a.out + a.booked));
 }
-function cWearHtml() {
-  if (!wordsView?.lines || !postsLoaded) return "";
-  const rows = cWearData(); if (!rows.length) return "";
-  const top = Math.max(1, ...rows.map((x) => x.out + x.booked)), worn = rows.filter((x) => x.worn).length, L = lang === "ja" ? "ja-JP" : "en-GB";
-  const day = (t) => new Date(t).toLocaleDateString(L, { day: "numeric", month: "short" });
-  const fresh = !moCalm() && !moState().shown.has("c:wear");
-  if (fresh) moState().shown.add("c:wear");
-  const row = (x, i) => {
-    const res = x.ratio == null ? `<span class="cw-res none">${esc(tr(x.measured ? "c_wr.few" : "c_wr.nonum"))}</span>`
-      : `<span class="cw-res ${x.ratio >= 1.15 ? "up" : x.ratio <= 0.85 ? "down" : "even"}" title="${esc(tr("c_wr.restip", { n: x.measured }))}">${x.ratio >= 1.15 ? "▲" : x.ratio <= 0.85 ? "▼" : "＝"} ${esc(tr("c_wr.ratio", { r: x.ratio.toFixed(1) }))}</span>`;
-    const when = [x.last ? tr("c_wr.last", { d: day(x.last) }) : tr("c_wr.never"), x.next ? tr("c_wr.next", { d: day(x.next) }) : ""].filter(Boolean).join(" · ");
-    return `<details class="cw-row${x.worn ? " worn" : ""}${!x.out && !x.booked ? " fresh" : ""}" style="--i:${i}"><summary>
-      <span class="cw-mark">${x.worn ? `<b class="cw-worn">${esc(tr("c_wr.worn"))}</b>` : !x.out && !x.booked ? `<b class="cw-fresh">${esc(tr("c_wr.fresh"))}</b>` : ""}</span>
-      <span class="cw-text"><span class="wja" lang="ja">${esc(x.l.ja.replace(/\n/g, " "))}</span><span class="meta">${esc(x.l.en || "")}</span></span>
-      <span class="cw-bar" role="img" aria-label="${esc(tr("c_wr.bararia", { o: x.out, b: x.booked, n: x.near, m: x.nets }))}"><span class="cw-track"><i class="o" style="--w:${(x.out / top).toFixed(3)}"></i><i class="b" style="--w:${(x.booked / top).toFixed(3)}"></i></span>
-        <span class="cw-num"><b>${x.out}</b> ${esc(tr("c_wr.out"))} · <b>${x.booked}</b> ${esc(tr("c_wr.booked"))}</span><span class="cw-nets" title="${esc(tr("c_wr.netstip"))}">${esc(tr("c_wr.nets", { n: x.near, m: x.nets }))}</span></span>
-      <span class="cw-when meta">${esc(when)}</span>${res}
-      <span class="cw-act">${x.l.status === "retired" ? `<button data-wstatus="approved" data-ja="${esc(x.l.ja)}">${tr("w.use")}</button>` : x.worn ? `<button data-wstatus="retired" data-ja="${esc(x.l.ja)}">${tr("w.retire")}</button>` : ""}</span></summary>
-      <div class="cw-reels">${x.reels.length ? x.reels.slice(0, 16).map((r) => `<a href="#/reel/${esc(r.slug)}" title="${esc(reelName(r.slug))}" style="background-image:url('${r.hook ? thumb(r.hook, 120) + "&v=" + (r.updated || 0) : ""}')"><span>${esc(stateLine(r, reelState(r)))}</span></a>`).join("") + (x.reels.length > 16 ? `<span class="meta">+${x.reels.length - 16}</span>` : "") : `<span class="meta">${esc(tr("c_wr.noreels"))}</span>`}</div></details>`;
-  };
-  return `<section class="panel cw${fresh ? " in" : ""}"><div class="row wrap"><h3>${ico("type")} ${esc(tr("c_wr.h"))}</h3>${worn ? `<span class="chip warn">${esc(tr("c_wr.nworn", { n: worn }))}</span>` : `<span class="chip ok">${esc(tr("c_wr.noworn"))}</span>`}<span class="grow"></span>
-      <span class="cw-key meta"><i class="o"></i>${esc(tr("c_wr.out"))} <i class="b"></i>${esc(tr("c_wr.booked"))}</span></div>
-    <p class="note">${esc(tr("c_wr.how", { k: Math.max(2, Math.ceil(Math.max(1, PLAN_NETS().length) * 0.6)), m: PLAN_NETS().length }))}</p>
-    <div class="cw-list">${rows.map(row).join("")}</div></section>`;
-}
 
 /* 5. Versions › the shot diff: the live version and the new one as two shot strips on one time axis, what changed
    lit (clip, words, timing, look, music), and each version's review score with what it was based on. Two reviews made
@@ -14818,7 +15479,8 @@ const WN = {
       const lv = l.some((i) => i.level === "red") ? "red" : "amber", first = l.find((i) => i.level === lv) || l[0];
       return { lv, key: "p:" + c, n: l.length, text: l.length === 1 ? PROB.nice(first.title) : tr("wn.group", { c: PROB.causeName(c, ja), n: l.length }),
         detail: l.length === 1 ? PROB.nice(first.detail) : l.slice(0, 3).map((i) => PROB.nice(i.title)).join(" · ") + (l.length > 3 ? " …" : ""),
-        fix: { label: first.fix?.label || tr("wn.open"), href: first.fix?.href || "#/" }, also: first.also, dismiss: l.length === 1 && first.dismissable ? first.id : "" };
+        fix: first.fix?.action?.ai === "retry" && l.length === 1 ? { label: first.fix.label, attrs: `data-aitry="${esc(first.fix.action.provider)}"` }
+          : { label: first.fix?.label || tr("wn.open"), href: first.fix?.href || "#/" }, also: first.also, dismiss: l.length === 1 && first.dismissable ? first.id : "" };
     });
     const local = this.local(), rank = { red: 0, amber: 1, todo: 2 };
     return [...server, ...local].map((x, i) => ({ ...x, i })).sort((a, b) => rank[a.lv] - rank[b.lv] || (b.n || 1) - (a.n || 1) || a.i - b.i);

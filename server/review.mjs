@@ -863,7 +863,7 @@ setInterval(tickAuto, 10 * 60_000);
    Every paid call inside goes through one ledger with a per-reel cap, an AI total cap and the daily budget.
    `run` is a background job (STAGE / PROGRESS lines, like a render) and can queue a render when it ends. */
 const AI_TIMEOUT = { status: 60_000, estimate: 120_000, review: 300_000, "last-review": 30_000, "check-key": 40_000, "save-key": 40_000, "save-caps": 20_000, credits: 60_000, "save-llm": 40_000, "llm-presets": 20_000, providers: 30_000, select: 40_000, "save-price": 20_000, voices: 40_000,
-  workflow: 60_000, "workflow-apply": 60_000, "workflow-undo": 60_000, "spend-month": 30_000 };
+  workflow: 60_000, "workflow-apply": 60_000, "workflow-undo": 60_000, "spend-month": 30_000, health: 40_000, "health-reset": 30_000, fallback: 40_000 };
 const AI_TOOLS = ["review", "sharpen", "slowmo", "living", "foley", "behind", "music", "voice"];
 const AI_SETTINGS = ["fal_key", "openrouter_key", "together_key", "keys", "ai_reel_cap_usd", "ai_total_cap_usd", "daily_usd_budget", "llm"];
 /* The AI provider registry (shared/ai-providers.json, docs/ai-api.md): ids are checked here, names and models by py/studio/ai.py. */
@@ -1740,11 +1740,12 @@ async function tickProblems() {
     let parts = [];
     try { parts = vlogsView().parts || []; } catch { /* no long videos here */ }
     // Sign-ins (when each ends) and how posts did: each read on its own, a failure only leaves that check out.
-    const [connections, perfNow] = await Promise.all([
+    const [connections, perfNow, aiHealth] = await Promise.all([
       ask({ cmd: "connections", port: PORT }).catch(() => ({})),
       perf("summary", {}).catch(() => null),
+      ai("health").catch(() => null),  // an AI service out of credit or with a key problem (py/studio/fallback.py)
     ]);
-    if (PROBLEMS.checked(findProblems({ posts: Array.isArray(posts) ? posts : [], reviews, parts, connections, perf: perfNow }))) writeEvent("problems", { count: PROBLEMS.open().length });
+    if (PROBLEMS.checked(findProblems({ posts: Array.isArray(posts) ? posts : [], reviews, parts, connections, perf: perfNow, aiHealth }))) writeEvent("problems", { count: PROBLEMS.open().length });
   })().finally(() => { problemsRunning = null; });
   return problemsRunning;
 }
@@ -1761,6 +1762,7 @@ try {  // a project switch, said once in the project it switched to
 
 function recordJob(job) {
   noteJobProblem(job);
+  if (job.kind === "ai") setTimeout(() => tickProblems().catch(() => {}), 1500);  // a service may have run out during it
   const row = {
     slug: job.slug, kind: job.kind, status: job.status, started: new Date(job.started || job.queued).toISOString(),
     ended: new Date(job.ended || Date.now()).toISOString(), seconds: Math.round(((job.ended || Date.now()) - (job.started || job.queued)) / 1000),
@@ -3002,6 +3004,45 @@ const server = createServer(async (req, res) => {
         const input = { provider };
         for (const k of ["search", "next"]) { const v = url.searchParams.get(k); if (v) input[k] = v.slice(0, 200); }
         return send(res, 200, await ai("voices", input));
+      } catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
+    /* ---------- When a service runs out (py/studio/fallback.py, docs/ai-api.md) ----------
+       GET /api/ai/health: each service's health (OK, out of credit until …, key problem), each block's backup list and
+       what it runs on now, and the problems for Needs you. POST /api/ai/fallback: the master switch, the max price rise,
+       one block's auto-switch or its backup list. POST /api/ai/health/reset: "Try X again" ({provider} or {all: true}). */
+    if (req.method === "GET" && url.pathname === "/api/ai/health") {
+      try { return send(res, 200, await ai("health")); }
+      catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
+    if (req.method === "POST" && url.pathname === "/api/ai/fallback") {
+      try {
+        const b = await body(req), input = {};
+        const bad = (msg) => send(res, 400, { error: msg, code: "bad_input" });
+        if (b.on !== undefined) { if (typeof b.on !== "boolean") return bad("on: true or false (the master switch)."); input.on = b.on; }
+        if (b.maxRise !== undefined) { if (typeof b.maxRise !== "number" || !Number.isFinite(b.maxRise)) return bad("maxRise: a number from 1 to 10."); input.maxRise = b.maxRise; }
+        if (b.capability !== undefined) { if (!AI_CAPABILITIES.includes(b.capability)) return bad(`capability: one of ${AI_CAPABILITIES.join(", ")}.`); input.capability = b.capability; }
+        if (b.auto !== undefined) { if (typeof b.auto !== "boolean") return bad("auto: true or false."); input.auto = b.auto; }
+        if (b.chain !== undefined) {
+          if (b.chain !== null && (!Array.isArray(b.chain) || b.chain.length > 8)) return bad("chain: up to 8 {provider, model} backups, or null for the automatic list.");
+          input.chain = b.chain === null ? null : [];
+          for (const x of b.chain || []) {
+            if (!x || typeof x.provider !== "string" || !AI_PROVIDER_RX.test(x.provider) || typeof x.model !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/.test(x.model)) return bad("chain: each backup is {provider, model} from /api/ai/providers.");
+            if (x.voice !== undefined && x.voice !== null && (typeof x.voice !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(x.voice))) return bad("voice: a voice id from /api/ai/voices.");
+            input.chain.push({ provider: x.provider, model: x.model, ...(x.voice ? { voice: x.voice } : {}), ...(x.acceptRisk === true ? { acceptRisk: true } : {}) });
+          }
+        }
+        const out = await ai("fallback", input);
+        tickProblems().catch(() => {});
+        return send(res, 200, out);
+      } catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
+    if (req.method === "POST" && url.pathname === "/api/ai/health/reset") {
+      try {
+        const b = await body(req);
+        if (b.all !== true && (typeof b.provider !== "string" || !AI_PROVIDER_RX.test(b.provider))) return send(res, 400, { error: "provider: a provider id from /api/ai/providers, or all: true.", code: "bad_input" });
+        const out = await ai("health-reset", b.all === true ? { all: true } : { provider: b.provider });
+        tickProblems().catch(() => {});
+        return send(res, 200, out);
       } catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
     }
     /* ---------- batch D: the Workflow page (py/studio/workflow.py, docs/ai-api.md) ----------

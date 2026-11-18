@@ -145,3 +145,27 @@ test("a job's failure is cleared when the same job later finishes fine; a check'
   assert.equal(store.clear("signin:bluesky"), false, "a check clears itself when its cause is gone");
   assert.equal(store.clear("job:none"), false);
 });
+
+test("an AI service out of credit: amber with the jobs that switched, red for blocks with no backup, Try again and Top up (owner, 18 Nov)", () => {
+  const health = {
+    providers: [{ id: "fal", name: "fal.ai" }, { id: "runway", name: "Runway" }],
+    problems: [{ provider: "fal", name: "fal.ai", kind: "out_of_credit", until: Date.parse("2026-11-18T20:02:00+09:00") / 1000, level: "amber",
+      caps: ["img2video", "music"], noBackup: [], backups: ["runway"], switched: [{ provider: "runway", name: "Runway", n: 3 }],
+      billing: "https://fal.ai/dashboard/billing" }],
+  };
+  const [p] = findProblems({ aiHealth: health, now: NOW });
+  assert.equal(p.id, "ai:fal");
+  assert.equal(p.level, "amber");
+  assert.equal(p.title, "fal.ai is out of credit, so 3 jobs used Runway instead");
+  assert.deepEqual(p.fix.action, { ai: "retry", provider: "fal" });
+  assert.equal(p.fix.label, "Try fal.ai again");
+  assert.deepEqual(p.also, { label: "Top up", href: "https://fal.ai/dashboard/billing" });
+  assert.equal(p.dismissable, false, "it is fixed by a top-up or Try again, not dismissed");
+  assert.match(p.ja.title, /代わりに3件をRunwayで作りました/);
+  const red = { ...health, problems: [{ ...health.problems[0], level: "red", noBackup: ["music", "voice"], switched: [] }] };
+  const [r] = findProblems({ aiHealth: red, now: NOW });
+  assert.equal(r.level, "red");
+  assert.equal(r.title, "fal.ai is out of credit and no other service is set up for Music, Voice-over");
+  assert.match(r.detail, /Voice-over switches only when you turn it on/);
+  assert.deepEqual(findProblems({ aiHealth: null, now: NOW }), [], "no health read: nothing to say");
+});
