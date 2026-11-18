@@ -101,7 +101,7 @@ jobs:
             ' > "$RUNNER_TEMP/ops.json"
             code=$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' \
               -H "X-Mushi-Api-Key: $MUSHI_OPS_KEY" -H 'Content-Type: application/json' \
-              --data @"$RUNNER_TEMP/ops.json" "${MUSHI_API_URL%/}/v1/ops/events" || true)
+              --data @"$RUNNER_TEMP/ops.json" "${MUSHI_API_URL%/}/v1/ops/events?forceFunctionRegion=ap-northeast-1" || true)
             case "$code" in
               200|202) echo "Mushi Mushi took the event ($code)"; exit 0 ;;
               422)
@@ -109,7 +109,7 @@ jobs:
                 node -e 'const f=process.argv[1];const ev=JSON.parse(require("fs").readFileSync(f,"utf8"));delete ev.body;require("fs").writeFileSync(f,JSON.stringify(ev))' "$RUNNER_TEMP/ops.json"
                 code=$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' \
                   -H "X-Mushi-Api-Key: $MUSHI_OPS_KEY" -H 'Content-Type: application/json' \
-                  --data @"$RUNNER_TEMP/ops.json" "${MUSHI_API_URL%/}/v1/ops/events" || true)
+                  --data @"$RUNNER_TEMP/ops.json" "${MUSHI_API_URL%/}/v1/ops/events?forceFunctionRegion=ap-northeast-1" || true)
                 echo "Mushi Mushi refused the commit subject as personal data; resent without it ($code)"; exit 0 ;;
             esac
             echo "Mushi Mushi answered ${code:-nothing}; using the Slack webhook instead"
