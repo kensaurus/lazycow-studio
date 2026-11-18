@@ -2,6 +2,21 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.23.1 (2026-11-18)
+
+Docs and media only; the studio itself is unchanged from 0.23.0.
+
+### Changed
+- **Every picture and the demo come from a real studio.** The README hero, the 40-second demo, the tour stills, the
+  Long videos picture and the page loops are recorded in the owner's own studio (Tsumagoi Work&Camp, everyone on
+  camera agreed), in light colours. None show the made-up Cafe Kumo any more, and there is no stock footage.
+  `examples/cafe-kumo/` stays as the sample brand for new studios.
+- **The hero no longer suggests a click was recorded:** the pointer rests on Approve, then the Posting week shows the
+  reels that were already booked.
+- **Claude Code still:** the real `list_reels` answer from that studio (15 reels waiting).
+- **`scripts/docs-gifs.mjs`:** `--lang ja` records Japanese status lines and menus, `--only approve` records the
+  hero, and a page that never finishes loading fails the scene instead of being written.
+
 ## 0.23.0 (2026-11-18)
 
 ### Added

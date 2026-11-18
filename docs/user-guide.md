@@ -22,9 +22,9 @@ Open the studio at **http://127.0.0.1:4317** on the studio computer. If the page
 
 ## Your first day
 
-![You watch the reel, press Approve, and it is booked on the posting calendar](img/approve.gif)
+![In Review a reel plays and the pointer rests on Approve; then the Posting week shows reels already booked, one a day per network](img/approve.gif)
 
-*The whole idea in one loop: review, Approve, booked. The [40-second demo](media/lazycow-demo.mp4) shows it from a folder of clips.*
+*The whole idea in one loop: review, Approve, booked. The [40-second demo](media/lazycow-demo.mp4) shows the rest, from the footage to the results. Both are recorded in the author's own studio for Tsumagoi Work&Camp (everyone on camera agreed).*
 
 New here, with no terminal? Download the release zip, unzip it, read **README.TXT** and double-click **Start Lazycow**
 ([how it works](../scripts/bootstrap/README.md)). Lazy Kenji, on the cow-print bean bag, walks you through the rest. If
@@ -327,7 +327,7 @@ The V2 row on the timeline holds cutaways (a detail shot for about a second) and
 
 For a trip, not a reel: 16:9 parts of about 5 to 10 minutes, made from the trip's own clips and photos.
 
-![Reels › Long videos: a table with one row per day of the trip, where you type where you were and what happened](img/long-videos-trip.webp)
+![All projects: every project on this computer on one page, here the Tsumagoi studio and a trip project (its name blurred), which stays closed until you open it](img/long-videos-trip.webp)
 
 1. **Make a project for the trip.** Press the project name beside the logo, then **New project**. Add the footage, or pick an album with **Add from Google Photos**. Wait until the scan has finished.
 2. **Open Reels › Long videos.** The top says what your footage can become: videos, moving minutes, photos and days.
