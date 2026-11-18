@@ -18,7 +18,7 @@ permissions:
 jobs:
   npm:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: read
       id-token: write   # npm provenance + trusted publishing, and the MCP Registry's GitHub OIDC login
@@ -51,10 +51,12 @@ jobs:
         working-directory: packages/lazycow
         run: |
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
-          ./mcp-publisher login github-oidc
-          # The registry checks npm, which can take a minute to show a new version (0.18.0 failed here once).
+          # The registry checks npm, which can take minutes to show a new version (0.18.0 failed here once). Log in only
+          # after npm shows it: the registry token lasts about 5 minutes and 0.23.1 failed with it expired.
           v=$(node -p "require('./package.json').version")
-          for i in $(seq 1 30); do npm view "lazycow@$v" version >/dev/null 2>&1 && break; sleep 10; done
+          for i in $(seq 1 60); do npm view "lazycow@$v" version >/dev/null 2>&1 && break; sleep 10; done
+          npm view "lazycow@$v" version >/dev/null 2>&1 || { echo "npm does not show lazycow@$v after 10 minutes; run this workflow again later"; exit 1; }
+          ./mcp-publisher login github-oidc
           ./mcp-publisher publish
 
       # A published release → #releases, a failed one → #alerts: a Mushi Mushi Ops event when MUSHI_OPS_KEY is set;
