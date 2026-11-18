@@ -57,15 +57,18 @@ jobs:
           for i in $(seq 1 30); do npm view "lazycow@$v" version >/dev/null 2>&1 && break; sleep 10; done
           ./mcp-publisher publish
 
-      # Slack: a published release → #releases, a failed one → #alerts. Posts only from the public repository
-      # (kensaurus/lazycow-studio), where npm trusted publishing lives; the private source repository carries the same
-      # file through the public export and stays quiet. Skips when the secret is empty, never fails the release, never
-      # echoes the webhook URL.
-      - name: Tell Slack how the release went
+      # A published release → #releases, a failed one → #alerts: a Mushi Mushi Ops event when MUSHI_OPS_KEY is set;
+      # otherwise, or when Mushi Mushi does not take it, the Slack webhooks as before. Posts only from the public
+      # repository (kensaurus/lazycow-studio), where npm trusted publishing lives; the private source repository carries
+      # the same file through the public export and stays quiet. Skips when no secret is set, never fails the release,
+      # never echoes a secret.
+      - name: Tell Mushi Mushi how the release went
         if: ${{ !cancelled() && github.repository == 'kensaurus/lazycow-studio' }}
         continue-on-error: true
         env:
           JOB_STATUS: ${{ job.status }}
+          MUSHI_OPS_KEY: ${{ secrets.MUSHI_OPS_KEY }}
+          MUSHI_API_URL: ${{ vars.MUSHI_API_URL || 'https://dxptnwrhwsqckaftyymj.supabase.co/functions/v1/api' }}
           SLACK_RELEASES_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
           SLACK_ALERTS_URL: ${{ secrets.SLACK_ALERTS_WEBHOOK_URL }}
           APP_NAME: Lazycow Studio
@@ -75,11 +78,45 @@ jobs:
           WORKFLOW_NAME: ${{ github.workflow }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          export SUBJECT="$(git log -1 --format=%s 2>/dev/null | cut -c1-100)"
+          export SHORT_SHA="${GITHUB_SHA::7}"
+          if [ -n "$MUSHI_OPS_KEY" ]; then
+            node -e '
+              const e = process.env;
+              const ok = e.JOB_STATUS === "success";
+              const ver = e.VERSION || e.SHORT_SHA;
+              const repo = e.GITHUB_REPOSITORY;
+              const facts = [["Registry", "npm and the MCP Registry"], ["Workflow", e.WORKFLOW_NAME], ["Commit", e.SHORT_SHA]]
+                .filter(([, v]) => v).map(([label, v]) => ({ label, value: String(v).slice(0, 200) }));
+              const ev = ok
+                ? { category: "releases", severity: "info", kind: "deploy.succeeded", title: `${ver} is out on npm and the MCP Registry` }
+                : { category: "alerts", severity: "urgent", kind: "deploy.failed", title: `Release failed (${ver})`, thread_key: `deploy:${repo}:production` };
+              const body = ok ? e.SUBJECT : (e.FAIL_NOTE || "Open the run to see which step failed.");
+              if (body) ev.body = body.slice(0, 600);
+              ev.title = ev.title.slice(0, 150);
+              ev.facts = facts;
+              ev.url = e.RUN_URL;
+              ev.dedupe_key = `gh-run:${repo}:${e.GITHUB_RUN_ID}:${e.GITHUB_RUN_ATTEMPT}:${e.GITHUB_JOB}`;
+              process.stdout.write(JSON.stringify(ev));
+            ' > "$RUNNER_TEMP/ops.json"
+            code=$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' \
+              -H "X-Mushi-Api-Key: $MUSHI_OPS_KEY" -H 'Content-Type: application/json' \
+              --data @"$RUNNER_TEMP/ops.json" "${MUSHI_API_URL%/}/v1/ops/events?forceFunctionRegion=ap-northeast-1" || true)
+            case "$code" in
+              200|202) echo "Mushi Mushi took the event ($code)"; exit 0 ;;
+              422)
+                # The commit subject is the only free text; send the notice once more without it.
+                node -e 'const f=process.argv[1];const ev=JSON.parse(require("fs").readFileSync(f,"utf8"));delete ev.body;require("fs").writeFileSync(f,JSON.stringify(ev))' "$RUNNER_TEMP/ops.json"
+                code=$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' \
+                  -H "X-Mushi-Api-Key: $MUSHI_OPS_KEY" -H 'Content-Type: application/json' \
+                  --data @"$RUNNER_TEMP/ops.json" "${MUSHI_API_URL%/}/v1/ops/events?forceFunctionRegion=ap-northeast-1" || true)
+                echo "Mushi Mushi refused the commit subject as personal data; resent without it ($code)"; exit 0 ;;
+            esac
+            echo "Mushi Mushi answered ${code:-nothing}; using the Slack webhook instead"
+          fi
           if [ "$JOB_STATUS" = "success" ]; then SLACK_URL="$SLACK_RELEASES_URL"; else SLACK_URL="$SLACK_ALERTS_URL"; fi
           [ -n "$SLACK_URL" ] || exit 0
           export SLACK_URL
-          export SUBJECT="$(git log -1 --format=%s 2>/dev/null | cut -c1-100)"
-          export SHORT_SHA="${GITHUB_SHA::7}"
           node -e '
             const e = process.env;
             let host = "";
