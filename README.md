@@ -23,9 +23,9 @@ Lazycow Studio is made by **[kensaurus](https://kensaur.us)**. It is free and op
 
 **[Download](https://github.com/kensaurus/lazycow-studio/releases/latest)** · [Quick start](#quick-start) · [Connect your AI agent](#connect-your-ai-agent) · [User guide](docs/user-guide.md) · [Support Lazycow](#support-lazycow) · [日本語](README.ja.md)
 
-![You watch the reel, press Approve, and it is booked on the posting calendar](docs/img/approve.gif)
+![In Review a reel plays and the pointer rests on Approve; then the Posting week shows reels already booked, one a day per network](docs/img/approve.gif)
 
-*Review, Approve, booked. ▶ **[Watch the 40-second demo](docs/media/lazycow-demo.mp4)**: a folder of café clips becomes reels, a person approves one, and it lands on the posting calendar.*
+*Review, Approve, booked. Recorded in our own studio, which makes the reels for Tsumagoi Work&Camp in Gunma (everyone on camera agreed). ▶ **[Watch the 40-second demo](docs/media/lazycow-demo.mp4)**: its footage, reels being made, a person reviewing, the posting week, results and the workflow.*
 
 ### Connect your AI agent
 
@@ -41,7 +41,7 @@ In Cursor (`.cursor/mcp.json`) or Claude Desktop (`claude_desktop_config.json`):
 { "mcpServers": { "lazycow": { "command": "npx", "args": ["-y", "lazycow", "mcp"] } } }
 ```
 
-![Claude Code asks "what is waiting for my review?"; the lazycow MCP server lists five reels and says approving stays with you](docs/img/tour/07-agent.webp)
+![Claude Code asks "what is waiting for my review?"; the lazycow MCP server lists the 15 reels waiting and says approving stays with you](docs/img/tour/07-agent.webp)
 
 This needs Node 20 or newer on your PATH. The double-click setup keeps its own Node out of your PATH, so use the lines in the studio's **Settings › Keys & AI › Use with Claude or Cursor** instead: they have your paths filled in. The agent can check the studio, make reels, plan posts and publish approved reels. It has no approve tool. Every tool: [docs/mcp.md](docs/mcp.md).
 
@@ -172,7 +172,7 @@ Both are optional. By default everything the studio makes goes in `./data` besid
 |:--|:--|
 | ![The Footage page: days of posts left, a map of where the clips were filmed, and every clip marked used or unused](docs/img/tour/01-footage.webp) **1. A folder of footage.** Point the studio at it. It only reads the files, tags them on your computer and finds them by words. | ![The Make reels panel: pick themes, then make them](docs/img/make-reels.webp) **2. Make reels.** Pick a theme or two. Each reel gets clips that fit its words, licence-clean music and every size the networks want. |
 | ![The review editor: the reel, its timeline of text, clips, music and effects](docs/img/review.webp) **3. You review.** Watch it, trim it, swap a clip, change the words. The timeline shows every clip, caption, sound and effect. | ![Approve on a reel](docs/img/tour/05-approve.webp) **4. You approve.** Nothing goes anywhere before this. Faces need Consent OK first. |
-| ![Posting › Week: a lane per network, a column per day, and approved reels waiting in a tray](docs/img/posting-calendar.webp) **5. Booked.** One post a day per network at the hour your audience is awake. Results come back a few days later. | ![Lazy Kenji's 1997-style pop-up tour](docs/img/tour/08-tour.webp) **6. Help when you want it.** A guided tour, the Getting started list, Ctrl K to find anything, and a Problems list that says what went wrong. |
+| ![Posting › Week: a lane per network, a column per day, and approved reels waiting in a tray](docs/img/posting-calendar.webp) **5. Booked.** One post a day per network at the hour your audience is awake. Results come back a few days later. | ![Lazy Kenji's 1999-style pop-up tour over the Reels page](docs/img/tour/08-tour.webp) **6. Help when you want it.** A guided tour, the Getting started list, Ctrl K to find anything, and a Problems list that says what went wrong. |
 
 ```mermaid
 flowchart LR
