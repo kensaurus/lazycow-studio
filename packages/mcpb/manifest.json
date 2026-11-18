@@ -1,0 +1,208 @@
+{
+  "manifest_version": "0.3",
+  "name": "lazycow",
+  "display_name": "Lazycow Studio",
+  "version": "0.24.0",
+  "description": "Drive Lazycow Studio by kensaurus: make reels and trip films from your footage, plan posts, publish approved reels.",
+  "long_description": "Lazycow Studio turns the photos and videos you never edited into short vertical reels and YouTube trip films, on your own computer. This extension lets Claude check the studio, make reels, watch renders, plan posts, read results and publish reels a person already approved.\n\n**Start the studio first.** The extension talks to it on this computer (127.0.0.1, port 4317 unless you changed it). It finds the port and the API token in the studio's `.env` by itself; fill in the settings only if it does not.\n\n**Approving stays with you.** There is no approve tool, and publishing refuses any reel that is not approved.\n\nThe studio: https://github.com/kensaurus/lazycow-studio (Apache-2.0).",
+  "author": {
+    "name": "kensaurus (Kenji Sakuramoto)",
+    "url": "https://kensaur.us"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kensaurus/lazycow-studio.git"
+  },
+  "homepage": "https://github.com/kensaurus/lazycow-studio",
+  "documentation": "https://github.com/kensaurus/lazycow-studio/blob/main/docs/mcp.md",
+  "support": "https://github.com/kensaurus/lazycow-studio/issues",
+  "icon": "icon.png",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/index.js"
+      ],
+      "env": {
+        "STUDIO_PORT": "${user_config.studio_port}",
+        "STUDIO_API_TOKEN": "${user_config.studio_api_token}",
+        "LAZYCOW_DIR": "${user_config.lazycow_dir}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "studio_status",
+      "description": "Check that Lazycow Studio is running and healthy: version, which project is open, whether this computer can render (with a fix for each problem), and what the render queue is doing. Call this first if anything else fails."
+    },
+    {
+      "name": "list_reels",
+      "description": "List the reels in the open project, newest first, with their review status (draft = not made yet, rendered = waiting for a person to review, approved = ready to post, rejected, reroll = asked to be remade), length, music, faces/consent and any render job in progress. Filter by status or theme."
+    },
+    {
+      "name": "reel_details",
+      "description": "Everything about one reel: title, review status and notes, every shot (file, timing, role), music and sound, the files prepared for each network, and its current render job."
+    },
+    {
+      "name": "list_themes",
+      "description": "The themes the studio can make a reel for (each is one story with a number of shot slots). Use a theme key with make_reels or make_reel."
+    },
+    {
+      "name": "make_reels",
+      "description": "Start making new reels: one per theme from the newest footage (clips picked by the studio, approved words, licence-clean music), each queued to render one after another. Returns the new slugs; follow each with job_status. Rendering takes minutes per reel. The new reels still need a person's review and approval in the studio before they can be published."
+    },
+    {
+      "name": "make_reel",
+      "description": "Make one reel for a theme under a slug you choose, from the tagged footage, and queue it to render. Use make_reels to make one per theme automatically."
+    },
+    {
+      "name": "remix_reel",
+      "description": "Re-render only the sound of a reel (music and effects mix), keeping the picture. Queued behind any running render; follow it with job_status."
+    },
+    {
+      "name": "job_status",
+      "description": "Progress of background jobs. With a slug: that job (a render or remix uses the reel slug; a post uses \"post-<slug>-<network>\"; a YouTube upload uses the reel slug; footage scans use \"footage\"). Without a slug: every render that is queued or running."
+    },
+    {
+      "name": "cancel_job",
+      "description": "Stop a queued or running render or sound remix. A stopped render may leave half-made files: render the reel again before anyone approves it. Uploads, posts and footage scans cannot be stopped."
+    },
+    {
+      "name": "list_posts",
+      "description": "The posting log: every planned reminder, queued, scheduled, posted, failed or dropped post, newest first, with network, time and link. Filter by reel, network or status."
+    },
+    {
+      "name": "plan_post",
+      "description": "Add a reminder to the posting log: post this reel on this network at this time. Nothing is posted; a person (or publish_reel later) does the posting. Times are in the audience's time zone unless an offset is given."
+    },
+    {
+      "name": "list_accounts",
+      "description": "Which networks are switched on for this project and under which account name, which networks the studio can post to by itself and whether each is connected, and the YouTube connection. Never returns passwords, tokens or keys."
+    },
+    {
+      "name": "check_connections",
+      "description": "Before posting: checks each network in use. Does each sign-in still work (YouTube, Facebook, Instagram Stories, Bluesky)? Does it carry every permission the studio uses (YouTube scopes, Meta permissions such as instagram_manage_insights)? Is Chrome linked for TikTok, X, LinkedIn and the other networks your Chrome posts to? What was the latest post that failed in the last 14 days? Each problem comes with the exact fix and, where there is one, the page to open. Read-only: it never signs in or changes a connection."
+    },
+    {
+      "name": "publish_reel",
+      "description": "Post an APPROVED reel to a network now, or schedule it with `at`. Only reels a person has approved in the studio can be published: this tool checks the review status first and refuses anything that is not \"approved\". Networks the studio posts to itself: youtube (or youtube-shorts), and any connected network in list_accounts (e.g. bluesky, facebook). Runs as a background job; follow it with job_status."
+    },
+    {
+      "name": "schedule_reel",
+      "description": "Schedule an APPROVED reel on X, TikTok or Google Maps (gbp) through the studio's browser helper, which has no API: it attaches the reel's file, writes its approved text, sets the date and time, checks what the site shows, presses Schedule, and records the post as scheduled in the posting log with a proof link. Refuses any reel whose review status is not \"approved\", a second copy of the same reel on the same network at the same time, and times outside the site's window. Runs as a background helper job, one at a time; follow it with job_status slug=helper-<slug>-<network>. If the helper window is not signed in to the site, the job ends asking the owner to sign in once (Accounts in the studio)."
+    },
+    {
+      "name": "list_projects",
+      "description": "The studio's projects (one per brand or account: its own reels, posts and logins) and which one is open."
+    },
+    {
+      "name": "switch_project",
+      "description": "Open another project. The studio restarts on that project's folders (a few seconds); it refuses while any job is still running. Every later tool call works on the new project."
+    },
+    {
+      "name": "read_log",
+      "description": "The studio's activity log, newest first: finished jobs (renders, remixes, uploads, posts, footage scans, with how long they took and the last line on failure), paid AI spend, how each reel was assembled, or YouTube quota use."
+    },
+    {
+      "name": "research_ideas",
+      "description": "Search recent web pages and news (Japanese and English) about a topic (default: the open project's name and home place) and return the pages with their URLs, frequent hashtags and keywords, and 3-5 suggested post angles, each citing the pages it came from. Read-only: suggestions for a person, never post copy, never posted. Uses Firecrawl credits (cached 24 h)."
+    },
+    {
+      "name": "research_site_check",
+      "description": "Read the brand website (the project's profile link and its booking page) and compare its prices, key facts, inclusions and booking link with the facts the studio's approved copy uses. Returns each fact as match, mismatch, not on the site or only on the site, in plain words (e.g. \"the website says ¥5,500; your copy says ¥5,200\"). Read-only: it changes no copy and posts nothing."
+    },
+    {
+      "name": "research_page",
+      "description": "Read one public web page (a competitor, an inspiration) and return its summary, key selling points, amenities, prices it states, and what it says that the studio's approved facts do not. Read-only; their words are for ideas, never to be copied into a post. X and LinkedIn pages are refused (Firecrawl bills them through paid providers)."
+    },
+    {
+      "name": "research_events",
+      "description": "Find upcoming events near the open project's home place (Settings › Keys & AI › This project) in the next N days, with their dates and a suggested post-by date, as ideas for when to post. Dates come from search text: confirm on the event page. Read-only."
+    },
+    {
+      "name": "research_links",
+      "description": "Check that every link in planned or scheduled posts (their post text and live link) and in the profile kit still loads. Reports broken links with where each is used; sites that refuse automatic checks are listed as unsure. Read-only."
+    },
+    {
+      "name": "ai_estimate",
+      "description": "Price AI tools on one reel before anything is spent: review (a video model watches the reel and suggests fixes), sharpen (soft or low-res clips), slowmo (smooth slow motion), living (a real still gets a slow camera move), foley (natural sound made from the picture for shots that have none), behind (the headline sits behind the opening shot's subject), music (an instrumental bed made for the reel), voice (a Japanese AI voice reads the approved words). Returns the cost per tool, the total, the per-reel / total / daily limits and whether it fits. Spends nothing."
+    },
+    {
+      "name": "ai_review",
+      "description": "A video model watches the rendered reel (picture, sound, captions with their times) and returns a hook score for the first 3 seconds, a look score, captions that do not match their shot, on-screen claims that are not approved facts, and 1-3 concrete fixes. Suggestions only: nothing in the reel is changed. Costs about $0.01-0.03 (OpenRouter), inside the studio's AI limits; the same render is reviewed once and then answered free from its cache."
+    },
+    {
+      "name": "ai_run",
+      "description": "Apply AI tools to a reel as a background job, only inside the studio's AI limits: it prices the tools first and refuses (nothing spent) when the cost would pass the per-reel, total or daily limit. Tools never change an approved or scheduled reel: pass `into` to make an AI copy under a new slug. The result stays a draft for a person to review; nothing is approved or posted. Voice and living photo need the platform's AI label when posted. Poll job_status with the returned slug."
+    },
+    {
+      "name": "perf_summary",
+      "description": "What worked and what did not across posted reels, by choice (look, recipe, text layout, length, hook, music, theme, posting weekday and hour), in plain sentences with their uncertainty, e.g. \"punch look: about 1.6x the median views on TikTok (5 posts; still uncertain)\". Each post is compared with its own network's median. Read-only; below 15 measured posts it says the numbers are early hints."
+    },
+    {
+      "name": "perf_suggest",
+      "description": "Suggestions for the next reels: picture look, word recipe, text layout, length and posting hour (JST), each with why. Thompson sampling over what has worked, with a share of suggestions (default 30%) that explore less-tested choices on purpose; until 15 posts are measured every suggestion explores. Read-only: suggestions only steer how drafts are made; a person still approves every reel and nothing is posted."
+    },
+    {
+      "name": "perf_posts",
+      "description": "Every post that went out in the last days (default 90), newest first, one row per network: views, likes, comments, shares, saves, average % watched and engaged views, from each post's latest reading; the best post of each network is marked. Read-only."
+    },
+    {
+      "name": "youtube_channel",
+      "description": "Each connected YouTube channel: subscribers and total views, Shorts / long videos / live summed separately, and the newest uploads (including ones the studio did not make) with views, engaged views, likes, comments, watch time and % watched. Cached 3 hours; fresh=true reads YouTube again (about 10 quota units). Read-only."
+    },
+    {
+      "name": "list_comments",
+      "description": "Comments on the project's YouTube videos, Bluesky posts and Facebook Page posts: who, what, when, on which reel, whether it is a question (and on what topic: price, booking, access, Wi-Fi...), praise or spam, and the reply drafted from the owner's saved answers. Read-only: it never replies; sending is a person's action in the studio. check=true reads the networks again first."
+    }
+  ],
+  "tools_generated": false,
+  "keywords": [
+    "lazycow",
+    "video",
+    "reels",
+    "shorts",
+    "youtube",
+    "social-media",
+    "scheduler",
+    "local-first",
+    "self-hosted",
+    "human-in-the-loop"
+  ],
+  "license": "Apache-2.0",
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
+    "runtimes": {
+      "node": ">=20.0.0"
+    }
+  },
+  "user_config": {
+    "studio_port": {
+      "type": "number",
+      "title": "Studio port",
+      "description": "Only if you changed it. Empty: the port in the studio's .env, else 4317.",
+      "required": false,
+      "min": 1,
+      "max": 65535
+    },
+    "studio_api_token": {
+      "type": "string",
+      "title": "Studio API token",
+      "description": "Only if you set STUDIO_API_TOKEN and the studio folder below is not found. Empty: read from the studio's .env.",
+      "required": false,
+      "sensitive": true
+    },
+    "lazycow_dir": {
+      "type": "directory",
+      "title": "Studio folder",
+      "description": "Only if the studio is not where the double-click setup put it. The extension reads the port and token from its .env.",
+      "required": false
+    }
+  }
+}

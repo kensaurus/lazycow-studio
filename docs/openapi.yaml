@@ -1532,6 +1532,48 @@ paths:
                   handle: { type: string }
                   networks: { type: object, additionalProperties: true }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/connections/check:
+    get:
+      tags: [Posting from the studio]
+      operationId: checkConnections
+      summary: Check every connection in use before a post needs it (py/studio/netcheck.py). Read-only.
+      description: >-
+        One entry per network booked or posted in the last 30 days. Each entry says whether its sign-in still works,
+        whether it carries every permission the studio uses (YouTube scopes from Google's tokeninfo, Meta permissions
+        from debug_token), whether Chrome is linked for the networks it posts, and the latest failed post in the last
+        14 days. Each check is ok true (fine), false (posting or a feature fails) or null (worth a look), with the fix
+        and, where there is one, a page to open. No token or secret is returned.
+      responses:
+        "200":
+          description: The checks.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  at: { type: string, format: date-time }
+                  counts: { type: object, properties: { ok: { type: integer }, warn: { type: integer }, bad: { type: integer } } }
+                  networks:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        network: { type: string }
+                        name: { type: string }
+                        via: { type: string, enum: [studio, chrome] }
+                        account: { type: [string, "null"] }
+                        state: { type: string, enum: [ok, warn, bad] }
+                        checks:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id: { type: string }
+                              ok: { type: [boolean, "null"] }
+                              say: { type: string }
+                              fix: { type: string }
+                              url: { type: string }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/connections:
     get:
       tags: [Posting from the studio]
@@ -3727,6 +3769,33 @@ paths:
       summary: Is it working - per network over the last 60 days, posts out and measured, views, reactions, posts that got nothing, the best post and a plain verdict (working, some, few, none, unmeasured).
       responses:
         "200": { description: "{days, networks: [{network, out, measured, views, reactions, likes, comments, shares, saves, zero, avgViews, reactedPct, best, verdict}], totals}" }
+  /api/perf/insights:
+    get:
+      tags: [Results]
+      operationId: perfInsights
+      summary: The numbers behind Results › What the numbers say (docs/perf-api.md). The opening phrase that broke out, the Shorts that stalled, how much of a Short people watch, live stream vs Shorts subscribers per 1,000 views, the Related-video checklist, Shorts the studio did not make, small accounts, and Instagram Story numbers or what stops them.
+      responses:
+        "200": { description: "{at, youtube?: {shorts, median, hook, stalled, top, watch}, convert?, related: {done, of, items}, outside?, accounts?, stories?}" }
+  /api/perf/related:
+    post:
+      tags: [Results]
+      operationId: perfRelated
+      summary: Record that a Short's Related video was set (or cleared) by hand in YouTube Studio. The YouTube API can neither set nor read it.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string, pattern: "^[A-Za-z0-9_-]{6,20}$" }
+                done: { type: boolean, default: true }
+      responses:
+        "200": { description: "{id, done, count}" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/perf/table:
     get:
       tags: [Results]

@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { join, resolve } from "node:path";
 import test from "node:test";
-import { approvalRefusal, insideRoots, isNet, isSlug, pathKey, parseRange, readJson, refusal, strayPath, tokenOk, TOKEN_COOKIE, trustRules } from "../server/trust.mjs";
+import { approvalRefusal, insideRoots, isNet, isSlug, MIN_TOKEN, pathKey, parseRange, readJson, refusal, serverMode, strayPath, tokenOk, TOKEN_COOKIE, trustRules } from "../server/trust.mjs";
 
 const rules = trustRules(4317);
 const req = (method, headers) => ({ method, headers: { host: "127.0.0.1:4317", ...headers } });
@@ -144,4 +144,33 @@ test("an imported reel may not point at a network share or outside the footage f
   assert.equal(strayPath({ shots: [{ src: "/etc/passwd" }] }), true);
   assert.equal(strayPath({ shots: [{ src: "2026/../../x.mp4" }] }), true);
   assert.equal(strayPath({ shots: [{ src: "2026-11/deck/IMG_1.MOV" }, { src: "a..b.mp4" }], beats: [{ en: "Up the hill / down .. again" }] }), false);
+});
+
+test("server mode: off by default, and never open beyond loopback without a long token (docs/self-host.md)", () => {
+  const token = "t".repeat(MIN_TOKEN);
+  assert.deepEqual(serverMode({}, ""), { bind: "127.0.0.1", extra: [], remote: false, error: null }, "the desktop default is unchanged");
+  assert.match(serverMode({ STUDIO_HOST: "0.0.0.0", STUDIO_ALLOWED_HOSTS: "*" }, "").error, /STUDIO_API_TOKEN must be set/);
+  assert.match(serverMode({ STUDIO_HOST: "0.0.0.0", STUDIO_ALLOWED_HOSTS: "*" }, "short").error, /at least 24/);
+  assert.match(serverMode({ STUDIO_ALLOWED_HOSTS: "studio.example.ts.net" }, "").error, /STUDIO_API_TOKEN/, "a proxy name opens it too");
+  assert.match(serverMode({ STUDIO_HOST: "0.0.0.0" }, token).error, /STUDIO_ALLOWED_HOSTS is empty/, "nothing would be answered");
+  assert.deepEqual(serverMode({ STUDIO_HOST: "0.0.0.0", STUDIO_ALLOWED_HOSTS: " Studio.Example.ts.net , 192.168.1.20:4317 " }, token),
+    { bind: "0.0.0.0", extra: ["studio.example.ts.net", "192.168.1.20:4317"], remote: true, error: null });
+});
+
+test("server mode: an allowed host gets in with the token, a rebinding name still does not", () => {
+  const token = "t".repeat(MIN_TOKEN);
+  const r = trustRules(4317, token, ["studio.example.ts.net", "192.168.1.20:4317"]);
+  const auth = { authorization: `Bearer ${token}` };
+  assert.equal(refusal({ method: "GET", url: "/api/overview", headers: { host: "studio.example.ts.net", ...auth } }, r), null);
+  assert.equal(refusal({ method: "GET", url: "/api/overview", headers: { host: "192.168.1.20:4317", ...auth } }, r), null);
+  assert.equal(refusal({ method: "GET", url: "/api/overview", headers: { host: "127.0.0.1:4317", ...auth } }, r), null, "loopback still works");
+  assert.equal(refusal({ method: "GET", url: "/api/overview", headers: { host: "evil.example:4317", ...auth } }, r), "host");
+  assert.equal(refusal({ method: "GET", url: "/api/overview", headers: { host: "studio.example.ts.net.evil.example", ...auth } }, r), "host", "no prefix match");
+  assert.equal(refusal({ method: "GET", url: "/api/overview", headers: { host: "studio.example.ts.net" } }, r), "token");
+  assert.equal(refusal({ method: "POST", url: "/api/publish", headers: { host: "studio.example.ts.net", origin: "https://studio.example.ts.net", ...auth } }, r), null);
+  assert.equal(refusal({ method: "POST", url: "/api/publish", headers: { host: "studio.example.ts.net", origin: "https://evil.example", ...auth } }, r), "origin");
+  const any = trustRules(4317, token, ["*"]);
+  assert.equal(refusal({ method: "GET", url: "/api/overview", headers: { host: "10.0.0.5:4317", ...auth } }, any), null, "* accepts any name, with the token");
+  assert.equal(refusal({ method: "GET", url: "/api/overview", headers: { host: "10.0.0.5:4317" } }, any), "token");
+  assert.equal(refusal({ method: "GET", url: "/api/overview", headers: { host: "evil.example" } }, trustRules(4317)), "host", "the default never takes another name");
 });

@@ -1,0 +1,76 @@
+# FILE: .github/workflows/docker.yml
+# PURPOSE: When a GitHub release is published, build the Docker image (Dockerfile) for linux/amd64 and linux/arm64 and
+#          push it to ghcr.io/kensaurus/lazycow-studio as <version>, <major>.<minor> and latest, with an SBOM, build
+#          provenance and a GitHub attestation. docs/self-host.md says how to run it.
+# NOTES: No stored secret: GHCR takes this run's GITHUB_TOKEN (packages: write). A pre-release (v1.2.3-rc.1) gets its
+#        own tag but never latest. Run by hand from a release tag (Actions > Docker > Run workflow > Use workflow from:
+#        the tag) to rebuild that version; from a branch it pushes only a sha-<commit> tag.
+name: Docker
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: false
+permissions:
+  contents: read
+env:
+  IMAGE: ghcr.io/kensaurus/lazycow-studio
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90   # arm64 is built under QEMU
+    permissions:
+      contents: read
+      packages: write       # push to GHCR
+      attestations: write   # the build-provenance attestation
+      id-token: write       # sign it (Sigstore, GitHub OIDC)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          # latest=auto: latest goes on a plain x.y.z release, never on a pre-release.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,enable=${{ !startsWith(github.ref, 'refs/tags/') }}
+          flavor: |
+            latest=auto
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: The image starts, and refuses to without a token
+        run: |
+          docker run --rm --entrypoint sh "${{ env.IMAGE }}@${{ steps.build.outputs.digest }}" -c \
+            'ffmpeg -hide_banner -version | head -1 && node -v && python -c "import torch, open_clip; print(\"torch\", torch.__version__)"'
+          set +e
+          docker run --rm "${{ env.IMAGE }}@${{ steps.build.outputs.digest }}"; code=$?
+          set -e
+          test "$code" = 78 || { echo "expected exit 78 without STUDIO_API_TOKEN, got $code"; exit 1; }

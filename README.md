@@ -17,37 +17,41 @@ Lazycow Studio is made by **[kensaurus](https://kensaur.us)**. It is free and op
 
 - **Your footage stays on your computer.** Tagging and search run on your own processor. The studio only reads your files. Nothing leaves your computer unless you connect a network or add a key for a paid AI tool.
 - **A person approves every post.** Nothing is booked or posted until you press **Approve**. AI agents can make drafts and post approved reels. They cannot approve.
-- **Your AI agent can drive it.** An MCP server, an HTTP API ([OpenAPI](docs/openapi.yaml)) and an npm package. One line connects Claude Code, Claude Desktop or Cursor.
+- **Your AI agent can drive it.** An MCP server, an HTTP API ([OpenAPI](docs/openapi.yaml)) and an npm package. One click connects Claude Desktop, Cursor or VS Code; one line, Claude Code.
 
 **Who it is for:** a small hotel, guesthouse, café or shop, or a creator, with a folder of footage and no time to edit it. You do not need to code: download, unzip, double-click. It posts to YouTube, Facebook and Bluesky, and fills in the schedulers of X, TikTok, LinkedIn, Google Maps and LINE in your own Chrome.
 
-**[Download](https://github.com/kensaurus/lazycow-studio/releases/latest)** · [Quick start](#quick-start) · [Connect your AI agent](#connect-your-ai-agent) · [User guide](docs/user-guide.md) · [Support Lazycow](#support-lazycow) · [日本語](README.ja.md)
+**[Download](https://github.com/kensaurus/lazycow-studio/releases/latest)** · [Quick start](#quick-start) · [Use it from your AI tool](#use-it-from-your-ai-tool) · [User guide](docs/user-guide.md) · [Support Lazycow](#support-lazycow) · [日本語](README.ja.md)
 
 ![In Review a reel plays and the pointer rests on Approve; then the Posting week shows reels already booked, one a day per network](docs/img/approve.gif)
 
 *Review, Approve, booked. Recorded in our own studio, which makes the reels for Tsumagoi Work&Camp in Gunma (everyone on camera agreed). ▶ **[Watch the 40-second demo](docs/media/lazycow-demo.mp4)**: its footage, reels being made, a person reviewing, the posting week, results and the workflow.*
 
-### Connect your AI agent
+### Use it from your AI tool
 
-Start the studio first. Then, in Claude Code:
+Start the studio first. Then add it to your tool in one click, or one line in Claude Code:
+
+[![Claude Desktop: download lazycow.mcpb](https://img.shields.io/badge/Claude_Desktop-lazycow.mcpb-D97757?logo=claude&logoColor=white)](https://github.com/kensaurus/lazycow-studio/releases/latest/download/lazycow.mcpb)
+[![Add lazycow to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=lazycow&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsImxhenljb3ciLCJtY3AiXX0%3D)
+[![Install lazycow in VS Code](https://img.shields.io/badge/VS_Code-Install_lazycow-0098FF?logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522lazycow%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522lazycow%2522%252C%2522mcp%2522%255D%257D)
 
 ```
 claude mcp add lazycow -- npx -y lazycow mcp
 ```
 
-In Cursor (`.cursor/mcp.json`) or Claude Desktop (`claude_desktop_config.json`):
-
-```json
-{ "mcpServers": { "lazycow": { "command": "npx", "args": ["-y", "lazycow", "mcp"] } } }
-```
-
 ![Claude Code asks "what is waiting for my review?"; the lazycow MCP server lists the 15 reels waiting and says approving stays with you](docs/img/tour/07-agent.webp)
 
-This needs Node 20 or newer on your PATH. The double-click setup keeps its own Node out of your PATH, so use the lines in the studio's **Settings › Keys & AI › Use with Claude or Cursor** instead: they have your paths filled in. The agent can check the studio, make reels, plan posts and publish approved reels. It has no approve tool. Every tool: [docs/mcp.md](docs/mcp.md).
+- **Claude Desktop:** open the downloaded `lazycow.mcpb` to install it as an extension. If the double-click setup installed the studio, leave its settings empty: it finds the port and token in the studio's `.env`. Otherwise, pick the studio folder.
+- **Cursor, VS Code, Claude Code** and any other MCP client run `npx -y lazycow mcp` (`{ "mcpServers": { "lazycow": { "command": "npx", "args": ["-y", "lazycow", "mcp"] } } }`), which needs Node 20 or newer on your PATH. The double-click setup keeps its own Node out of your PATH, so use the lines in the studio's **Settings › Keys & AI › Use with Claude or Cursor** instead: they have your paths filled in.
+- **No MCP?** The same studio over HTTP: [OpenAPI 3.1](docs/openapi.yaml), or `npx lazycow api GET /api/overview`.
+
+The agent can check the studio, make reels, plan posts and publish approved reels. It has no approve tool. Every tool: [docs/mcp.md](docs/mcp.md).
+
+**Self-host with Docker.** From a clone, put an API token of 24 characters or more in `.env` (the studio will not start without one), then `docker compose up -d` runs it in a container (image `ghcr.io/kensaurus/lazycow-studio`). Footage folder, port and updates: [docs/self-host.md](docs/self-host.md).
 
 ## How it works under the hood
 
-The studio has three parts. A Node server (`server/review.mjs`, listening on `127.0.0.1:4317` only) serves the page and an HTTP API. A Python engine (`python -m studio …`) catalogs, tags and picks clips. Remotion and ffmpeg render the reels. Tagging and search use OpenCLIP on your own processor, so the main flow needs no key and no LLM. Cloud AI runs only when you add a key: on OpenRouter, a reviewer and suggested lines; on fal.ai, tools such as slow motion, music and voice. The writing jobs and the picture questions can run on your own model instead: any OpenAI-compatible server, local (Ollama, LM Studio, vLLM, llama.cpp) or hosted (Settings › Keys & AI › Your own AI model, or `STUDIO_LLM_BASE_URL` in `.env`). The agent you connect over MCP can use any model.
+The studio has three parts. A Node server (`server/review.mjs`, listening on `127.0.0.1:4317` only, unless you turn on [server mode](docs/self-host.md)) serves the page and an HTTP API. A Python engine (`python -m studio …`) catalogs, tags and picks clips. Remotion and ffmpeg render the reels. Tagging and search use OpenCLIP on your own processor, so the main flow needs no key and no LLM. Cloud AI runs only when you add a key: on OpenRouter, a reviewer and suggested lines; on fal.ai, tools such as slow motion, music and voice. The writing jobs and the picture questions can run on your own model instead: any OpenAI-compatible server, local (Ollama, LM Studio, vLLM, llama.cpp) or hosted (Settings › Keys & AI › Your own AI model, or `STUDIO_LLM_BASE_URL` in `.env`). The agent you connect over MCP can use any model.
 
 ```mermaid
 flowchart LR
@@ -67,7 +71,7 @@ Read more in [Architecture](docs/architecture.md): [the reel pipeline](docs/arch
 
 ## Contents
 
-- [Connect your AI agent](#connect-your-ai-agent)
+- [Use it from your AI tool](#use-it-from-your-ai-tool): Claude Desktop, Cursor, VS Code, Claude Code, the HTTP API, Docker
 - [How it works under the hood](#how-it-works-under-the-hood): the parts, the models, running fully local
 - [Quick start](#quick-start)
 - [The building blocks](#the-building-blocks)
@@ -222,7 +226,7 @@ This is the one rule the studio never breaks.
 
 - Your footage is only read, never changed, and never uploaded to be tagged. Search and tagging run on your own processor (OpenCLIP).
 - Keys and sign-ins stay in `.env` and in your data folder. They are never in git.
-- The studio listens on `127.0.0.1` only. Nothing leaves your computer unless you connect a service: a network you post to, or a paid AI tool you add a key for.
+- The studio listens on `127.0.0.1` only, unless you turn on [server mode](docs/self-host.md), which requires an API token. Nothing leaves your computer unless you connect a service: a network you post to, or a paid AI tool you add a key for.
 - On a shared computer, set `STUDIO_API_TOKEN` so other programs need a token.
 
 ## What you need
@@ -379,6 +383,7 @@ From a clone, without npm: `claude mcp add lazycow -- node C:\path\to\lazycow-st
 | [Connected services](docs/integrations.md) | see each outside service and why it is used |
 | [AI tools](docs/ai-api.md), [results](docs/perf-api.md), [research](docs/research-api.md) | call those parts of the HTTP API |
 | [HTTP API](docs/openapi.yaml) | see every route (OpenAPI 3.1) |
+| [Self-hosting](docs/self-host.md) | run the studio in Docker or on a server you own |
 | [Roadmap](docs/ROADMAP.md), [changes](CHANGELOG.md) | see what is next and what changed |
 
 ## More from kensaurus
@@ -390,6 +395,7 @@ Lazycow Studio is one of the apps made by [kensaurus](https://kensaur.us/?view=p
 | **[Mushi Mushi](https://kensaur.us/mushi-mushi/?utm_source=lazycow&utm_medium=readme&utm_campaign=family)** | Tells you why your AI-built app broke, and hands the fix to your editor. One package: an SDK and a setup wizard for any app. Your users' bug reports become a plain-language diagnosis and a fix prompt; it works from Claude Code and Cursor too. | [`npm i mushi-mushi`](https://www.npmjs.com/package/mushi-mushi) · [GitHub](https://github.com/kensaurus/mushi-mushi) |
 | **[kenji skills](https://kensaur.us/notes/kenji-skills/en/?utm_source=lazycow&utm_medium=readme&utm_campaign=family)** | Step-by-step playbooks that keep AI coding assistants on track, for Claude Code, Cursor and Codex CLI. Free and open source. | [`@kensaurus/skills`](https://www.npmjs.com/package/@kensaurus/skills) · [GitHub](https://github.com/kensaurus/skills) |
 | **[Tsumagoi Work&Camp](https://tsumagoi.kensaur.us/?utm_source=lazycow&utm_medium=readme&utm_campaign=family)** | A 24-hour mountain lounge at 1,444 m in Gunma, run by us. Lazycow was built to post its reels every day. | [Visit](https://tsumagoi.kensaur.us/?utm_source=lazycow&utm_medium=readme&utm_campaign=family) · [How we built it](https://kensaur.us/notes/lazycow-studio/en/?utm_source=lazycow&utm_medium=readme&utm_campaign=family) |
+| **[Konte](https://kensaur.us/konte/?utm_source=lazycow&utm_medium=readme&utm_campaign=family)** (prototype) | Plan and make an 8-second AI video, step by step, storyboard first. | [Try it](https://kensaur.us/konte/?utm_source=lazycow&utm_medium=readme&utm_campaign=family) |
 
 Every app, with the story of why it exists: [kensaur.us](https://kensaur.us/?view=portfolio&utm_source=lazycow&utm_medium=readme&utm_campaign=family) (Solo Boss for one-person companies' books, glot.it for Thai, yen-yen, help her take photo, lets-talk, the wanting mind and more).
 

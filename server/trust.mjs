@@ -18,13 +18,47 @@ export const NET_RX = /^[a-z][a-z-]*$/;
 export const isSlug = (s) => typeof s === "string" && s.length <= 120 && SLUG_RX.test(s);
 export const isNet = (s) => typeof s === "string" && s.length <= 40 && NET_RX.test(s);
 
-/** The loopback Host and Origin patterns for this port, and the API token when the owner set one (STUDIO_API_TOKEN). */
-export function trustRules(port, token = "") {
+/**
+ * The Host and Origin patterns for this port, and the API token when the owner set one (STUDIO_API_TOKEN).
+ * `extra` (STUDIO_ALLOWED_HOSTS, server mode) adds names the studio may also be reached by, each exactly as the browser
+ * sends it in Host: `studio.example.ts.net` behind an HTTPS proxy, or `192.168.1.20:4317` on a LAN. Its Origin may be
+ * http or https. `*` takes any Host, and only with a token (serverMode refuses to start otherwise).
+ */
+export function trustRules(port, token = "", extra = []) {
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const names = extra.filter((h) => h && h !== "*").map(esc);
+  const any = extra.includes("*");
+  const loop = `(127\\.0\\.0\\.1|localhost|\\[::1\\]):${port}`;
+  const more = names.length ? `|${names.join("|")}` : "";
   return {
-    host: new RegExp(`^(127\\.0\\.0\\.1|localhost|\\[::1\\]):${port}$`, "i"),
-    origin: new RegExp(`^http://(127\\.0\\.0\\.1|localhost|\\[::1\\]):${port}$`, "i"),
+    host: any ? /^[^\s/@]+$/ : new RegExp(`^(${loop}${more})$`, "i"),
+    origin: any ? /^https?:\/\/[^\s/@]+$/i : new RegExp(`^(http://${loop}${names.length ? `|https?://(${names.join("|")})` : ""})$`, "i"),
     token: String(token || ""),
   };
+}
+
+const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
+/** Shortest STUDIO_API_TOKEN accepted for server mode: 24 random characters (`openssl rand -hex 16` gives 32). */
+export const MIN_TOKEN = 24;
+/**
+ * Server mode, read once at start from STUDIO_HOST (bind address, default 127.0.0.1) and STUDIO_ALLOWED_HOSTS
+ * (comma-separated). Off by default: one person on their own computer, loopback only, as before. A bind address other
+ * than loopback, or any allowed host, needs STUDIO_API_TOKEN of MIN_TOKEN characters or more; without one the studio
+ * refuses to start (`error`) instead of opening its API to the network. Returns {bind, extra, remote, error}.
+ */
+export function serverMode(env = {}, token = "") {
+  const bind = String(env.STUDIO_HOST || "127.0.0.1").trim() || "127.0.0.1";
+  const extra = String(env.STUDIO_ALLOWED_HOSTS || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const remote = !LOOPBACK.has(bind) || extra.length > 0;
+  let error = null;
+  if (remote && String(token || "").length < MIN_TOKEN) {
+    error = `STUDIO_HOST=${bind}${extra.length ? ` and STUDIO_ALLOWED_HOSTS=${extra.join(",")}` : ""} open the studio beyond this computer, so `
+      + `STUDIO_API_TOKEN must be set to at least ${MIN_TOKEN} random characters (for example: openssl rand -hex 16). Not starting.`;
+  } else if (remote && !LOOPBACK.has(bind) && !extra.length) {
+    error = `STUDIO_HOST=${bind} listens beyond this computer, but STUDIO_ALLOWED_HOSTS is empty, so every browser would be refused. `
+      + "Set it to the name you open the studio by (for example studio.example.ts.net or 192.168.1.20:4317), or * to accept any. Not starting.";
+  }
+  return { bind, extra, remote, error };
 }
 
 /* The optional API token. Off by default: one person on their own computer. With STUDIO_API_TOKEN set, every request

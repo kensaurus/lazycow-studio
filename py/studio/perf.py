@@ -1,8 +1,9 @@
 """
 FILE: py/studio/perf.py
 PURPOSE: How each reel did on each network: a metrics store with snapshots over time, collectors for the
-         networks the studio can read (YouTube, Facebook, Bluesky), manual entry and CSV import for the rest
-         (TikTok, X, Pinterest, Google Maps, LINE, LinkedIn, Threads, Instagram).
+         networks the studio can read (YouTube, Facebook, Bluesky, Instagram Stories), manual entry and CSV import
+         for the rest (TikTok, X, Pinterest, Google Maps, LINE, LinkedIn, Threads, the Instagram feed); and
+         insights(), the numbers behind Results › What the numbers say.
 OVERVIEW: One `metrics` table in the catalog. A row is one reading of one post (posts.id) at one time:
           views, likes, comments, shares, saves, watch time, average % viewed, followers gained, reach,
           plus `source` (api | manual | csv) and the post's age when read. Readings are kept, never
@@ -547,7 +548,127 @@ class Bluesky(Collector):
         return out, notes
 
 
-COLLECTORS: dict[str, Collector] = {c.network: c for c in (YouTube(), Facebook(), Bluesky())}
+# Instagram Story insights (Instagram API with Facebook Login, v27.0; read 2026-11-18,
+# developers.facebook.com/docs/instagram-platform/reference/instagram-media/insights):
+#   GET /{ig-media-id}/insights?metric=views,reach,shares,follows,profile_visits,total_interactions
+#   GET /{ig-media-id}/insights?metric=navigation&breakdown=story_navigation_action_type
+#       -> total_value.breakdowns[0].results[{dimension_values: ["tap_forward"|"tap_back"|"tap_exit"|"swipe_forward"], value}]
+#   "Story media metrics are only available for 24 hours" (after that the media id answers code 100, subcode 33);
+#   a value under 5 answers (#10) "Not enough viewers"; replies are always 0 for accounts in Japan, so not asked.
+#   impressions, exits, taps_forward and taps_back are gone (v18 / v22). Needs instagram_manage_insights.
+IG_STORY_METRICS = ("views", "reach", "shares", "follows", "profile_visits", "total_interactions")
+STORY_LIFE_H = 24.0     # a Story is gone after a day, and its numbers with it
+STORY_GAP_H = 6.0       # read about every 6 hours while it is up (the timer runs hourly)...
+STORY_LAST_H = 21.0     # ...and once more in its last hours, the reading that counts
+
+
+def instagram_media_id(post: dict) -> str | None:
+    rid = str(post.get("remote_id") or "")
+    return rid if rid.isdigit() else None
+
+
+def _ig_value(metric: dict):
+    tv = metric.get("total_value")
+    if isinstance(tv, dict) and isinstance(tv.get("value"), (int, float)):
+        return tv["value"]
+    vals = metric.get("values") or []
+    return vals[-1].get("value") if vals and isinstance(vals[-1], dict) else None
+
+
+class InstagramStory(Collector):
+    network, name = "instagram-story", "Instagram Stories"
+
+    def _creds(self) -> dict | None:
+        from studio.connectors.facebook import _load
+
+        try:
+            return _load()
+        except Exception:
+            return None
+
+    def ready(self):
+        return (True, "") if self._creds() else (False, "Instagram Stories use the Facebook connection: connect Facebook (Accounts › Facebook)")
+
+    def fetch(self, posts):
+        from studio.connectors.facebook import GRAPH
+
+        token = (self._creds() or {}).get("token")
+        if not token:
+            raise PerfError("Instagram Stories: Facebook is not connected", "auth", 401)
+        out, notes = [], []
+        for p in posts:
+            mid = instagram_media_id(p)
+            if not mid:
+                notes.append(f"Instagram Stories: post {p['id']} ({p['slug']}) has no media id, so its numbers cannot be read.")
+                continue
+            q = urllib.parse.urlencode({"metric": ",".join(IG_STORY_METRICS), "access_token": token})
+            status, _, body = _http("GET", f"{GRAPH}/{mid}/insights?{q}")
+            j = _json(body)
+            if status != 200:
+                err = j.get("error") if isinstance(j.get("error"), dict) else {}
+                code, msg = err.get("code"), str(err.get("message") or "")
+                if code == 190:
+                    raise PerfError("Instagram Stories: the stored Facebook token expired or was revoked; connect Facebook again.", "auth", 401)
+                if code == 10 and "viewer" in msg.lower():
+                    notes.append(f"Instagram Stories: {p['slug']} has fewer than 5 viewers so far (Instagram shows no numbers under 5).")
+                    continue
+                if code in (10, 200) or (isinstance(code, int) and 200 <= code < 300):
+                    raise PerfError("Instagram Stories: the Facebook connection may not read Story numbers yet. Accounts › Facebook › "
+                                    "Connect again and allow instagram_manage_insights (a Story's numbers last only 24 hours).",
+                                    "permission", 403)
+                if code in (4, 17, 32, 613):
+                    raise PerfError("Instagram: rate limit reached; the next hourly check tries again.", "rate", 429)
+                if code == 100 and err.get("error_subcode") == 33:
+                    notes.append(f"Instagram Stories: {p['slug']} has expired; its numbers are gone after 24 hours.")
+                    continue
+                notes.append(_scrub(f"Instagram Stories: {p['slug']}: {msg or status}"))
+                continue
+            values = {m.get("name"): _ig_value(m) for m in j.get("data", []) if isinstance(m, dict)}
+            numbers: dict = {}
+            for col, name in (("views", "views"), ("reach", "reach"), ("shares", "shares"), ("followers_gained", "follows")):
+                if isinstance(values.get(name), (int, float)):
+                    numbers[col] = int(values[name])
+            extra = {k: int(values[k]) for k in ("profile_visits", "total_interactions") if isinstance(values.get(k), (int, float))}
+            # How people left it: one extra call, and a Story without it still counts.
+            q = urllib.parse.urlencode({"metric": "navigation", "breakdown": "story_navigation_action_type", "access_token": token})
+            s2, _, b2 = _http("GET", f"{GRAPH}/{mid}/insights?{q}")
+            if s2 == 200:
+                nav = {}
+                for m in _json(b2).get("data", []):
+                    for bd in ((m.get("total_value") or {}).get("breakdowns") or []):
+                        for r in bd.get("results") or []:
+                            key = str((r.get("dimension_values") or [""])[0]).lower()
+                            if key and isinstance(r.get("value"), (int, float)):
+                                nav[key] = int(r["value"])
+                if nav:
+                    extra["navigation"] = nav
+            if not numbers:
+                notes.append(f"Instagram Stories: {p['slug']} has no numbers yet.")
+                continue
+            out.append({"post": p, "numbers": numbers, "extra": extra, "remote_id": mid})
+        return out, notes
+
+
+COLLECTORS: dict[str, Collector] = {c.network: c for c in (YouTube(), Facebook(), Bluesky(), InstagramStory())}
+
+
+def _story_due(post: dict, mine: list[dict], now: datetime, fresh: bool) -> str | None:
+    """A Story is read while it is up: first after an hour, then about every STORY_GAP_H hours, and once in its last
+    hours (from STORY_LAST_H), because its numbers vanish with it at 24 hours. mine: its API readings."""
+    age = post["age_h"]
+    if age < 1.0 or age >= STORY_LIFE_H:
+        return None
+    if not mine:
+        return "first reading"
+    if age >= STORY_LAST_H and max(float(r.get("age_h") or 0) for r in mine) < STORY_LAST_H:
+        return "last reading before it expires"
+    last = max((_when(r["fetched_at"]) for r in mine), default=None)
+    gap = (now - last).total_seconds() if last else 1e9
+    if gap >= STORY_GAP_H * 3600:
+        return "story reading"
+    if fresh and gap > FRESH_GAP_S:
+        return "asked for fresh numbers"
+    return None
 
 
 def _fb_texts() -> dict[str, str]:
@@ -679,7 +800,8 @@ def collect(req: dict | None = None) -> dict:
                 manual.append({"post_id": p["id"], "slug": p["slug"], "network": p["network"], "age_h": p["age_h"],
                                "checkpoint": checkpoint(p["age_h"]), "url": p.get("url")})
             continue
-        why = _due(p, [r for r in mine if r["source"] == "api"], now, fresh)
+        due = _story_due if p["network"] == "instagram-story" else _due
+        why = due(p, [r for r in mine if r["source"] == "api"], now, fresh)
         if why:
             by_net.setdefault(p["network"], []).append({**p, "why": why})
         else:
@@ -708,7 +830,14 @@ def collect(req: dict | None = None) -> dict:
                 continue
             stored.append({k: row[k] for k in ("post_id", "slug", "network", "checkpoint", "age_h", *[n for n in NUMBERS if row.get(n) is not None])})
     upcoming = [p for p in _posts() if p["network"] != "all" and p["status"] in LIVE and (_when(p.get("at")) or now) > now]
-    st.update(last_run=time.time(), last_at=now.isoformat(timespec="seconds"))
+    # Each network's last problem stays until a read of that network works, so Results can say what is missing
+    # (a Story's permission) between runs. Networks not read this run keep theirs.
+    last = dict(st.get("problems") or {})
+    for net in by_net:
+        last.pop(net, None)
+    for x in problems:
+        last[x["network"]] = {"error": x["error"], "code": x.get("code"), "at": now.isoformat(timespec="seconds")}
+    st.update(last_run=time.time(), last_at=now.isoformat(timespec="seconds"), problems=last)
     _state_path().write_text(json.dumps(st), encoding="utf-8")
     return {"ran": True, "at": now.isoformat(timespec="seconds"), "read": len(stored), "stored": stored, "skipped": skipped,
             "problems": problems, "notes": notes, "needsNumbers": manual,
@@ -1406,6 +1535,211 @@ def _channel_analytics(collector: "YouTube", vids: list[dict], since: str | None
     return None
 
 
+# ---------- what the numbers say (Results › How reels did) ----------
+# The owner, 18 Nov: "check if the reels are doing well … any other optimisation". The answers came from reading the
+# channel table by hand: which openings broke out, how much of a Short people watch, that the live converts and the
+# Shorts do not, which networks post to a small personal account, the Story numbers nobody reads. insights() works
+# them out each time, numbers only; the page says them in the owner's language (server/editor.html resInsights).
+
+INSIGHT_MIN_SHORTS = 4     # fewer Shorts than this: no pattern to speak of
+PHRASE_MIN = 3             # a phrase counts only with at least 3 Shorts that have it and 2 that do not
+STALL_SHARE = 0.05         # a Short a day old with under 5 % of the median views was shown to almost nobody
+SHORT_SPLIT_S = 15         # "short" vs "long" Shorts for the watch comparison
+
+
+def _median(xs: list[float]) -> float | None:
+    xs = sorted(x for x in xs if x is not None)
+    if not xs:
+        return None
+    mid = len(xs) // 2
+    return float(xs[mid]) if len(xs) % 2 else (xs[mid - 1] + xs[mid]) / 2
+
+
+def opener(title: str) -> str:
+    """The first clause of a title, where the hook sits: 「不便だからこそ、尾根まで見渡せる。｜嬬恋牧場」 -> 不便だからこそ."""
+    head = re.split(r"[｜|]", str(title or ""), maxsplit=1)[0]
+    return re.split(r"[。、,，.!?！？:：]", head, maxsplit=1)[0].strip()
+
+
+def hook_phrase(shorts: list[dict]) -> dict | None:
+    """The opening phrase whose Shorts did best against the ones without it: every 2-6 character piece of the openers,
+    kept when PHRASE_MIN Shorts have it and 2 do not, ranked by median views with it ÷ without it (the longest piece
+    wins among pieces found in the same Shorts). A pattern to test, not proof: the page says how many Shorts it rests on."""
+    ops = [(opener(s.get("title")), s) for s in shorts]
+    grams: dict[str, set[int]] = {}
+    for i, (op, _) in enumerate(ops):
+        for n in range(2, 7):
+            for k in range(0, max(0, len(op) - n + 1)):
+                g = op[k:k + n]
+                if re.search(r"[\s\W\d]", g):
+                    continue
+                grams.setdefault(g, set()).add(i)
+    best = None
+    for g, idx in grams.items():
+        if len(idx) < PHRASE_MIN or len(ops) - len(idx) < 2:
+            continue
+        w = _median([ops[i][1]["views"] for i in idx])
+        wo = _median([ops[i][1]["views"] for i in range(len(ops)) if i not in idx])
+        lift = (w or 0) / max(1.0, wo or 0)
+        # Lifts within half a step are a tie: the phrase more Shorts share wins (「からこそ」 in 7, not 「いからこそ」 in 5),
+        # then the longest piece of that same set.
+        key = (math.floor(lift * 2) / 2, len(idx), len(g))
+        if lift >= 2 and (best is None or key > best[0]):
+            best = (key, g, idx, w, wo)
+    if not best:
+        return None
+    _, g, idx, w, wo = best
+    with_ = sorted((ops[i][1] for i in idx), key=lambda s: -s["views"])
+    return {"phrase": g, "lift": round((w or 0) / max(1.0, wo or 0), 1), "with": {"n": len(idx), "median": round(w or 0)},
+            "without": {"n": len(ops) - len(idx), "median": round(wo or 0)},
+            "examples": [{"slug": s.get("slug"), "opener": opener(s.get("title")), "views": s["views"]} for s in with_[:4]]}
+
+
+def _handle(url: str, network: str) -> str | None:
+    pats = {"bluesky": r"bsky\.app/profile/([^/?#]+)", "x": r"(?:x|twitter)\.com/([A-Za-z0-9_]{1,15})/status"}
+    m = re.search(pats.get(network, r"$^"), str(url or ""))
+    return m.group(1) if m else None
+
+
+def _bsky_followers(handle: str) -> int | None:
+    try:
+        status, _, body = _http("GET", f"{BSKY_APPVIEW}/app.bsky.actor.getProfile?" + urllib.parse.urlencode({"actor": handle}), timeout=8)
+    except PerfError:
+        return None
+    return _int(_json(body).get("followersCount")) if status == 200 else None
+
+
+def _related_path() -> Path:
+    from studio.config import DATA
+
+    return DATA / "perf" / "related.json"
+
+
+def related_done() -> dict[str, str]:
+    try:
+        got = json.loads(_related_path().read_text(encoding="utf-8"))
+        return {str(k): str(v) for k, v in got.items()} if isinstance(got, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def mark_related(req: dict) -> dict:
+    """The owner set (or cleared) a Short's Related video in YouTube Studio; the API cannot set or read it, so the
+    studio keeps the tick. {id: <video id>, done: bool}."""
+    vid = str(req.get("id") or "")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{6,20}", vid):
+        raise PerfError("that is not a YouTube video id", "bad_input")
+    done = related_done()
+    if req.get("done", True):
+        done[vid] = _now().isoformat(timespec="seconds")
+    else:
+        done.pop(vid, None)
+    path = _related_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(done, indent=1), encoding="utf-8")
+    return {"id": vid, "done": vid in done, "count": len(done)}
+
+
+def insights_from(chan: dict | None, reach_rows: list[dict], posts: list[dict], story_rows: list[dict], problems: dict,
+                  related: dict[str, str], now: datetime, followers=None) -> dict:
+    """The numbers behind each takeaway; pure, so the tests feed it. chan: channel(); reach_rows: reach()["networks"];
+    posts: the posting log; story_rows: the latest reading of each Instagram Story; problems: collect()'s last problem
+    per network; related: mark_related's ticks; followers(handle) -> int | None for Bluesky."""
+    out: dict = {"at": now.isoformat(timespec="seconds")}
+    items = [v for c in (chan or {}).get("channels") or [] for v in c.get("items") or []]
+    day_old = lambda v: (_when(v.get("at")) or now) <= now - timedelta(hours=24)
+    pub = [v for v in items if v.get("privacy") == "public" and isinstance(v.get("views"), (int, float))]
+    mine = [v for v in pub if v.get("kind") == "short" and v.get("slug") and day_old(v)]
+    if len(mine) >= INSIGHT_MIN_SHORTS:
+        med = _median([v["views"] for v in mine]) or 0
+        y: dict = {"shorts": len(mine), "median": round(med)}
+        y["hook"] = hook_phrase(mine)
+        y["stalled"] = [{"slug": v["slug"], "id": v.get("id"), "title": v.get("title"), "views": v["views"], "seconds": v.get("seconds")}
+                        for v in mine if med > 0 and v["views"] < STALL_SHARE * med]
+        y["top"] = [{"slug": v["slug"], "id": v.get("id"), "opener": opener(v.get("title")), "views": v["views"]}
+                    for v in sorted(mine, key=lambda v: -v["views"])[:3]]
+        watched = [v for v in mine if isinstance(v.get("avgPct"), (int, float)) and v.get("seconds")]
+        if len(watched) >= 3:
+            part = lambda xs: {"n": len(xs), "pct": round(_median([min(v["avgPct"], 200) for v in xs]) or 0),
+                               "views": round(_median([v["views"] for v in xs]) or 0)} if xs else None
+            y["watch"] = {"n": len(watched), "pct": round(_median([min(v["avgPct"], 200) for v in watched]) or 0),
+                          "avgS": round(_median([v["avgS"] for v in watched if isinstance(v.get("avgS"), (int, float))]) or 0, 1),
+                          "seconds": round(_median([v["seconds"] for v in watched]) or 0),
+                          "split": SHORT_SPLIT_S,
+                          "short": part([v for v in watched if v["seconds"] <= SHORT_SPLIT_S]),
+                          "long": part([v for v in watched if v["seconds"] > SHORT_SPLIT_S])}
+        out["youtube"] = y
+    shorts_all = [v for v in pub if v.get("kind") == "short"]
+    lives = [v for v in pub if v.get("kind") == "live"]
+    sum_ = lambda xs, k: sum(int(v.get(k) or 0) for v in xs)
+    if shorts_all and any(v.get("subs") is not None for v in shorts_all + lives):
+        live = max(lives, key=lambda v: v["views"], default=None)
+        out["convert"] = {"shorts": {"n": len(shorts_all), "views": sum_(shorts_all, "views"), "subs": sum_(shorts_all, "subs"),
+                                     "likes": sum_(shorts_all, "likes"), "comments": sum_(shorts_all, "comments")},
+                          "live": {"n": len(lives), "views": sum_(lives, "views"), "subs": sum_(lives, "subs"),
+                                   "title": live.get("title"), "id": live.get("id"), "url": live.get("url")} if live else None}
+    todo = sorted((v for v in pub if v.get("kind") == "short" and v.get("slug")), key=lambda v: str(v.get("at") or ""), reverse=True)
+    out["related"] = {"done": sum(1 for v in todo if v.get("id") in related), "of": len(todo),
+                      "items": [{"id": v.get("id"), "slug": v.get("slug"), "title": v.get("title"), "views": v["views"],
+                                 "done": v.get("id") in related} for v in todo[:24]]}
+    others = [v for v in pub if v.get("kind") == "short" and not v.get("slug") and (_when(v.get("at")) or now) >= now - timedelta(days=30)]
+    if len(others) >= 3 and mine:
+        out["outside"] = {"n": len(others), "median": round(_median([v["views"] for v in others]) or 0),
+                          "studio": round(_median([v["views"] for v in mine]) or 0)}
+    # Accounts that hold the posts back: networks posting to an account few people follow.
+    accts = []
+    by_net = {r["network"]: r for r in reach_rows}
+    for net in ("bluesky", "x"):
+        r = by_net.get(net)
+        if not r or r.get("verdict") not in ("none", "few"):
+            continue
+        urls = [p.get("url") for p in sorted(posts, key=lambda p: str(p.get("at") or ""), reverse=True)
+                if p.get("network") == net and p.get("status") == "posted" and p.get("url")]
+        handle = next((h for h in (_handle(u, net) for u in urls) if h), None)
+        if not handle:
+            continue
+        fol = followers(handle) if (followers and net == "bluesky") else None
+        accts.append({"network": net, "handle": handle, "followers": fol, "posts": r.get("out"), "views": r.get("views"),
+                      "reactions": r.get("reactions")})
+    if accts:
+        out["accounts"] = accts
+    # Instagram Stories: what the last 7 days' Stories did, or what stops the studio reading them.
+    week = [p for p in posts if p.get("network") == "instagram-story" and p.get("status") == "posted"
+            and (_when(p.get("at")) or now) >= now - timedelta(days=7)]
+    if week:
+        # Only this week's Stories: an older Story's last reading would count against this week's posts.
+        week_ids = {int(p["id"]) for p in week if str(p.get("id", "")).isdigit()}
+        story_rows = [r for r in story_rows if int(r.get("post_id") or -1) in week_ids]
+        nav: dict[str, int] = {}
+        for r in story_rows:
+            for k, v in ((r.get("extra") or {}).get("navigation") or {}).items():
+                nav[k] = nav.get(k, 0) + int(v or 0)
+        total = sum(nav.values())
+        prob = problems.get("instagram-story") or {}
+        out["stories"] = {"out": len(week), "read": len(story_rows), "views": sum(int(r.get("views") or 0) for r in story_rows),
+                          "reach": sum(int(r.get("reach") or 0) for r in story_rows),
+                          "exitPct": round(100 * nav.get("tap_exit", 0) / total) if total else None,
+                          "onPct": round(100 * (nav.get("tap_forward", 0) + nav.get("swipe_forward", 0)) / total) if total else None,
+                          "need": "permission" if prob.get("code") == "permission" else "connect" if prob.get("code") == "auth" else None}
+    return out
+
+
+def insights(req: dict | None = None) -> dict:
+    now = _now()
+    try:
+        chan = channel({})
+    except Exception:  # noqa: BLE001 - YouTube offline or not connected: the other takeaways still stand
+        chan = None
+    latest: dict[int, dict] = {}
+    for r in readings():
+        if r.get("network") == "instagram-story":
+            latest[int(r["post_id"])] = r
+    from studio import posting
+
+    return insights_from(chan, reach(now=now)["networks"], posting.posts(), list(latest.values()),
+                         _state().get("problems") or {}, related_done(), now, followers=_bsky_followers)
+
+
 # ---------- CLI ----------
 
 def run(action: str, req: dict) -> object:
@@ -1433,6 +1767,10 @@ def run(action: str, req: dict) -> object:
         return channel(req)
     if action == "reach":
         return reach()
+    if action == "insights":
+        return insights(req)
+    if action == "related":
+        return mark_related(req)
     if action in ("predictions", "scores"):
         from studio import predict
         from studio.service import _overview

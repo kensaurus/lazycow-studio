@@ -1,0 +1,40 @@
+# What the Docker image gets: only what the studio runs (an allow-list), never footage, renders, data, keys or the
+# working files in public/mezz (which can reach 100+ GB). Dockerfile and docs/self-host.md.
+*
+
+!package.json
+!package-lock.json
+!remotion.config.ts
+!tsconfig.json
+!LICENSE
+!NOTICE
+!CHANGELOG.md
+!README.md
+!server/
+!src/
+!scripts/
+!shared/
+!luts/
+!examples/
+!public/fonts/
+!public/geo/
+!py/studio/
+!py/requirements-linux.lock
+!py/requirements-linux-arm64.lock
+!docs/*.md
+!docs/openapi.yaml
+
+# Inside the folders above: never keys, logs, caches, or the original workspace's own files (not in a public clone).
+**/.env
+**/.env.*
+**/secrets
+**/*.log
+**/youtube_client.json
+**/client_secret*.json
+**/__pycache__
+**/*.pyc
+**/node_modules
+shared/reels.json
+shared/words.json
+shared/profiles
+examples/public

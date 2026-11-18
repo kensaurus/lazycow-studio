@@ -18,7 +18,7 @@ Lazycow Studio は、写真と動画の中から合うカットを探し、無�
 
 - **素材はPCの中に置いたまま。** タグ付けと検索は、あなたのPCのプロセッサーで行います。スタジオはファイルを読むだけです。SNSをつなぐか、有料のAIツールのキーを入れない限り、PCの外には何も出ません。
 - **投稿は、すべて人が承認します。** **Approve** を押すまで、予約も投稿もされません。AIエージェントは下書きを作り、承認済みのリールを投稿できます。承認はできません。
-- **AIエージェントから操作できます。** MCP サーバー、HTTP API（[OpenAPI](docs/openapi.yaml)）、npm パッケージがあります。Claude Code、Claude Desktop、Cursor は1行でつながります。
+- **AIエージェントから操作できます。** MCP サーバー、HTTP API（[OpenAPI](docs/openapi.yaml)）、npm パッケージがあります。Claude Desktop、Cursor、VS Code はボタン1つで、Claude Code は1行でつながります。
 
 **こんな方に:** 小さなホテル、ゲストハウス、カフェ、お店の方。あるいはクリエイター。撮った素材はフォルダにあるのに、編集する時間がない方に向けて作りました。コードは書けなくても使えます。ダウンロードして、展開して、ダブルクリックするだけです。
 
@@ -26,7 +26,7 @@ YouTube、Facebook、Bluesky には直接投稿します。X、TikTok、LinkedIn
 
 ## しくみ
 
-スタジオは3つの部分でできています。画面と HTTP API を出す Node サーバー（`server/review.mjs`。`127.0.0.1:4317` だけで待ち受けます）、素材の整理・タグ付け・カット選びをする Python（`python -m studio …`）、書き出しをする Remotion と ffmpeg です。タグ付けと検索は OpenCLIP があなたのPCのプロセッサーで行うので、基本の流れにはキーも LLM もいりません。クラウドのAIは、キーを入れたときだけ動きます（OpenRouter のレビュー係と言葉の提案、fal.ai のスローモーション・音楽・音声など）。文章づくりと画像の読み取りは、自分のモデルでも動かせます。OpenAI 互換のサーバーなら、ローカル（Ollama、LM Studio、vLLM、llama.cpp）でもクラウドでも使えます（設定 › キーとAI ›「自分のAIモデル」、または `.env` の `STUDIO_LLM_BASE_URL`）。MCP でつなぐ AI エージェントのほうは、どのモデルでも使えます。
+スタジオは3つの部分でできています。画面と HTTP API を出す Node サーバー（`server/review.mjs`。[サーバーモード](docs/self-host.md)にしない限り、`127.0.0.1:4317` だけで待ち受けます）、素材の整理・タグ付け・カット選びをする Python（`python -m studio …`）、書き出しをする Remotion と ffmpeg です。タグ付けと検索は OpenCLIP があなたのPCのプロセッサーで行うので、基本の流れにはキーも LLM もいりません。クラウドのAIは、キーを入れたときだけ動きます（OpenRouter のレビュー係と言葉の提案、fal.ai のスローモーション・音楽・音声など）。文章づくりと画像の読み取りは、自分のモデルでも動かせます。OpenAI 互換のサーバーなら、ローカル（Ollama、LM Studio、vLLM、llama.cpp）でもクラウドでも使えます（設定 › キーとAI ›「自分のAIモデル」、または `.env` の `STUDIO_LLM_BASE_URL`）。MCP でつなぐ AI エージェントのほうは、どのモデルでも使えます。
 
 ```mermaid
 flowchart LR
@@ -70,23 +70,25 @@ npx lazycow install
 
 コードから動かしたい開発者は、`git clone` のあと `npm ci`、`npm run setup`、`npm run review` の順に実行し、**http://127.0.0.1:4317** を開いてください。必要なものと詳しい手順は [README.md の Quick start](README.md#quick-start) にあります。
 
+**Docker で動かす:** clone したフォルダの `.env` に24文字以上の API トークンを書いてから（ないと起動しません）、`docker compose up -d` を実行すると、スタジオがコンテナで動きます（イメージは `ghcr.io/kensaurus/lazycow-studio`）。素材フォルダ、ポート、更新のしかたは [docs/self-host.md](docs/self-host.md)（英語）へ。
+
 ### 3. AIエージェントをつなぐ
 
 ![Claude Code が「レビュー待ちは？」と聞くと、lazycow のMCPサーバーが確認待ちの15本を一覧にし、承認は人が行うと答えます](docs/img/tour/07-agent.webp)
 
-先にスタジオを起動しておきます。Claude Code なら、次の1行です。
+先にスタジオを起動しておきます。そのあと、ボタン1つで追加できます。Claude Code なら1行です。
+
+[![Claude Desktop: lazycow.mcpb をダウンロード](https://img.shields.io/badge/Claude_Desktop-lazycow.mcpb-D97757?logo=claude&logoColor=white)](https://github.com/kensaurus/lazycow-studio/releases/latest/download/lazycow.mcpb)
+[![Cursor に lazycow を追加](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=lazycow&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsImxhenljb3ciLCJtY3AiXX0%3D)
+[![VS Code に lazycow をインストール](https://img.shields.io/badge/VS_Code-Install_lazycow-0098FF?logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522lazycow%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522lazycow%2522%252C%2522mcp%2522%255D%257D)
 
 ```
 claude mcp add lazycow -- npx -y lazycow mcp
 ```
 
-Cursor（`.cursor/mcp.json`）や Claude Desktop（`claude_desktop_config.json`）には、次を書きます。
-
-```json
-{ "mcpServers": { "lazycow": { "command": "npx", "args": ["-y", "lazycow", "mcp"] } } }
-```
-
-この方法には、PATH の通った Node 20 以降が必要です。ダブルクリックで入れた場合、スタジオ専用の Node は PATH に入りません。そのときは、スタジオの **Settings › Keys & AI › Use with Claude or Cursor** に出る行を使ってください。あなたの環境のパスが入った状態で表示されます。
+- **Claude Desktop:** ダウンロードした `lazycow.mcpb` を開くと、拡張機能として入ります。スタジオをダブルクリックのセットアップで入れたなら、設定は空のままで大丈夫です。ポートとトークンはスタジオの `.env` から読みます。そうでなければ、スタジオのフォルダを選んでください。
+- **Cursor、VS Code、Claude Code** などの MCP クライアントは `npx -y lazycow mcp` を動かします（`{ "mcpServers": { "lazycow": { "command": "npx", "args": ["-y", "lazycow", "mcp"] } } }`）。PATH の通った Node 20 以降が必要です。ダブルクリックで入れた場合、スタジオ専用の Node は PATH に入りません。そのときは、スタジオの **Settings › Keys & AI › Use with Claude or Cursor** に出る行を使ってください。あなたの環境のパスが入った状態で表示されます。
+- **MCP を使わないなら:** 同じスタジオを HTTP でも動かせます。[OpenAPI 3.1](docs/openapi.yaml)、または `npx lazycow api GET /api/overview`。
 
 エージェントにできるのは、スタジオの状態を見る、リールを作る、投稿を計画する、承認済みのリールを投稿する、といったことです。承認するツールはありません。ツールの一覧は [docs/mcp.md](docs/mcp.md)（英語）にあります。
 
@@ -145,6 +147,7 @@ Lazycow Studioは、[kensaurus](https://kensaur.us/?view=portfolio&utm_source=la
 | **[Mushi Mushi](https://kensaur.us/mushi-mushi/?utm_source=lazycow&utm_medium=readme&utm_campaign=family)** | AIで作ったアプリが壊れた理由を説明し、直し方をエディタに渡します。ユーザーからの不具合報告を、わかりやすい診断と修正用のプロンプトに。Claude CodeやCursorからも使えます。 | [`npm i mushi-mushi`](https://www.npmjs.com/package/mushi-mushi) · [GitHub](https://github.com/kensaurus/mushi-mushi) |
 | **[kenji skills](https://kensaur.us/notes/kenji-skills/?utm_source=lazycow&utm_medium=readme&utm_campaign=family)** | AIのコーディング助手を、最後まで正しく動かす手順書集。無料・オープンソース。 | [`@kensaurus/skills`](https://www.npmjs.com/package/@kensaurus/skills) · [GitHub](https://github.com/kensaurus/skills) |
 | **[嬬恋牧場Work&Camp](https://tsumagoi.kensaur.us/?utm_source=lazycow&utm_medium=readme&utm_campaign=family)** | 自分たちで運営する、標高1,444mの山の24時間ラウンジ。Lazycowは、ここのリールを毎日投稿するために生まれました。 | [見る](https://tsumagoi.kensaur.us/?utm_source=lazycow&utm_medium=readme&utm_campaign=family) · [つくった話](https://kensaur.us/notes/lazycow-studio/?utm_source=lazycow&utm_medium=readme&utm_campaign=family) |
+| **[Konte](https://kensaur.us/konte/?utm_source=lazycow&utm_medium=readme&utm_campaign=family)**（試作） | 絵コンテの順に、8秒のAI動画をつくる。 | [試す](https://kensaur.us/konte/?utm_source=lazycow&utm_medium=readme&utm_campaign=family) |
 
 ほかのアプリと、それぞれをつくった理由は[kensaur.us](https://kensaur.us/?view=portfolio&utm_source=lazycow&utm_medium=readme&utm_campaign=family)で（一人会社の帳簿と申告のSolo Boss、タイ語のglot.it、yen-yenなど）。
 
@@ -158,6 +161,7 @@ Lazycow Studioは、[kensaurus](https://kensaur.us/?view=portfolio&utm_source=la
 | [Chrome link](docs/helper.md) | X、TikTok、Google マップ、LINE、LinkedIn の予約をしたい |
 | [Architecture](docs/architecture.md) | 仕組み、どのAIモデルがどこで動くか、PCの中だけで動かす方法、データの置き場所を知りたい |
 | [HTTP API](docs/openapi.yaml) | すべての API ルートを見たい（OpenAPI 3.1） |
+| [Self-hosting](docs/self-host.md) | Docker や自分のサーバーでスタジオを動かしたい |
 
 ## 応援する
 
