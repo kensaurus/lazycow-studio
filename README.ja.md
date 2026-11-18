@@ -147,7 +147,6 @@ Lazycow Studioは、[kensaurus](https://kensaur.us/?view=portfolio&utm_source=la
 | **[Mushi Mushi](https://kensaur.us/mushi-mushi/?utm_source=lazycow&utm_medium=readme&utm_campaign=family)** | AIで作ったアプリが壊れた理由を説明し、直し方をエディタに渡します。ユーザーからの不具合報告を、わかりやすい診断と修正用のプロンプトに。Claude CodeやCursorからも使えます。 | [`npm i mushi-mushi`](https://www.npmjs.com/package/mushi-mushi) · [GitHub](https://github.com/kensaurus/mushi-mushi) |
 | **[kenji skills](https://kensaur.us/notes/kenji-skills/?utm_source=lazycow&utm_medium=readme&utm_campaign=family)** | AIのコーディング助手を、最後まで正しく動かす手順書集。無料・オープンソース。 | [`@kensaurus/skills`](https://www.npmjs.com/package/@kensaurus/skills) · [GitHub](https://github.com/kensaurus/skills) |
 | **[嬬恋牧場Work&Camp](https://tsumagoi.kensaur.us/?utm_source=lazycow&utm_medium=readme&utm_campaign=family)** | 自分たちで運営する、標高1,444mの山の24時間ラウンジ。Lazycowは、ここのリールを毎日投稿するために生まれました。 | [見る](https://tsumagoi.kensaur.us/?utm_source=lazycow&utm_medium=readme&utm_campaign=family) · [つくった話](https://kensaur.us/notes/lazycow-studio/?utm_source=lazycow&utm_medium=readme&utm_campaign=family) |
-| **[Konte](https://kensaur.us/konte/?utm_source=lazycow&utm_medium=readme&utm_campaign=family)**（試作） | 絵コンテの順に、8秒のAI動画をつくる。 | [試す](https://kensaur.us/konte/?utm_source=lazycow&utm_medium=readme&utm_campaign=family) |
 
 ほかのアプリと、それぞれをつくった理由は[kensaur.us](https://kensaur.us/?view=portfolio&utm_source=lazycow&utm_medium=readme&utm_campaign=family)で（一人会社の帳簿と申告のSolo Boss、タイ語のglot.it、yen-yenなど）。
 
