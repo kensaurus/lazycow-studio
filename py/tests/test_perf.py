@@ -563,3 +563,130 @@ def test_a_page_reel_missing_from_the_log_is_matched_to_its_reel_never_guessed()
     assert perf.match_reel("火をわけあう。\n少し違う本文", texts) == "fire-1108", "a unique first line"
     assert perf.match_reel("不便だからこそ、景色がいい。\n別の本文", texts) is None, "two reels share the line: no guess"
     assert perf.match_reel("", texts) is None and perf.match_reel("知らない文", texts) is None
+
+
+# ---------- Instagram Stories and "what the numbers say" (18 Nov) ----------
+
+def test_instagram_story_reads_views_reach_and_taps_and_says_what_is_missing(world, monkeypatch):
+    """A Story's numbers last 24 hours. 18 Nov: the stored token answered (#10) "Application does not have permission"."""
+    monkeypatch.setattr(perf.InstagramStory, "_creds", lambda self: {"page_id": "1", "token": FB_TOKEN})
+    insights = {"data": [{"name": "views", "total_value": {"value": 140}}, {"name": "reach", "values": [{"value": 120}]},
+                         {"name": "shares", "total_value": {"value": 2}}, {"name": "follows", "total_value": {"value": 1}},
+                         {"name": "profile_visits", "total_value": {"value": 6}}]}
+    nav = {"data": [{"name": "navigation", "total_value": {"value": 100, "breakdowns": [{"dimension_keys": ["story_navigation_action_type"], "results": [
+        {"dimension_values": ["TAP_FORWARD"], "value": 55}, {"dimension_values": ["tap_exit"], "value": 30},
+        {"dimension_values": ["tap_back"], "value": 5}, {"dimension_values": ["swipe_forward"], "value": 10}]}]}}]}
+    fake = Fake([("GET", "breakdown=story_navigation_action_type", [(200, nav)]), ("GET", "/18103426217638712/insights", [(200, insights)])])
+    monkeypatch.setattr(perf, "_http", fake)
+    story = {**post(40, "instagram-story", remote_id="18103426217638712", hours_ago=5), "age_h": 5}
+    got, notes = perf.COLLECTORS["instagram-story"].fetch([story])
+    assert got[0]["numbers"] == {"views": 140, "reach": 120, "shares": 2, "followers_gained": 1}
+    assert got[0]["extra"] == {"profile_visits": 6, "navigation": {"tap_forward": 55, "tap_exit": 30, "tap_back": 5, "swipe_forward": 10}}
+    assert "replies" not in fake.calls[0]["url"], "replies are always 0 for accounts in Japan"
+    assert all(FB_TOKEN not in n for n in notes)
+    # Fewer than 5 viewers is a note, not a failure; a missing permission stops the network with what to press.
+    monkeypatch.setattr(perf, "_http", Fake([("GET", "insights", [(400, {"error": {"code": 10, "message": "(#10) Not enough viewers for the media to show insights"}})])]))
+    got, notes = perf.COLLECTORS["instagram-story"].fetch([story])
+    assert got == [] and "fewer than 5 viewers" in notes[0]
+    monkeypatch.setattr(perf, "_http", Fake([("GET", "insights", [(400, {"error": {"code": 10, "message": "(#10) Application does not have permission for this action"}})])]))
+    with pytest.raises(perf.PerfError, match="instagram_manage_insights") as err:
+        perf.COLLECTORS["instagram-story"].fetch([story])
+    assert err.value.code == "permission"
+    monkeypatch.setattr(perf, "_http", Fake([("GET", "insights", [(400, {"error": {"code": 100, "error_subcode": 33, "message": "does not exist"}})])]))
+    got, notes = perf.COLLECTORS["instagram-story"].fetch([story])
+    assert got == [] and "expired" in notes[0]
+
+
+def test_a_story_is_read_while_it_is_up_and_once_in_its_last_hours():
+    def r(age, hours_ago):
+        return {"age_h": age, "fetched_at": (NOW - timedelta(hours=hours_ago)).isoformat()}
+
+    def due(age, mine, fresh=False):
+        return perf._story_due({"age_h": age}, mine, NOW, fresh)
+
+    assert due(0.5, []) is None, "under an hour: too new"
+    assert due(1.2, []) == "first reading"
+    assert due(3.0, [r(1.2, 1.8)]) is None, "read under 6 hours ago"
+    assert due(7.5, [r(1.2, 6.3)]) == "story reading"
+    assert due(21.4, [r(1.2, 20.2), r(19.5, 1.9)]) == "last reading before it expires"
+    assert due(22.6, [r(1.2, 21.4), r(21.4, 1.2)]) is None, "the last reading is done"
+    assert due(24.5, []) is None, "gone after 24 hours: nothing to read"
+    assert due(3.0, [r(1.2, 1.8)], fresh=True) == "asked for fresh numbers"
+
+
+def test_collect_reads_a_due_story_and_keeps_its_permission_problem_until_it_works(world, monkeypatch):
+    world.append(post(41, "instagram-story", remote_id="18103426217638712", hours_ago=2))
+    monkeypatch.setattr(perf.InstagramStory, "_creds", lambda self: {"page_id": "1", "token": FB_TOKEN})
+    monkeypatch.setattr(perf, "_http", Fake([("GET", "insights", [(400, {"error": {"code": 10, "message": "(#10) Application does not have permission"}})])]))
+    out = perf.collect({})
+    assert out["problems"][0]["network"] == "instagram-story" and not out["needsNumbers"], "a Story is no longer 'enter by hand'"
+    assert perf._state()["problems"]["instagram-story"]["code"] == "permission"
+    monkeypatch.setattr(perf, "_http", Fake([("GET", "breakdown", [(400, {})]), ("GET", "insights", [(200, {"data": [{"name": "views", "total_value": {"value": 9}}]})])]))
+    out = perf.collect({})
+    assert out["read"] == 1 and "instagram-story" not in perf._state()["problems"]
+
+
+def _short(i, title, views, hours_ago=72, **kw):
+    return {"id": f"vid{i:08d}", "slug": kw.pop("slug", f"s{i}"), "title": title, "views": views, "kind": kw.pop("kind", "short"),
+            "privacy": kw.pop("privacy", "public"), "at": (NOW - timedelta(hours=hours_ago)).isoformat(), **kw}
+
+
+def test_insights_find_the_opening_that_broke_out_the_stalled_short_and_how_much_is_watched():
+    """The channel on 18 Nov: 「〜からこそ」 openers at a median 943 views, the rest 183; nightfire-1109 at 8."""
+    shorts = [_short(1, "不便だからこそ、尾根まで見渡せる。｜嬬恋牧場", 1271, seconds=21, avgPct=54, avgS=11, subs=1),
+              _short(2, "区画がないからこそ、気の向くまま張れる。｜嬬恋牧場", 1101, seconds=22, avgPct=55, avgS=12),
+              _short(3, "お店がないからこそ、火をわけあう。｜嬬恋牧場", 948, seconds=24),
+              _short(4, "寒いからこそ、こたつがうれしい。｜嬬恋牧場", 943, seconds=18, avgPct=66, avgS=11),
+              _short(5, "区画がないからこそ、自由に広げられる。｜嬬恋牧場", 8, seconds=14, slug="nightfire-1109"),
+              _short(6, "遠いからこそ、騒げる｜嬬恋牧場", 267, seconds=16, avgPct=97, avgS=15),
+              _short(7, "不便だからこそ、草原の先に尾根が続く。｜嬬恋牧場", 146, seconds=14, avgPct=102, avgS=14),
+              _short(8, "車で来て、車で寝る。｜嬬恋牧場", 200, seconds=14, avgPct=117, avgS=16),
+              _short(9, "区画がないから、好きな場所に張る。｜嬬恋牧場", 178, seconds=14, avgPct=91, avgS=12),
+              _short(10, "紅葉の嬬恋｜標高1,444m｜嬬恋牧場", 183, seconds=14, avgPct=80, avgS=11),
+              _short(11, "仕事は浅く、つながりは深く。｜嬬恋牧場", 156, hours_ago=3),  # under a day: not judged yet
+              _short(12, "11月17日 · 標高1,444m 嬬恋｜嬬恋 標高1,444m #shorts", 5, slug=None),
+              _short(13, "11月16日 · 標高1,444m 嬬恋｜嬬恋 標高1,444m #shorts", 8, slug=None),
+              _short(14, "11月15日 · 標高1,444m 嬬恋｜嬬恋 標高1,444m #shorts", 14, slug=None, subs=0),
+              _short(15, "【LIVE】浅間山ライブカメラ 24時間", 737, slug=None, kind="live", subs=8),
+              _short(16, "private booked", 0, privacy="private")]
+    out = perf.insights_from({"channels": [{"items": shorts}]}, [], [], [], {}, {"vid00000002": "2026-11-18"}, NOW)
+    y = out["youtube"]
+    assert y["shorts"] == 10 and y["hook"]["phrase"] == "からこそ"
+    assert y["hook"]["with"] == {"n": 7, "median": 943} and y["hook"]["without"] == {"n": 3, "median": 183}
+    assert [s["slug"] for s in y["stalled"]] == ["nightfire-1109"]
+    assert y["watch"]["short"]["pct"] > y["watch"]["long"]["pct"] and y["watch"]["long"]["views"] > y["watch"]["short"]["views"]
+    assert out["convert"]["live"]["subs"] == 8 and out["convert"]["shorts"]["subs"] == 1
+    assert out["related"]["done"] == 1 and out["related"]["of"] == 11 and out["related"]["items"][0]["slug"] == "s11", "newest first"
+    assert out["outside"] == {"n": 3, "median": 8, "studio": 234}, "(200 + 267) / 2, the studio's median"
+    assert perf.opener("寒いからこそ、こたつがうれしい。｜嬬恋牧場") == "寒いからこそ"
+    assert perf.hook_phrase([{"title": s["title"], "views": s["views"]} for s in shorts[:3]]) is None, "too few Shorts: no pattern"
+
+
+def test_insights_name_the_small_account_and_what_stops_the_story_numbers():
+    posts = [{"id": 1, "network": "bluesky", "status": "posted", "at": NOW.isoformat(), "url": "https://bsky.app/profile/smallshop.bsky.social/post/3m5"},
+             {"id": 2, "network": "x", "status": "posted", "at": NOW.isoformat(), "url": "https://x.com/smallshop_jp/status/2120818890263638258"},
+             {"id": 3, "network": "instagram-story", "status": "posted", "at": (NOW - timedelta(hours=30)).isoformat()}]
+    reach_rows = [{"network": "bluesky", "verdict": "none", "out": 8, "views": 0, "reactions": 0},
+                  {"network": "x", "verdict": "few", "out": 8, "views": 109, "reactions": 0},
+                  {"network": "youtube", "verdict": "working", "out": 11, "views": 5236, "reactions": 26}]
+    out = perf.insights_from(None, reach_rows, posts, [], {"instagram-story": {"code": "permission"}}, {}, NOW,
+                             followers=lambda h: 2 if h == "smallshop.bsky.social" else None)
+    assert out["accounts"] == [{"network": "bluesky", "handle": "smallshop.bsky.social", "followers": 2, "posts": 8, "views": 0, "reactions": 0},
+                               {"network": "x", "handle": "smallshop_jp", "followers": None, "posts": 8, "views": 109, "reactions": 0}]
+    assert out["stories"]["need"] == "permission" and out["stories"]["out"] == 1
+    assert "youtube" not in out and out["related"] == {"done": 0, "of": 0, "items": []}
+    old = {"id": 4, "network": "instagram-story", "status": "posted", "at": (NOW - timedelta(days=9)).isoformat()}
+    reads = [{"post_id": 3, "views": 140, "reach": 120, "extra": {"navigation": {"tap_forward": 55, "tap_exit": 30, "tap_back": 5, "swipe_forward": 10}}},
+             {"post_id": 4, "views": 900, "reach": 800, "extra": {"navigation": {"tap_exit": 500}}}]
+    s = perf.insights_from(None, [], posts + [old], reads, {}, {}, NOW)["stories"]
+    assert (s["out"], s["read"], s["views"], s["exitPct"], s["onPct"], s["need"]) == (1, 1, 140, 30, 65, None), \
+        "a Story older than 7 days counts in neither the posts nor the numbers"
+
+
+def test_related_ticks_are_kept_and_checked(world):
+    perf._related_path().unlink(missing_ok=True)
+    assert perf.mark_related({"id": "AbCdEfGhIjK"}) == {"id": "AbCdEfGhIjK", "done": True, "count": 1}
+    assert "AbCdEfGhIjK" in perf.related_done()
+    assert perf.mark_related({"id": "AbCdEfGhIjK", "done": False})["done"] is False
+    with pytest.raises(perf.PerfError):
+        perf.mark_related({"id": "../../etc"})

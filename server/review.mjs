@@ -42,7 +42,7 @@ import { setStartup, startupState } from "../scripts/autostart.mjs";
 import qrcode from "qrcode-generator";
 import { defaultProjectsDir, isRanch, ranchOverlay } from "../shared/ranch.mjs";
 import { createStore as problemStore, findProblems } from "./problems.mjs";
-import { approvalRefusal, insideRoots, isSlug, pathKey, strayPath, NET_RX, parseRange, readJson, refusal, SLUG_RX, tokenOk, TOKEN_COOKIE, trustRules } from "./trust.mjs";
+import { approvalRefusal, insideRoots, isSlug, pathKey, strayPath, NET_RX, parseRange, readJson, refusal, serverMode, SLUG_RX, tokenOk, TOKEN_COOKIE, trustRules } from "./trust.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SELF = fileURLToPath(import.meta.url);
@@ -505,7 +505,7 @@ function py(args, timeoutMs = 60_000) {
 /** A CLI call that prints `RESULT {json}`; does not block the server while Python starts. Stopped after timeoutMs. */
 function pyResult(args, input, timeoutMs = 180_000, env = ENV) {
   return new Promise((ok, fail) => {
-    const child = spawn(PY, ["-m", "studio", ...args], { cwd: ROOT, env });
+    const child = spawn(PY, ["-m", "studio", ...args], { cwd: ROOT, env, windowsHide: true });
     child.stdin.on("error", () => {});
     if (input != null) child.stdin.end(input); // secrets go on stdin, never on the command line
     let out = "", err = "", late = false;
@@ -534,7 +534,7 @@ function research(action, input = {}) {
   const key = action + " " + JSON.stringify(input);
   if (researchRuns.has(key)) return researchRuns.get(key);
   const run = new Promise((ok, fail) => {
-    const child = spawn(PY, ["-m", "studio.research", action], { cwd: ROOT, env: ENV });
+    const child = spawn(PY, ["-m", "studio.research", action], { cwd: ROOT, env: ENV, windowsHide: true });
     let out = "", err = "", late = false;
     const timer = setTimeout(() => { late = true; killTree(child); }, RESEARCH[action] || 120_000);
     child.stdout.on("data", (c) => { out += c; });
@@ -562,7 +562,7 @@ function research(action, input = {}) {
    a person must approve. One short Python process per call; its last stdout line is the JSON answer. */
 function words(action, input = {}, timeoutMs = 60_000) {
   return new Promise((ok, fail) => {
-    const child = spawn(PY, ["-m", "studio.wording", action], { cwd: ROOT, env: ENV });
+    const child = spawn(PY, ["-m", "studio.wording", action], { cwd: ROOT, env: ENV, windowsHide: true });
     let out = "", err = "";
     const timer = setTimeout(() => killTree(child), timeoutMs);
     child.stdout.on("data", (c) => { out += c; });
@@ -618,7 +618,7 @@ function pyRun(module, action, input, limit, what) {
   const key = module + " " + action + " " + JSON.stringify(input);
   if (perfRuns.has(key)) return perfRuns.get(key);
   const run = new Promise((ok, fail) => {
-    const child = spawn(PY, ["-m", module, action], { cwd: ROOT, env: ENV });
+    const child = spawn(PY, ["-m", module, action], { cwd: ROOT, env: ENV, windowsHide: true });
     let out = "", err = "", late = false;
     const timer = setTimeout(() => { late = true; killTree(child); }, limit);
     child.stdout.on("data", (c) => { out += c; });
@@ -653,6 +653,10 @@ function perfInput(action, b) {
     for (const k of PERF_NUMBERS) if (b[k] !== undefined && b[k] !== null && b[k] !== "") out[k] = b[k];
     if (typeof b.at === "string") out.at = b.at.slice(0, 40);
     if (typeof b.note === "string") out.note = b.note.replace(/[\u0000-\u001f]/g, " ").slice(0, 200);
+  } else if (action === "related") {
+    // A Short's Related video was set (or cleared) by hand in YouTube Studio: the API can neither set nor read it.
+    if (typeof b.id === "string") out.id = b.id.slice(0, 20);
+    out.done = b.done !== false;
   } else if (action === "import") {
     if (typeof b.network === "string") out.network = b.network.slice(0, 30);
     if (typeof b.csv === "string") out.csv = b.csv;
@@ -702,7 +706,7 @@ function perfCached(action, input) {
 /** What Results asks for when it opens, read one after another (never six Pythons at once). */
 async function warmPerf() {
   if (QUIET) return;
-  for (const [a, q] of [["summary", ""], ["suggest", "n=3"], ["reach", ""], ["table", "days=90"], ["status", ""], ["channel", ""]]) {
+  for (const [a, q] of [["summary", ""], ["suggest", "n=3"], ["reach", ""], ["table", "days=90"], ["status", ""], ["channel", ""], ["insights", ""]]) {
     try { const input = perfQuery(a, new URLSearchParams(q)); perfCache.delete(`${a} ${JSON.stringify(input)}`); await perfCached(a, input); } catch { /* the page reads it itself */ }
   }
 }
@@ -914,7 +918,7 @@ function ai(action, input = {}) {
   if (aiRuns.has(key)) return aiRuns.get(key);
   const limit = AI_TIMEOUT[action] || 120_000;
   const run = new Promise((ok, fail) => {
-    const child = spawn(PY, ["-m", "studio.ai", action], { cwd: ROOT, env: ENV });
+    const child = spawn(PY, ["-m", "studio.ai", action], { cwd: ROOT, env: ENV, windowsHide: true });
     let out = "", err = "", late = false;
     const timer = setTimeout(() => { late = true; killTree(child); }, limit);
     child.stdout.on("data", (c) => { out += c; });
@@ -983,7 +987,7 @@ function startAi(input, render) {
   if (prev && prev.status === "running") return prev;
   const job = { slug: key, kind: "ai", status: "running", queued: Date.now(), started: Date.now(), lines: [], stage: 0, stages: input.tools.length, done: 0, of: 0, label: "pricing the AI steps" };
   jobs.set(key, job);
-  const child = spawn(PY, ["-m", "studio.ai", "run"], { cwd: ROOT, env: ENV });
+  const child = spawn(PY, ["-m", "studio.ai", "run"], { cwd: ROOT, env: ENV, windowsHide: true });
   let out = "", err = "";
   child.stdin.on("error", () => {});
   child.stdout.on("data", (chunk) => {
@@ -1045,7 +1049,7 @@ let seq = 0;
 function startHelper() {
   if (!existsSync(PY)) { helperState = "down"; helperError = `Python not found at ${PY}`; helperReady = Promise.reject(new Error(helperError)); helperReady.catch(() => {}); return; }
   helperState = "starting"; helperTail = "";
-  const proc = spawn(PY, ["-m", "studio", "service"], { cwd: ROOT, env: ENV });
+  const proc = spawn(PY, ["-m", "studio", "service"], { cwd: ROOT, env: ENV, windowsHide: true });
   helper = proc;
   helperReady = new Promise((ok, fail) => {
     const rl = createInterface({ input: proc.stdout });
@@ -1127,7 +1131,7 @@ function diskGuard() {
 /* Stop a process and everything it started (ffmpeg under python) — taskkill /T on Windows. */
 function killTree(child) {
   if (!child || child.exitCode != null) return;
-  if (process.platform === "win32") spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+  if (process.platform === "win32") spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
   else { try { process.kill(-child.pid, "SIGTERM"); } catch { child.kill("SIGTERM"); } }
 }
 function cancelJob(slug) {
@@ -1179,7 +1183,7 @@ function pump() {
   saveQueue();
   mkdirSync(RENDERS, { recursive: true });
   const args = job.kind === "remix" ? ["reels", "--remix", job.slug] : ["reels", "--build", job.slug];
-  const child = spawn(PY, ["-m", "studio", ...args], { cwd: ROOT, env: ENV, detached: process.platform !== "win32" });
+  const child = spawn(PY, ["-m", "studio", ...args], { cwd: ROOT, env: ENV, detached: process.platform !== "win32", windowsHide: true });
   Object.defineProperty(job, "child", { value: child, enumerable: false, configurable: true });
   Object.assign(job, { status: "running", started: Date.now(), label: job.kind === "remix" ? "mixing sound" : "starting" });
   broadcast("job", job);
@@ -1223,7 +1227,7 @@ function startTask(key, kind, args, onDone = null, env = ENV) {
   if (prev && prev.status === "running") return prev;
   const job = { slug: key, kind, status: "running", queued: Date.now(), started: Date.now(), lines: [], stage: 0, stages: 2, done: 0, of: 0, label: "starting" };
   jobs.set(key, job);
-  const child = spawn(PY, ["-m", "studio", ...args], { cwd: ROOT, env });
+  const child = spawn(PY, ["-m", "studio", ...args], { cwd: ROOT, env, windowsHide: true });
   job.child = child;  // a long video can be stopped (cancelJob)
   let err = "";
   child.stdout.on("data", (chunk) => {
@@ -1480,7 +1484,7 @@ function startUpload(slug, { at, privacy }) {
   const job = { slug, kind: "youtube", status: "running", queued: Date.now(), started: Date.now(), lines: [], stage: 0, stages: 2, done: 0, of: 0, label: "connecting to YouTube" };
   jobs.set(slug, job);
   const args = ["youtube", "upload", slug, "--privacy", privacy || "private", ...(at ? ["--at", at] : [])];
-  const child = spawn(PY, ["-m", "studio", ...args], { cwd: ROOT, env: ENV });
+  const child = spawn(PY, ["-m", "studio", ...args], { cwd: ROOT, env: ENV, windowsHide: true });
   let err = "";
   child.stdout.on("data", (chunk) => {
     for (const line of chunk.toString().split(/\r?\n/)) {
@@ -2030,7 +2034,11 @@ const body = (req) => readJson(req);
 const SIGNIN_NETS = ["bluesky", "facebook"];
 // STUDIO_API_TOKEN (optional, .env): every caller must carry it (server/trust.mjs tokenOk). Empty = off, as before.
 const API_TOKEN = String(pick("STUDIO_API_TOKEN", "")).trim();
-const TRUST = trustRules(PORT, API_TOKEN);
+/* Server mode (docs/self-host.md): STUDIO_HOST other than loopback, or STUDIO_ALLOWED_HOSTS, opens the studio beyond this
+   computer, and then a token of 24+ characters is required: without one it refuses to start rather than open its API. */
+const MODE = serverMode({ STUDIO_HOST: pick("STUDIO_HOST", ""), STUDIO_ALLOWED_HOSTS: pick("STUDIO_ALLOWED_HOSTS", "") }, API_TOKEN);
+if (MODE.error) { console.error(MODE.error); process.exit(78); }  // EX_CONFIG: a restart loop would not fix it
+const TRUST = trustRules(PORT, API_TOKEN, MODE.extra);
 const LOCAL_HOST = TRUST.host;
 /* The rules live in server/trust.mjs (tested in test/trust.test.mjs), applied once per request in createServer below.
    GETs from another site's page (an <img>, fetch or EventSource) are refused too; a top-level navigation (a link,
@@ -2636,6 +2644,12 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/connections") {
       return send(res, 200, await ask({ cmd: "connections", port: PORT }));
     }
+    /* Check every connection before a post needs it (py/studio/netcheck.py): each sign-in still works, it carries
+       every permission the studio uses, and the latest failed post per network, each with the fix. Read-only. */
+    if (req.method === "GET" && url.pathname === "/api/connections/check") {
+      try { return send(res, 200, await pyRun("studio.netcheck", "check", { chrome: extensionConnected() }, 90_000, "The connection check")); }
+      catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
     /* One-click connect (Bluesky, Facebook): Python asks the network for its own sign-in page and returns the
        address; the browser goes there and the network sends it back to /oauth/<network>. Pending sign-ins live
        10 minutes in Python's secrets folder, so a helper restart in between does not lose them. */
@@ -2909,7 +2923,7 @@ const server = createServer(async (req, res) => {
     }
     /* ---------- performance: how reels did, what worked, what to try next (docs/perf-api.md); nothing here posts ---------- */
     const perfGet = { "/api/perf": "get", "/api/perf/summary": "summary", "/api/perf/suggest": "suggest", "/api/perf/status": "status", "/api/perf/predictions": "predictions",
-      "/api/perf/scores": "scores", "/api/perf/reach": "reach", "/api/perf/table": "table", "/api/perf/channel": "channel" }[url.pathname];
+      "/api/perf/scores": "scores", "/api/perf/reach": "reach", "/api/perf/table": "table", "/api/perf/channel": "channel", "/api/perf/insights": "insights" }[url.pathname];
     if (req.method === "GET" && perfGet) {
       // Scores and predictions need the whole reel list: the warm studio service has it cached (0.4 s); a fresh
       // Python process rebuilt it cold every time (17 s, and past the time limit while a long render ran).
@@ -2925,7 +2939,7 @@ const server = createServer(async (req, res) => {
       try { return send(res, 200, await perfCached(perfGet, perfQuery(perfGet, url.searchParams))); }
       catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
     }
-    const perfPost = { "/api/perf/collect": "collect", "/api/perf/manual": "manual", "/api/perf/import": "import" }[url.pathname];
+    const perfPost = { "/api/perf/collect": "collect", "/api/perf/manual": "manual", "/api/perf/import": "import", "/api/perf/related": "related" }[url.pathname];
     if (req.method === "POST" && perfPost) {
       if (Number(req.headers["content-length"] || 0) > 2_500_000) return send(res, 413, { error: "csv: the file is over 2 MB; export a shorter date range", code: "too_big" });
       perfCache.clear();  // new numbers: Results reads them fresh
@@ -3428,7 +3442,7 @@ const server = createServer(async (req, res) => {
       // One click: the helper's one library, installed into this studio folder (no browser download; it uses Chrome).
       // The exact version package.json pins (it must match chrome-bridge.mjs), never "latest 1.x".
       const pw = /^\d+\.\d+\.\d+$/.test(PKG.dependencies?.["playwright-core"] || "") ? PKG.dependencies["playwright-core"] : "1.64.1";
-      const r = spawnSync(process.platform === "win32" ? "npm.cmd" : "npm", ["install", `playwright-core@${pw}`, "--save-exact", "--no-audit", "--no-fund"], { cwd: ROOT, encoding: "utf8", shell: process.platform === "win32", timeout: 300000 });
+      const r = spawnSync(process.platform === "win32" ? "npm.cmd" : "npm", ["install", `playwright-core@${pw}`, "--save-exact", "--no-audit", "--no-fund"], { cwd: ROOT, encoding: "utf8", shell: process.platform === "win32", timeout: 300000, windowsHide: true });
       if (r.status !== 0) return send(res, 500, { error: "The helper could not be installed. Check the internet connection and try again.", detail: (r.stderr || "").slice(-400) });
       return send(res, 200, { ok: true, ...(await helperStatus()) });
     }
@@ -3585,7 +3599,7 @@ function listen(attempt = 0) {
       : `Port ${PORT} is taken by another program. Close it, then run npm run review again.`);
     process.exit(other?.build ? 0 : 1);
   });
-  server.listen(PORT, "127.0.0.1");  // no callback: a failed attempt would leave it queued and fire it again later
+  server.listen(PORT, MODE.bind);  // no callback: a failed attempt would leave it queued and fire it again later
 }
 /* An error thrown inside an event handler (a stream, a timer) would end the whole process, and with it every booked post
    and render. Log it and keep serving; a broken start (the port, a missing file) still ends through its own exit. */
@@ -3597,6 +3611,7 @@ server.once("listening", () => {
   // that backups of the data folder and the studio's own file route can read (.github/SECURITY.md: never in a log).
   const tokenPart = !API_TOKEN ? "" : process.stdout.isTTY ? `?token=${encodeURIComponent(API_TOKEN)}` : "?token=<STUDIO_API_TOKEN in .env>";
   console.log(`review http://127.0.0.1:${PORT}/${tokenPart} (build ${BUILD})`);
+  if (MODE.remote) console.log(`server mode: listening on ${MODE.bind}:${PORT}, answering ${MODE.extra.join(", ") || "loopback"} with the API token required (docs/self-host.md)`);
   // Work that runs before the port is free (a restart waiting for the old server to let go) may have started the
   // helper already: a second start orphaned the first, a whole Python with its model loaded (Kenya, 14 Nov).
   if (!helper) startHelper();

@@ -181,7 +181,8 @@ NEEDED = ("pages_show_list", "pages_read_engagement", "pages_manage_posts")
 # Asked for too, not required: a Page kept in a business portfolio (Business Suite) is only listed with it;
 # read_insights lets studio.perf read each reel's plays, watch time and reach (/{video-id}/video_insights).
 OPTIONAL = ("business_management", "read_insights", "pages_read_user_content", "pages_manage_engagement",  # the last two: Results › Comments
-            "instagram_basic", "instagram_content_publish")  # Instagram Stories (studio.connectors.instagram_story)
+            "instagram_basic", "instagram_content_publish",  # Instagram Stories (studio.connectors.instagram_story)
+            "instagram_manage_insights")  # a Story's views, reach and taps (studio.perf.InstagramStory), readable for 24 h only
 
 
 def _business_pages(token: str) -> list[dict]:

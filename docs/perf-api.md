@@ -157,6 +157,38 @@ and `verdict` (`working`, `some`, `few`, `none` or `unmeasured`). `oldestH` is t
 measured post and `since` its time. `stalled` is true when the verdict is `none`, at least 3 posts are measured and
 the oldest is at least 48 h out: the network is not showing the posts, and Results says so first.
 
+## `GET /api/perf/insights`
+
+The numbers behind Results › What the numbers say. It returns numbers only; the page writes the sentences. Each part
+is left out when there is too little to say:
+
+- **`youtube`** covers the studio's public Shorts at least a day old, when there are at least 4:
+  - `shorts`, `median`.
+  - `hook`: the 2–6 character phrase in the first clause of the titles whose Shorts got the highest median views
+    compared with the rest: `phrase`, `lift`, `with` and `without` (`n` and `median` each), and `examples`. A
+    phrase needs at least 3 Shorts with it and 2 without, and a lift of at least 2.
+  - `stalled`: Shorts under 5 % of the median.
+  - `top`: the best 3.
+  - `watch`: the median % and seconds watched, split at 15 s, from YouTube Analytics.
+- **`convert`**: views, subscribers, likes and comments for all public Shorts and for the live videos. It also names
+  the live video with the most views.
+- **`related`**: the studio's public Shorts, newest first. `done` marks the ones whose Related video the owner ticked
+  as set.
+- **`outside`**: Shorts on the channel that the studio did not post, from the last 30 days. Gives their median views
+  and the studio's median.
+- **`accounts`**: Bluesky and X when their verdict is `none` or `few`. Gives the account the posts go to, its follower
+  count (Bluesky only, from the public AppView), and the posts and views.
+- **`stories`**: the last 7 days of Instagram Stories:
+  - `out`, `read`, `views`, `reach`.
+  - `exitPct` and `onPct`, from `navigation`.
+  - `need`: `permission` or `connect` when the last read failed for that reason.
+
+## `POST /api/perf/related`
+
+`{ "id": "<YouTube video id>", "done": true }` records that the owner set this Short's Related video in YouTube
+Studio; `done: false` clears the record. Returns `{ id, done, count }`. YouTube's Data API can neither set nor read a
+Related video (`videos.update` writes only snippet and status fields, read 2026-11-18).
+
 ## `GET /api/perf/suggest[?network=&n=3&explore=0.3&seed=]`
 
 Next-reel suggestions.

@@ -53,6 +53,9 @@ function fakeStudio() {
     "GET /api/posts": () => [{ id: 1, slug: "fire-1107", network: "bluesky", status: "posted", at: "2026-11-10T19:00", url: "https://bsky.app/x" }],
     "POST /api/posts/plan": () => ({ id: 42 }),
     "GET /api/connections": () => ({ bluesky: { name: "Bluesky", connected: true, account: "@test", canSchedule: false, error: null } }),
+    "GET /api/connections/check": () => ({ at: "2026-11-18T20:00:00+09:00", counts: { ok: 1, warn: 0, bad: 1 }, networks: [
+      { network: "youtube", name: "YouTube", via: "studio", account: "Test", state: "ok", checks: [{ id: "signin-main", ok: true, say: "Test: signed in.", fix: "", url: "" }] },
+      { network: "bluesky", name: "Bluesky", via: "studio", account: "@test", state: "bad", checks: [{ id: "lastpost", ok: false, say: "The post did not go out: Bluesky 401", fix: "Book it again.", url: "" }] }] }),
     "GET /api/channels": () => ({ channels: [{ id: "bluesky", name: "Bluesky", account: "test" }] }),
     "GET /api/youtube": () => ({ app: true, connected: true }),
     "POST /api/youtube/upload": (q, b) => ({ ...job(b.slug), kind: "youtube" }),
@@ -131,6 +134,7 @@ const CASES = {
   list_posts: [{ network: "bluesky" }, "GET /api/posts"],
   plan_post: [{ slug: "fire-1107", network: "bluesky", at: "2026-11-20T19:00+09:00" }, "POST /api/posts/plan"],
   list_accounts: [{}, "GET /api/connections"],
+  check_connections: [{}, "GET /api/connections/check"],
   publish_reel: [{ slug: "fire-1107", network: "bluesky" }, "POST /api/publish"],
   schedule_reel: [{ slug: "fire-1107", network: "x", at: "2026-11-20T19:00+09:00" }, "POST /api/helper/schedule"],
   list_projects: [{}, "GET /api/workspaces"],

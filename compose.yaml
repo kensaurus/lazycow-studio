@@ -1,0 +1,30 @@
+# Lazycow Studio on a server: docker compose up -d   (docs/self-host.md)
+# First put a token in .env beside this file:   echo "STUDIO_API_TOKEN=$(openssl rand -hex 16)" >> .env
+# Then open http://127.0.0.1:4317/?token=<that token> once; the browser keeps it.
+name: lazycow
+services:
+  studio:
+    image: ghcr.io/kensaurus/lazycow-studio:latest
+    build: .            # used when the image cannot be pulled, or with: docker compose build
+    restart: unless-stopped   # also brings the studio back after Restart or a project switch in the studio
+    ports:
+      # This computer only (reach it from elsewhere through an SSH tunnel, Tailscale or an HTTPS proxy).
+      # To open it to your LAN instead: "4317:4317", and add the address you type to STUDIO_ALLOWED_HOSTS,
+      # e.g. 192.168.1.20:4317. Keep both numbers 4317: Google, Facebook and Bluesky sign-ins return to that port.
+      - "127.0.0.1:4317:4317"
+    environment:
+      # Required: 24+ random characters. Without it the studio stops at once and says why (docker compose logs).
+      STUDIO_API_TOKEN: ${STUDIO_API_TOKEN:?Put STUDIO_API_TOKEN in .env first, e.g. echo "STUDIO_API_TOKEN=$(openssl rand -hex 16)" >> .env}
+      # Every name the browser uses to reach the studio, exactly as it shows in the address bar (host:port, or the
+      # proxy's host name alone), comma-separated.
+      STUDIO_ALLOWED_HOSTS: ${STUDIO_ALLOWED_HOSTS:-localhost:4317,127.0.0.1:4317}
+      # Your audience's time zone (IANA name, e.g. Asia/Tokyo). Empty = the container's, which is UTC.
+      STUDIO_TZ: ${STUDIO_TZ:-}
+    volumes:
+      # Everything the studio makes and keeps: catalog, renders, settings, keys and sign-ins. Back this up.
+      - studio-data:/data
+      # Your footage, read only. Set LAZYCOW_FOOTAGE in .env to its folder on this server.
+      - ${LAZYCOW_FOOTAGE:-./footage}:/footage:ro
+    shm_size: 1gb       # Chrome (the words on screen) needs more than Docker's 64 MB default
+volumes:
+  studio-data:

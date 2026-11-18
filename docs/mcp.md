@@ -33,6 +33,7 @@ If the studio is not running, every tool answers: "Lazycow Studio is not running
 | `list_posts` | The posting log | no |
 | `plan_post` | Add a "post this then" reminder (posts nothing) | yes, on this computer |
 | `list_accounts` | Networks on or off, account names, which ones are connected. Never passwords, tokens or keys | no |
+| `check_connections` | Before posting: each sign-in still works, carries every permission the studio uses, Chrome is linked, and the latest failed post per network, each with its fix. Read-only | no |
 | `publish_reel` | Post an **approved** reel now, or schedule it | yes, **posts to the internet** |
 | `schedule_reel` | Schedule an **approved** reel on X, TikTok or Google Maps through the browser helper ([helper.md](helper.md)) | yes, **schedules on the internet** |
 | `list_projects` / `switch_project` | See projects, open another one (the studio restarts on it). A switch is refused while a job runs, and always in a studio pinned with `STUDIO_PROJECT` | switch: yes |
@@ -71,6 +72,18 @@ over the per-reel, total or daily limit, or above its own `max_usd`; it never ch
 **Approving stays with a person.** There is no approve tool. `publish_reel` checks the reel's review
 status first and refuses anything that is not "approved". Approve reels in the studio's page.
 
+## Install it in one click
+
+| Tool | How |
+|:--|:--|
+| Claude Desktop | Download [lazycow.mcpb](https://github.com/kensaurus/lazycow-studio/releases/latest/download/lazycow.mcpb) from the latest release and open it. Claude Desktop installs it as an extension. Its three settings are optional: **Studio port**, **Studio API token** and **Studio folder**. Leave them empty when the double-click setup installed the studio; otherwise pick the studio folder, and the extension reads the port and token from its `.env`. |
+| Cursor | [Add lazycow to Cursor](https://cursor.com/install-mcp?name=lazycow&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsImxhenljb3ciLCJtY3AiXX0%3D) |
+| VS Code | [Install lazycow in VS Code](https://vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522lazycow%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522lazycow%2522%252C%2522mcp%2522%255D%257D) |
+| Claude Code | `claude mcp add lazycow -- npx -y lazycow mcp` (below) |
+
+The Cursor and VS Code links add `npx -y lazycow mcp`, so they need Node 20 or newer on your PATH, like the lines below.
+The same server is in the official MCP Registry as `io.github.kensaurus/lazycow`, for clients that install from it.
+
 ## Add it to Claude Code
 
 The quickest way: open the studio's **Settings › Keys & AI › Use with Claude or Cursor**. It shows the lines below
@@ -103,7 +116,7 @@ Check it with `claude mcp list`, or `/mcp` inside Claude Code.
 
 ## Add it to Claude Desktop
 
-Open Settings › Developer › Edit Config. That opens `claude_desktop_config.json`
+The extension above is the easy way. To write the config by hand instead, open Settings › Developer › Edit Config. That opens `claude_desktop_config.json`
 (Windows: `%APPDATA%\Claude\claude_desktop_config.json`; macOS:
 `~/Library/Application Support/Claude/claude_desktop_config.json`). Add the `lazycow` entry, then restart
 Claude Desktop:
@@ -135,8 +148,8 @@ answers that the studio asks for its API token.
 
 ## Add it to Cursor
 
-Put the same `mcpServers` block in `.cursor/mcp.json` (this project) or `~/.cursor/mcp.json`
-(every project).
+Use the link above, or put the same `mcpServers` block in `.cursor/mcp.json` (this project) or `~/.cursor/mcp.json`
+(every project). In VS Code the block is called `servers`, in `.vscode/mcp.json`.
 
 ## Things to ask it
 
@@ -162,6 +175,6 @@ Arguments are checked against each tool's schema first; a bad one never reaches 
 Tests (`npm test`):
 
 - `test/mcp.test.mjs`: the protocol, the refusals (no approve tool, unapproved reels, AI over the limits), no secrets.
-- `test/mcp-every-tool.test.mjs`: all 30 tools, each called once against a fake studio, through `server/mcp.mjs` and
+- `test/mcp-every-tool.test.mjs`: all 31 tools, each called once against a fake studio, through `server/mcp.mjs` and
   through the npm package (`npx lazycow mcp`); and every route the tools call is in `docs/openapi.yaml`.
 - `test/lazycow-package.test.mjs`: the npm package (files, attribution, client, installer).

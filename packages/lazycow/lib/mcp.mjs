@@ -445,6 +445,20 @@ const TOOLS = [
     },
   },
   {
+    name: "check_connections",
+    title: "Check every connection",
+    description: "Before posting: checks each network in use. Does each sign-in still work (YouTube, Facebook, Instagram Stories, Bluesky)? Does it carry every permission the studio uses (YouTube scopes, Meta permissions such as instagram_manage_insights)? Is Chrome linked for TikTok, X, LinkedIn and the other networks your Chrome posts to? What was the latest post that failed in the last 14 days? Each problem comes with the exact fix and, where there is one, the page to open. Read-only: it never signs in or changes a connection.",
+    inputSchema: noArgs,
+    annotations: { title: "Check every connection", ...RO },
+    async run() {
+      const r = await studio("GET", "/api/connections/check");
+      const lines = (r.networks || []).flatMap((n) => [`${n.state === "ok" ? "OK" : n.state === "warn" ? "CHECK" : "PROBLEM"} ${n.name}${n.account ? ` (${n.account})` : ""}`,
+        ...n.checks.filter((c) => c.ok !== true).map((c) => `  - ${c.say}${c.fix ? ` Fix: ${c.fix}` : ""}${c.url ? ` ${c.url}` : ""}`)]);
+      const c = r.counts || {};
+      return reply(`${c.ok || 0} fine, ${c.warn || 0} worth a look, ${c.bad || 0} with a problem.\n${lines.join("\n")}`, scrub(r));
+    },
+  },
+  {
     name: "publish_reel",
     title: "Publish a reel",
     description: "Post an APPROVED reel to a network now, or schedule it with `at`. Only reels a person has approved in the studio can be published: this tool checks the review status first and refuses anything that is not \"approved\". Networks the studio posts to itself: youtube (or youtube-shorts), and any connected network in list_accounts (e.g. bluesky, facebook). Runs as a background job; follow it with job_status.",

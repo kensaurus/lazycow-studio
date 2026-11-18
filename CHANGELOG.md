@@ -2,6 +2,61 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.24.0 (2026-11-18)
+
+### Added
+- **One-click installs for your AI tool.**
+  - Claude Desktop installs the `lazycow.mcpb` extension, attached to every release and listed in the MCP Registry.
+    Leave its settings empty and it finds the studio's port and token.
+  - Cursor and VS Code each get an install button in the README. Claude Code still takes one line.
+  - `glama.json` lets the Glama directory list the server under its maintainer.
+- **Docker image** `ghcr.io/kensaurus/lazycow-studio`, published for amd64 and arm64 with each release, plus a
+  `compose.yaml` and [docs/self-host.md](docs/self-host.md).
+  - What's inside: Python 3.13 with the same hash-locked packages the Linux setup installs, Node 24, ffmpeg 5.1,
+    Remotion's browser and Japanese fonts.
+  - It runs as a non-root user and has a health check.
+  - It starts only with an API token.
+  - The networks your desktop Chrome posts to (TikTok, X, LinkedIn, Google Maps, LINE, Pinterest) stay on the desktop.
+- **Accounts › Connection check.** When Accounts opens, the studio checks every network in use (read-only, about 10
+  seconds) and lists only what needs a hand, each problem with its fix and the page to open:
+  - **YouTube:** whether each account's sign-in still refreshes, and whether it carries every scope the studio uses,
+    as reported by Google itself.
+  - **Facebook:** whether the Page's sign-in is valid and has every permission the studio uses, read from Meta's
+    `debug_token`. A missing permission names the use-cases page in your Meta app where you add it.
+  - **Instagram Stories:** whether an Instagram account is linked to the Page.
+  - **Bluesky:** when a browser sign-in runs out, and whether Bluesky will take a video from the account. An
+    unverified email makes every upload fail with 401.
+  - **Networks your Chrome posts:** whether Chrome is linked.
+  - **Every network:** its latest post that failed in the last 14 days, unless a later post went out.
+  - Also available as `GET /api/connections/check` and as the MCP tool `check_connections`.
+- **Server mode.** Off by default; desktop installs are unchanged.
+  - `STUDIO_HOST` sets the address to listen on.
+  - `STUDIO_ALLOWED_HOSTS` lists the names the studio may be opened by: a Tailscale or reverse-proxy name, a LAN
+    address, or `*`.
+  - Opening the studio beyond this computer requires `STUDIO_API_TOKEN` of 24 or more characters. Without one the
+    studio refuses to start and says why.
+  - The DNS-rebinding and same-origin rules still apply to every name.
+- **Results › What the numbers say.** Cards under the four numbers, each giving the figure that matters and what to do
+  next. One opens its detail under the cards; four show and the rest wait behind "more".
+  - **The opening that broke out:** the phrase in your Shorts' first words whose Shorts got the most views compared
+    with the rest, with how many Shorts it rests on.
+  - **The Short that stalled.**
+  - **How much of a Short people watch:** short Shorts compared with longer ones.
+  - **Live stream vs Shorts:** subscribers per 1,000 views on the live stream against the Shorts, plus a checklist for
+    setting each Short's Related video to the live stream in YouTube Studio. The API can neither set nor read a
+    Related video.
+  - **Posts that go to an account with few followers:** for Bluesky, the follower count is read from its public API.
+  - **Shorts on the channel the studio did not make.**
+  - **Whether the suggestions beat chance yet.**
+- **Instagram Story numbers.** Views, reach, shares, follows and how people tapped. They are read while each Story is
+  up: after an hour, about every 6 hours, and once a few hours before Instagram deletes them at 24 hours. This needs
+  `instagram_manage_insights`, now part of the Facebook sign-in, so connect Facebook once more.
+- **API:** `GET /api/perf/insights` and `POST /api/perf/related`.
+
+### Fixed
+- **Windows: no more terminal windows.** Every job the studio starts now hides its console window. On Windows the
+  studio's Python jobs, `taskkill` and `npm` each used to open a terminal window for as long as they ran.
+
 ## 0.23.1 (2026-11-18)
 
 Docs and media only; the studio itself is unchanged from 0.23.0.
