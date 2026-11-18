@@ -55,7 +55,44 @@ function statusOf(reviews, slug) {
  * The problems that are true now. posts: /api/posts rows; reviews: review-list rows; parts: /api/vlogs parts.
  * Returns [{ id, level, title, detail, fix: { label, href }, dismissable }].
  */
-export function findProblems({ posts = [], reviews = [], parts = [], connections = {}, perf = null, now = Date.now() } = {}) {
+/* AI blocks by name (the same words as the Workflow page). */
+const CAP = { voice: ["Voice-over", "ナレーション"], music: ["Music", "音楽"], sfx: ["Natural sound", "環境音"], upscale: ["Sharpen", "高画質化"],
+  slowmo: ["Slow motion", "スローモーション"], img2video: ["Moving photo", "写真を動かす"], "bg-cut": ["Cut-out", "切り抜き"], llm: ["Writing help", "文章の手伝い"], vision: ["AI review", "AIチェック"] };
+const capList = (caps, ja) => (caps || []).map((c) => (CAP[c] || [c, c])[ja ? 1 : 0]).join(ja ? "、" : ", ");
+const nList = (xs) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+
+/**
+ * An AI service that is out of credit or whose key is refused, from py/studio/fallback.py's health view (problems):
+ * amber when every block that uses it has a backup that takes over, red when some have none. Fixed, not dismissed:
+ * "Try X again" (fix.action) clears the mark; "Top up" (also) opens the service's billing page.
+ */
+export function aiHealthProblems(health) {
+  const out = [];
+  for (const p of health?.problems || []) {
+    const credit = p.kind === "out_of_credit", name = p.name || p.provider, red = p.level === "red";
+    const used = (p.switched || []).map((s) => `${s.n} job${s.n === 1 ? "" : "s"} used ${s.name}`), usedJa = (p.switched || []).map((s) => `${s.n}件を${s.name}で`);
+    const backups = (health?.providers || []).filter((x) => (p.backups || []).includes(x.id)).map((x) => x.name);
+    const what = credit ? "is out of credit" : "did not accept its key", whatJa = credit ? "のクレジットがなくなりました" : "のキーが受け付けられませんでした";
+    const title = red ? `${name} ${what} and no other service is set up for ${capList(p.noBackup, false)}`
+      : used.length ? `${name} ${what}, so ${nList(used)} instead` : `${name} ${what}: ${nList(backups) || "a backup service"} takes over`;
+    const titleJa = red ? `${name}${whatJa}。${capList(p.noBackup, true)}にはほかのサービスがありません`
+      : usedJa.length ? `${name}${whatJa}。代わりに${usedJa.join("、")}作りました` : `${name}${whatJa}。${backups.join("、") || "予備のサービス"}が代わりに動きます`;
+    const until = credit && p.until ? new Date(p.until * 1000) : null;
+    const hm = (L) => until.toLocaleTimeString(L, { hour: "2-digit", minute: "2-digit" });
+    const detail = `${capList(p.caps, false)} ${p.caps?.length === 1 ? "uses" : "use"} ${name}. ${red ? `Until it is back, ${capList(p.noBackup, false)} will not run: add a backup on Settings › Workflow${(p.noBackup || []).includes("voice") ? " (Voice-over switches only when you turn it on, because another service changes the voice)" : ""}.` : "Every block that uses it goes straight to its backup."} ${credit ? `${name} is asked first again ${until ? `after ${hm("en-GB")}` : "later"}, or now with Try again.` : "Paste a fresh key on Settings › Keys & AI; the studio asks it again once the key changes."}`;
+    const detailJa = `${capList(p.caps, true)}は${name}を使っています。${red ? `戻るまで${capList(p.noBackup, true)}は動きません。設定 › ワークフローで予備のサービスを追加してください${(p.noBackup || []).includes("voice") ? "（ナレーションは声が変わるので、自分でオンにしたときだけ切り替わります）" : ""}。` : "使っているブロックはすべて、そのまま予備のサービスで動きます。"}${credit ? `${until ? `${hm("ja-JP")}以降は` : "しばらくしたら"}また${name}を先に使います。「もう一度試す」ですぐ戻すこともできます。` : "設定 › キーとAIで新しいキーを貼ってください。キーが変わると、また使います。"}`;
+    out.push({
+      id: `ai:${p.provider}`, level: red ? "red" : "amber", title, detail,
+      fix: { label: `Try ${name} again`, href: "#/keys/blocks", action: { ai: "retry", provider: p.provider } },
+      ...(p.billing ? { also: { label: credit ? "Top up" : `Open ${name}`, href: p.billing } } : {}),
+      dismissable: false,
+      ja: { title: titleJa, detail: detailJa, fix: `${name}をもう一度試す`, ...(p.billing ? { also: credit ? "チャージする" : `${name}を開く` } : {}) },
+    });
+  }
+  return out;
+}
+
+export function findProblems({ posts = [], reviews = [], parts = [], connections = {}, perf = null, aiHealth = null, now = Date.now() } = {}) {
   const out = [];
   // 1. Booked, but the reel is not approved: the studio posts and swaps only approved reels.
   const ahead = posts.filter((p) => SENT.has(p.status) && Date.parse(p.at) > now && !/^vlog-/.test(p.slug || ""));
@@ -158,6 +195,9 @@ export function findProblems({ posts = [], reviews = [], parts = [], connections
         fix: "結果", ...(REACH_JA[n] ? { also: REACH_JA[n] } : {}) },
     });
   }
+  // 6. An AI service that ran out of credit or refused its key (py/studio/fallback.py): which blocks switched, which
+  //    have no backup (owner, 18 Nov: "if I run out of fal.ai auto switch to others for all workflow in the block").
+  out.push(...aiHealthProblems(aiHealth));
   return sort(out);
 }
 

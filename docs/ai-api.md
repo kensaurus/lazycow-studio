@@ -52,6 +52,7 @@ HTTP status + `{ "error": "<one plain sentence>", "code": "<code>" }`. A key nev
 | `bad_key` | 400 | fal.ai did not accept the key. Paste a fresh key in Settings › AI. |
 | `no_credits` | 402 | fal.ai says the account is out of credit. Top it up on fal.ai's billing page, then try again. |
 | `rate_limited` | 429 | OpenRouter says too many requests right now. Wait a minute, then try again. |
+| `refused` | 422 | Runway refused this request on content or safety grounds: The image did not pass moderation. Another service is not asked in its place; change the input instead. |
 | `bad_input` | 400 | tools: a list of review, sharpen, slowmo, living, foley, behind, music, voice. / Shot 3 already gets another AI tool in this run; one AI change per shot. |
 | `not_found` | 404 | There is no reel project called x. AI tools work on reels made in the studio. |
 | `network` / `timeout` / `upstream` | 503 / 504 / 502 | Could not reach fal.ai. Check the internet connection, then try again. |
@@ -249,6 +250,72 @@ Warnings: no key yet, no price known, the licence could not be checked live.
 
 `{ "provider": "elevenlabs", "voices": [{ "id", "name", "labels": {"language": "ja", …}, "preview" }], "next": "<token>" }`
 from ElevenLabs `GET /v2/voices` with the saved key (400 `no_key` without one).
+
+## When a service runs out: automatic switch to a backup (py/studio/fallback.py)
+
+The owner (18 Nov): "if I run out of fal.ai auto switch to others for all workflow in the block".
+
+**One error vocabulary.** Every adapter's failure carries `kind` (`studio.providers.http.KINDS`), whoever answered:
+
+| kind | What it reads | Switches? |
+| --- | --- | --- |
+| `out_of_credit` | 402; balance, credits or quota words (fal "Exhausted balance", OpenRouter "Insufficient credits", Runway "not enough credits", ElevenLabs `quota_exceeded`, Gemini "exceeded your current quota … billing"); kie.ai `code 402` and MiniMax `1008` inside an HTTP 200 | yes; the service is marked out for 6 h |
+| `auth` | a missing, refused or expired key (401/403, Google's "API key not valid", MiniMax `1004`) | yes; marked out until the key changes (a key never saved is not marked) |
+| `rate_limited` | 429 after the existing retries (a per-minute quota is a wait, not an empty account) | yes; 10 min |
+| `unavailable` | 5xx, a timeout, no connection | yes; 10 min |
+| `refused` | a content or safety refusal (Higgsfield `nsfw`, Runway `SAFETY.*`, Replicate "flagged", MiniMax `1026`/`1027`, OpenRouter's moderation 403) | **never**: another service must not be used to get round a refusal |
+| `bad_input` | anything else the provider could not use | never |
+
+A provider's own codes are read through its registry `errorKinds` (exact, or a prefix ending in `*`) and, for a failed
+task, `task.errorCode` (where the code is). A failure the provider may have billed (a submit that timed out) is never
+switched: one result is never paid for twice.
+
+**The backup list per capability**, asked in order after the block's own choice:
+1. your list in `workflow.json`: `"fallback": {"img2video": [{"provider": "runway", "model": "gen4_turbo"}, …]}` (a
+   `voice` may be given per entry; an unofficial model needs `acceptRisk: true`), else
+2. the automatic list: every other service that does the capability, has a key and a price and is not unofficial; the
+   registry's default first, then the cheapest for one typical reel. The first choice's own service is left out (it is
+   out with it); Luma without a price, unofficial routes and voice models that need a voice picked are passed over.
+
+Every attempt goes through `ai.charge()`'s caps again (per reel, the AI total, the daily budget) at that service's own
+price; a backup over a cap is passed over and the next one asked. A backup dearer than `maxRise` × the first choice's
+estimate (default 2×) is passed over, and the reason is part of the error if nothing worked. The ledger row of the
+attempt that worked names the provider used, with `fell_back_from` and `fallback_reason`; the failed attempt's row is
+$0 (`failed: no_credits`). The reel's AI note says "(made by Runway: fal.ai could not)", and music credits name the
+service that really made it. Covered: every generating tool (voice, music, natural sound, sharpen, slow motion, moving
+photo, cut-out, long-video music), picture questions (`vision_json`) and writing help (`research._llm`). The video
+reviewer has no backup (only OpenRouter takes video) but still marks OpenRouter out for the others.
+
+**Switches** (`workflow.json` `autoSwitch`): `on` (the master switch, default on), `maxRise` (1-10, default 2) and
+`caps` per capability. **Voice is off by default** (another service reads in another voice); every other capability is on.
+
+**"Out" memory**: `<data>/ai-health.json` (written to a temporary file and moved, so it is never half-read):
+`{providers: {fal: {kind, at, until, message, keyTag?}}, switches: [the last 200]}`. A mark is per service, so every
+block that uses it goes straight to its backup (the first choice is still asked last, in case it was topped up). When the
+cooldown ends the next call asks the first choice first again. `keyTag` is a hash of the key, never the key.
+
+### GET /api/ai/health (free)
+
+`{settings: {on, maxRise, caps}, capabilities: {cap: {auto, provider, model, source: "yours"|"auto", chain: [{provider,
+model, providerName, label, hasKey, perReel, docs, skip, health}], backup, using: {from, kind, provider, since, backup} |
+null}}, providers: [{id, name, state, since, until, message, billing, caps}], problems: [{provider, kind, level:
+"amber"|"red", caps, noBackup, switched: [{provider, name, n}], billing}]}`. The Needs-you strip turns `problems` into
+"fal.ai is out of credit, so 3 jobs used Runway instead" (amber) or "… and no other service is set up for Music,
+Voice-over" (red), with **Try fal.ai again** and **Top up** (the registry's `dashboard`).
+
+### POST /api/ai/fallback
+
+Any of `{on}`, `{maxRise}`, `{capability, auto}`, `{capability, chain: [...] | null}` (null: back to the automatic
+list). Answers with the health view plus `saved` and `warnings` (e.g. a backup with no key yet).
+
+### POST /api/ai/health/reset
+
+`{provider}` or `{all: true}`: forget the mark ("Try X again"). Answers with the health view.
+
+Templates in `shared/workflows/` may carry `"fallback": {cap: [{provider, model}]}` (never an unofficial model); Apply
+writes those lists and Undo puts the old file back (*Pro polish* and *Low-cost cloud* do). Tests:
+`py/tests/test_fallback.py`, with error fixtures in `py/tests/fixtures/providers/errors/` (modelled on each provider's
+documented error shape, not captured from a live failure).
 
 ## The workflow: blocks, templates, undo, this month's spend (py/studio/workflow.py)
 

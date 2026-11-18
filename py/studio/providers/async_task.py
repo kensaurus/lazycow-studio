@@ -31,7 +31,7 @@ import base64
 import json
 from pathlib import Path
 
-from studio.providers.base import SUBMIT_TIMEOUT, Ctx, backoff, body_error, dig, fill, first_url
+from studio.providers.base import SUBMIT_TIMEOUT, Ctx, backoff, body_error, dig, fill, first_url, kind_for_code, with_kind
 from studio.providers.http import AiError, _json, multipart, send
 
 UPLOAD_KINDS = ("multipart", "data_uri", "base64", "json_base64", "presigned")
@@ -142,6 +142,9 @@ def run(ctx: Ctx, model_id: str, model: dict, payload: dict, deadline: float) ->
     if state in failed:
         why = dig(got, t.get("error") or "error") or f"the task ended as {state}"
         err = ctx.error(422, {"detail": str(why if not isinstance(why, dict) else why.get("message") or why)})
+        # The provider's own failure code, when the registry says where it is (`errorCode`) and what it means
+        # (`errorKinds`): Runway's "SAFETY.INPUT.IMAGE" is a refusal, MiniMax's "1008" an empty balance.
+        err = with_kind(err, kind_for_code(ctx, dig(got, t["errorCode"]) if t.get("errorCode") else None))
         err.charged = False
         raise err
     out = dig(got, model.get("output") or t.get("output") or "output")

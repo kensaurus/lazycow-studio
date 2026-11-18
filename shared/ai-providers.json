@@ -375,6 +375,7 @@
                "id": "data.taskId", "poll": "/api/v1/jobs/recordInfo?taskId={id}", "status": "data.state",
                "done": ["success"], "failed": ["fail"], "output": "data.resultJson.~json.resultUrls.0", "error": "data.failMsg",
                "cost": "data.creditsConsumed", "costUnit": "credits"},
+      "errorKinds": {"401": "auth", "402": "out_of_credit", "429": "rate_limited", "430": "rate_limited", "455": "unavailable", "505": "unavailable"},
       "models": {
         "elevenlabs/text-to-speech-turbo-2-5": {
           "capability": "voice", "label": "ElevenLabs Turbo 2.5 (through kie.ai; Japanese)", "licence": "commercial", "voiceRequired": true, "maxChars": 5000,
@@ -424,7 +425,8 @@
       "creditUsd": 0.01,
       "upload": {"kind": "data_uri", "maxBytes": 5242880},
       "task": {"submit": {"method": "POST", "path": "/v1/image_to_video", "body": "{input}"}, "id": "id", "poll": "/v1/tasks/{id}", "status": "status",
-               "done": ["SUCCEEDED"], "failed": ["FAILED", "CANCELLED"], "output": "output.0", "error": "failure"},
+               "done": ["SUCCEEDED"], "failed": ["FAILED", "CANCELLED"], "output": "output.0", "error": "failure", "errorCode": "failureCode"},
+      "errorKinds": {"SAFETY.*": "refused", "INTERNAL*": "unavailable", "INPUT_PREPROCESSING.SAFETY*": "refused", "INPUT_PREPROCESSING.*": "bad_input", "ASSET.INVALID*": "bad_input"},
       "models": {
         "gen4_turbo": {
           "capability": "img2video", "label": "Runway Gen-4 Turbo image-to-video (9:16)", "licence": "commercial",
@@ -457,7 +459,10 @@
       "balance": {"note": "MiniMax does not report a balance through its API. The dashboard shows it."},
       "upload": {"kind": "data_uri", "maxBytes": 40000000},
       "task": {"submit": {"method": "POST", "path": "/v2/video_generation", "body": "{input}"}, "id": "task_id", "poll": "/v2/query/video_generation/{id}",
-               "status": "task.status", "done": ["succeeded"], "failed": ["failed", "cancelled"], "output": "task.content.url", "error": "task.error.message"},
+               "status": "task.status", "done": ["succeeded"], "failed": ["failed", "cancelled"], "output": "task.content.url", "error": "task.error.message",
+               "errorCode": "task.error.code"},
+      "errorKinds": {"1002": "rate_limited", "1004": "auth", "2049": "auth", "1008": "out_of_credit", "1026": "refused", "1027": "refused",
+                     "1039": "rate_limited", "1041": "rate_limited", "1000": "unavailable", "1001": "unavailable", "1013": "unavailable", "2013": "bad_input"},
       "models": {
         "MiniMax-H3": {
           "capability": "img2video", "label": "MiniMax H3 image-to-video (768P, first frame)", "licence": "commercial",

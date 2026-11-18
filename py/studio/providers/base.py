@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from studio.providers.http import AiError, _json, _provider_error
+from studio.providers.http import KIND_CODE, KIND_STATUS, AiError, _json, _provider_error
 
 POLL_FIRST, POLL_MAX, POLL_GROWTH = 3.0, 15.0, 1.5   # seconds: 3 s, backing off to 15 s
 SUBMIT_TIMEOUT = 60
@@ -158,12 +158,34 @@ def body_error(ctx: Ctx, body, spec: dict) -> AiError | None:
     if code is None or code in (spec.get("okCodes") or [200]):
         return None
     msg = dig(body, spec.get("bodyMessage") or "msg") or ""
+    kind = kind_for_code(ctx, code)
     try:
         status = int(code)
     except (TypeError, ValueError):
         status = 502
-    status = status if 400 <= status < 600 else 502
-    return ctx.error(status, {"detail": f"{msg} (code {code})".strip()})
+    status = KIND_STATUS[kind] if kind else (status if 400 <= status < 600 else 502)
+    return with_kind(ctx.error(status, {"detail": f"{msg} (code {code})".strip()}), kind)
+
+
+def kind_for_code(ctx: Ctx, code) -> str | None:
+    """A provider's own error code read through its registry `errorKinds` ({"1008": "out_of_credit", "SAFETY.*":
+    "refused"}): exact first, then the longest prefix ending in "*". None when the registry does not list it."""
+    table = ctx.provider.get("errorKinds") or {}
+    if code is None or not table:
+        return None
+    c = str(code)
+    if c in table:
+        return table[c]
+    hits = [k for k in table if k.endswith("*") and c.startswith(k[:-1])]
+    return table[max(hits, key=len)] if hits else None
+
+
+def with_kind(err: AiError, kind: str | None) -> AiError:
+    """err with the vocabulary word the provider's own code gave (its sentence and status already say it in words)."""
+    if kind and kind != err.kind:
+        err.kind = kind
+        err.code = KIND_CODE.get(kind, err.code)
+    return err
 
 
 def json_body(raw: bytes):

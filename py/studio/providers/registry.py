@@ -21,6 +21,8 @@ import json
 import re
 from pathlib import Path
 
+from studio.providers.http import KINDS
+
 ROOT = Path(__file__).resolve().parents[3]
 FILE = ROOT / "shared" / "ai-providers.json"
 
@@ -97,6 +99,10 @@ def validate(data: dict) -> list[str]:
             out.append(f"provider {pid}: docs must list the official https pages its entry was checked against")
         if not DATE_RX.match(str(p.get("asOf") or "")):
             out.append(f"provider {pid}: asOf must be the day its entry was checked (YYYY-MM-DD)")
+        # A provider's own error codes, read as the shared vocabulary (studio.providers.http.KINDS).
+        ek = p.get("errorKinds")
+        if ek is not None and (not isinstance(ek, dict) or any(v not in KINDS for v in ek.values())):
+            out.append(f"provider {pid}: errorKinds maps the provider's codes to one of {', '.join(KINDS)}")
         if (p.get("upload") or {}).get("kind") not in (None, *UPLOAD_KINDS):
             out.append(f"provider {pid}: upload kind {(p.get('upload') or {}).get('kind')!r} is not one of {', '.join(UPLOAD_KINDS)}")
         for mid, m in (p.get("models") or {}).items():

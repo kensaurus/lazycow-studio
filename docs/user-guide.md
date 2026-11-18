@@ -67,20 +67,22 @@ The maps, the lanes and the other graphics move a little: footage and posts flow
 
 ### Footage
 
-![Footage: where clips come from, then every clip and photo grouped by where it came from, marked used or unused, filtered to videos](img/pages/footage.gif)
+![Footage: days of posts left, a map of where the clips were filmed, then every clip and photo marked used or unused, filtered to videos](img/pages/footage.gif)
 
-Every photo and video the studio can use, with its tags. **Add footage** holds every way in, and under it **Where footage comes from**: a map with the project in the middle and each place it reads as a branch (a Drive folder, the Google Photos picks, the drop box, files dropped on the page, a Google Form), with its clips, how many are unused, when it was last checked and whether it is watched. A soft pulse moves along the line of each place the studio watches, towards the project; a dashed line means nothing comes in from there yet (red: the studio cannot read it). If your computer is set to reduce motion, nothing on the maps moves. Click a place for its details, **Look for new files**, **Browse this folder** or **Stop reading this folder**. **Fresh footage** says how many more reels your unused clips can make, and what to film next. At its top:
+Every photo and video the studio can use, with its tags, in three tabs: **Fresh footage** (how long it lasts, where it was filmed, reuse, cameras, what to film next), **Library** (the filters and every clip, grouped, the newest group open and the rest folded, ten groups at a time) and **Sources** (every way in, and where footage comes from). Opening Footage shows Fresh footage when footage is running low, otherwise the Library; each tab has its own address (`#/footage/health`, `#/footage/library`, `#/footage/sources`), and typing in the search box opens the Library. **Sources** holds every way in, and under it **Where footage comes from**: a map with the project in the middle and each place it reads as a branch (a Drive folder, the Google Photos picks, the drop box, files dropped on the page, a Google Form), with its clips, how many are unused, when it was last checked and whether it is watched. A soft pulse moves along the line of each place the studio watches, towards the project; a dashed line means nothing comes in from there yet (red: the studio cannot read it). If your computer is set to reduce motion, nothing on the maps moves. Click a place for its details, **Look for new files**, **Browse this folder** or **Stop reading this folder**. **Fresh footage** says how many more reels your unused clips can make, and what to film next. At its top:
 
 - **Footage runway**: about how many days of posts are left. It counts the days already booked, then how long the reels your fresh footage can still make would last at the pace the schedule uses new reels (different reels booked over the next 14 days). The bar shows booked days (solid), days from fresh footage (hatched) and what reusing clips could add (dashed). The yellow **Film by** flag is three days before it runs out; press it (or the button) to jump to **Film next**, whose first three lines are shown under it.
-- **Where it was filmed**: a small map with no map tiles: your home place in the middle, its radius as a dashed circle, a grid and a scale bar. Each dot is the footage filmed within about 100 m of one spot (no file's own position is shown), bigger for more files; the green part is not used in a reel yet, the grey part is. Places further away sit on the edge as arrows with how far and how many. **Close up** zooms in on the home place. Click a dot or an arrow to show only its files in the library below; the yellow **Filmed** chip beside the tags clears it. Files without a GPS position are counted but not drawn.
+- **Where it was filmed**: a small map with no map tiles: your home place in the middle, its radius as a dashed circle, a grid and a scale bar. Each dot is the footage filmed within about 100 m of one spot (no file's own position is shown), bigger for more files; the green part is not used in a reel yet, the grey part is. Places further away sit on the edge as arrows with how far and how many. **Close up** zooms in on the home place. Click a dot or an arrow to show only its files in the Library tab; the yellow **Filmed** chip beside the tags clears it. Files without a GPS position are counted but not drawn.
 
 **Add from Google Photos** opens Google's picker: since March 2025 an app can only read the photos you pick there, so a renamed or new album is not seen until you pick its items. Search does not find album names in the picker; open the album in Google Photos to see what is in it.
 
 ### Reels
 
-![Reels: the reels waiting for review beside the Studio Monitor (reels by stage, work running now, the next posts, a 7-day grid of every network), then every reel](img/pages/reels.gif)
+![Reels: the reels waiting for review beside the Studio Monitor (reels by stage, work running now, the next posts, a 7-day grid coloured by state); pointing at a reel scrubs through it](img/pages/reels.gif)
 
-The page opens on the reels waiting for you and the **Studio Monitor**: how many reels are at each stage, what is being made now, every post of the next time slot, and **Next 7 days on the networks**: one row per network, one cell per day, filled by its state (solid = booked on the site, hatched = the studio sends it, amber outline = a reminder, red = failed or missing, green = out, dashed = an empty slot that network posts in). Point at a cell for its posts; click it to open that network and day on **Posting**. Below, every reel. **Group by** sorts them by kind, by stage, or by **When made** (today, yesterday, then each day of the last week, then by month). A card shows where the reel is booked or out; hover it for **Post**, **New version**, **Other opening** and **Don't post**. Move the mouse across a card's picture to scrub through the reel (it loads only while you point at it; a click still opens the reel, and the play button plays it with sound). A reel that is not posting says why: rejected in review, replaced by a new cut, or set aside. A person badge means someone can be recognised and has not agreed yet.
+![Reels › Today: what goes out today, what waits for you, what finished overnight, and this week's views against last week's](img/pages/today.gif)
+
+The page opens on the reels waiting for you and the **Studio Monitor**: how many reels are at each stage, what is being made now, every post of the next time slot, and **Next 7 days on the networks**: one row per network, one cell per day, filled by its state (solid = booked on the site, hatched = the studio sends it, amber outline = a reminder, red = failed or missing, green = out, dashed = an empty slot that network posts in). Point at a cell for its posts; click it to open that network and day on **Posting**. Below, every reel. **Group by** sorts them by kind, by stage, or by **When made** (today, yesterday, then each day of the last week, then by month; the default). The two newest groups are open with one row of cards each (**Show all** for the rest); every later group, and the house reels, fold to one line with their counts and first pictures; click a line to open it. Beside the state filter, **Every theme** and **Every network** narrow the reels to one theme or to those booked or out on one network. A card shows where the reel is booked or out; hover it for **Post**, **New version**, **Other opening** and **Don't post**. Move the mouse across a card's picture to scrub through the reel (it loads only while you point at it; a click still opens the reel, and the play button plays it with sound). A reel that is not posting says why: rejected in review, replaced by a new cut, or set aside. A person badge means someone can be recognised and has not agreed yet.
 
 ![Reels › Make reels: pick themes, then make them; the reels waiting for review below](img/make-reels.webp)
 
@@ -97,7 +99,7 @@ The page opens on the reels waiting for you and the **Studio Monitor**: how many
 
 ![To review: a reel plays beside its clips and its words; Approve, New words and Open on the right](img/pages/review.gif)
 
-Each reel waiting for you, one row each: the reel (press it to play), its score, its words, every clip it uses, and notes such as clips to look at or faces that need consent. **Would land on** shows, for each network Plan posts books on, the first free day and time that would be left for this reel if you approved it now: the reels already approved take their slots first, then the Plan posts rules apply (one post per network a day, each site's booking limit, its posting times, no headline twice on a network within two weeks, no people on Google Maps, LinkedIn only for the long cut). **later** means no free slot within that site's limit yet; **not suited** lists the networks it will not go to. Click a day to see it in **Posting › Week**. It is a preview only: nothing is booked from here. Move the mouse across the reel's picture to scrub through it. **Approve**, **New words** or **Open**. Keys: J and K move, A approves, R draws new words.
+The queue of reels waiting for you is on the left (picture, headline, score, and a mark for faces, clips to look at or repeated words); the one you pick fills the right: the reel (press it to play), its score, its words, every clip it uses, and notes such as clips to look at or faces that need consent. After **Approve** the next reel in the queue takes its place. **Would land on** shows, for each network Plan posts books on, the first free day and time that would be left for this reel if you approved it now: the reels already approved take their slots first, then the Plan posts rules apply (one post per network a day, each site's booking limit, its posting times, no headline twice on a network within two weeks, no people on Google Maps, LinkedIn only for the long cut). **later** means no free slot within that site's limit yet; **not suited** lists the networks it will not go to. Click a day to see it in **Posting › Week**. It is a preview only: nothing is booked from here. Move the mouse across the reel's picture to scrub through it. **Approve**, **New words** or **Open**. Keys: J and K move through the queue, A approves, N draws new words, Space plays, Enter opens.
 
 #### The reel editor
 
@@ -122,7 +124,7 @@ The draw rarely repeats what the last four reels used. Night and fire reels keep
 
 ### Posting
 
-![Posting: the calendar with each day's post times and headline; the Instagram Story and YouTube filters](img/pages/posting.gif)
+![Posting › Week: one lane per network and a column per day, each post shown by state, and approved reels waiting in the tray](img/pages/posting.gif)
 
 **Posting › Week** opens first: one row per network, one column per day, today in yellow, holidays and events over their day. Each post is a chip with its time and reel: solid = booked on the site, hatched = the studio sends it, amber outline = a reminder, red = failed or missing, green = out, and a dashed box is an empty slot from that network's posting times.
 
@@ -145,9 +147,9 @@ Under the schedule: the swap of older bookings, booked reels whose sound is off 
 
 ### Results
 
-![Results: views this week, the best post and the next post; views by network; the networks that show posts to nobody; views per post side by side; every post's numbers](img/pages/results.gif)
+![Results: views this week; views by network; the networks that show posts to nobody; What to try next with each post's predicted range against its real views and the best time to post](img/pages/results.gif)
 
-The top says how many people saw your posts this week and on which networks. **Posts in, views out** draws it as one band per network: from its posts on the left to the views they brought on the right. A dashed red band means the network shows your posts to nobody; a dashed grey one means the studio cannot read its numbers. Point at a band to lift it, or click it (or press Enter) for the reason and the numbers. On a phone the same shows as bars. Under the picture's legend, one red line names any network that shows your posts to nobody; press **why?** for what to check there. A network's name on the left opens its row in **Posting › Week**; so does **See its week in Posting** in its details. Networks that give the studio no numbers at all (Instagram Stories, Google Maps, LINE) are not drawn as bands: they sit in one short **No numbers to read** line under the picture. The views column counts only posts the studio sent, over the last 60 days. **Each network, side by side** compares posts, views per post, reactions, **Views by week** (a small line of the views on each week's posts, with last week's change against the week before; with too few views it shows both numbers instead of a percentage) and the best post. **Every post** lists each post with its latest numbers.
+The top says how many people saw your posts this week and on which networks. **Each network, side by side** is one line naming the network with the most views per post; click it for the table (posts, views per post, reactions, views by week, best post). **Posts in, views out** draws it as one band per network: from its posts on the left to the views they brought on the right. A dashed red band means the network shows your posts to nobody; a dashed grey one means the studio cannot read its numbers. Point at a band to lift it, or click it (or press Enter) for the reason and the numbers. On a phone the same shows as bars. Under the picture's legend, one red line names any network that shows your posts to nobody; press **why?** for what to check there. A network's name on the left opens its row in **Posting › Week**; so does **See its week in Posting** in its details. Networks that give the studio no numbers at all (Instagram Stories, Google Maps, LINE) are not drawn as bands: they sit in one short **No numbers to read** line under the picture. The views column counts only posts the studio sent, over the last 60 days. **Each network, side by side** compares posts, views per post, reactions, **Views by week** (a small line of the views on each week's posts, with last week's change against the week before; with too few views it shows both numbers instead of a percentage) and the best post. **Every post** lists each post with its latest numbers.
 
 **What to try next** opens with **Predicted and actual**: each measured post as a grey band (the 80% range frozen when it was booked), a tick for what was expected and a dot for what it did, on one scale from 0.1× to 10× a typical post on that network, grouped by network and oldest first. The dot is green above the range, black inside it and orange below. The line above it says plainly how good the predictions are, from the rank correlation (−1 always the opposite, 0 a coin toss, +1 always right): in November 2026 it was −0.22, about as good as a coin toss, even though 18 of 20 posts landed inside their range. It improves with more posts. Point at a row for its numbers; click it to open the reel. Under it, **Best time to post** is a day × hour grid of your own numbers: views per post at each hour (point at a cell for how many posts), with tabs per network. **All networks** compares each post with its own network's average, so YouTube does not drown the rest. The slots **Plan posts** books are outlined, so you can see whether they sit where the numbers are good. A network with fewer than about 10 posts says there is not enough data yet.
 
@@ -157,7 +159,7 @@ The top says how many people saw your posts this week and on which networks. **P
 
 ![Settings › Accounts: each network grouped by what is left to do, one button on each card](img/pages/accounts.gif)
 
-Under the map, **Needs one step** is one row per network with one main button: **Open … in my Chrome**, **Connect**, or, for a sign-in that ends before posts booked after it, **Add app password** (its form opens in the row; **Sign in again instead** is the other way). Its badge then says **Connected · expires 1 Dec**. **Ready** is one small card per network: its account, how it posts and one line; **How to post here · Settings** folds the playbook, the on/off switch and **Disconnect**.
+**Ready** (networks with nothing left to do) folds to one line with their logos while anything needs a step; click it for the cards. Under the map, **Needs one step** is one row per network with one main button: **Open … in my Chrome**, **Connect**, or, for a sign-in that ends before posts booked after it, **Add app password** (its form opens in the row; **Sign in again instead** is the other way). Its badge then says **Connected · expires 1 Dec**. **Ready** is one small card per network: its account, how it posts and one line; **How to post here · Settings** folds the playbook, the on/off switch and **Disconnect**.
 
 The Facebook card also says whether **Instagram Stories** are on: every reel booked on YouTube then goes out as a story (shown for 24 hours) at the same time. They use the Facebook connection; **Connect again with Instagram** asks for the two Instagram permissions.
 
@@ -165,9 +167,11 @@ The Facebook card also says whether **Instagram Stories** are on: every reel boo
 |:--|:--|
 | **Accounts** | **How each network gets its post**: a map with the project in the middle, the three ways a post leaves the studio (the studio posts it, your Chrome posts it, you post it from a reminder) and each network on its way, with its next booking and when its sign-in ends. A pulse moving out along a line means posts go out that way; a dashed, still line and an amber dot mean one step is left. Click a network for its details, **Show its card** or **See its posts**. The middle counts every booking still to go out, as Posting does, and says how many are Instagram Stories. Under the map, each network: on or off for this project, connected or not, and a button for anything that needs one step |
 | **Workflow** | Every step a reel goes through, as a picture you can click (see **The Workflow page** below): which AI blocks are on, which service each uses, on this computer or in the cloud, what one reel costs, templates, and this month's AI spend |
-| **Keys & AI** | Your AI keys, **AI blocks** (one row per AI job: its service and model, key saved or missing, the price per reel and per unit, on or off, and **Change** to pick another service), your own AI model, the spending limits, **This studio** (motion on the graphics: Auto, On or Reduced; **Colours**: Auto, Light or Dark), **This project** (your name, link and words), the **Chrome link**, **YouTube: Google account and app**, and **Use with Claude or Cursor** |
+| **Keys & AI** | A settings page: a side list of its sections, each with a one-line status (for example "4/4 working", "$9 of $23 spent", "Light · motion Auto"), and one section open at a time at its own address (`#/keys/keys`, `#/keys/blocks`, `#/keys/llm`, `#/keys/fallback`, `#/keys/caps`, `#/keys/studio`, `#/keys/brand`, `#/keys/chrome`, `#/keys/google`, `#/keys/connect`; the older `#/keys/motion` and `#/keys/theme` open This studio). **Find a setting** above the list narrows it by a word, in English or Japanese; Enter opens the first match. The sections: your AI keys, **AI blocks** (one row per AI job: its service and model, key saved or missing, the price per reel and per unit, on or off, and **Change** to pick another service), **Automatic switching** (when a service runs out: the switch to a backup service, how much dearer a backup may be, and each service's state with **Try again** and **Top up**), your own AI model, the spending limits, **This studio** (motion on the graphics: Auto, On or Reduced; **Colours**: Auto, Light or Dark. The sun/moon button in the top bar switches Light ⇄ Dark in one click, from Auto to the opposite of what shows; Ctrl K also has **Light colours**, **Dark colours** and **Colours follow the system**), **This project** (your name, link and words), the **Chrome link**, **YouTube: Google account and app**, and **Use with Claude or Cursor** |
 
 #### The Workflow page
+
+![Settings › Workflow: the pipeline as connected blocks with each one's service and cost per reel, a block's detail, and the templates](img/pages/workflow.gif)
 
 Settings › **Workflow** draws the whole pipeline left to right, like a node editor: **Footage → Pick and cut → Words →
 Sound (voice-over, music, natural sound) → Picture (sharpen, slow motion, moving photo, cut-out) → Render → Review (AI
@@ -191,9 +195,23 @@ would change (and marks those blocks on the graph); nothing changes until you pr
 previous workflow back. Templates are files in `shared/workflows/`; the choices are saved in the project's
 `workflow.json`.
 
+**If a service runs out or is down.** When an AI service is out of credit, refuses its key, is busy or not answering,
+the studio uses the next service in that block's backup list, and every other block on that service does the same
+until it is back (6 hours for credit, until you paste a new key for a key problem, 10 minutes for busy or down). It
+never switches when a request is refused for what it shows. Each AI block on the graph says **backup: …**; a block
+running on its backup has an amber outline and **switched**. Click it: **If this service runs out or is down** has the
+block's **Auto-switch**, its backups in order (each with its key, price per reel and docs; move up or down, add,
+remove, or go back to the studio's order: services with a key and a price, the default first, then the cheapest) and a
+line such as "Using Runway since 14:02: fal.ai is out of credit". **Voice-over** does not switch until you turn it on,
+because another service reads in another voice. A backup that would cost more than twice the first choice (you can
+change this in Keys & AI) is skipped, and each attempt still keeps to your AI limits; one result is never paid twice.
+**Needs you** then says, for example, "fal.ai is out of credit, so 3 jobs used Runway instead" (amber), or in red which
+blocks have no backup, with **Try fal.ai again** and **Top up**.
+
 **AI this month** (on this page, in AI blocks, and as **AI $…** in the status bar) adds up what was really paid this
 calendar month, by job and by service, against the month's budget (the daily budget × the days in the month), with a
-mark for an even pace to today and the AI limit that is left.
+mark for an even pace to today and the AI limit that is left. On this page the top shows the total and the bar; the
+section at the bottom (folded to one line; click it) adds the month's pace and the split by service.
 
 ![Settings › Keys & AI: AI keys, the spending limits per reel, per day and in total, and what has been spent](img/keys-ai.webp)
 
@@ -258,11 +276,13 @@ To change only the music, use the **Audio** tab, then **Apply sound** (about 30 
 
 ### Versions of a booked reel
 
+![Versions: the live and the new cut side by side, then What changed, shot by shot](img/pages/versions.gif)
+
 A booked reel keeps posting while the studio makes a better cut beside it. A re-cut keeps the words, music and length. It changes only the shots the AI review found under the wrong caption. Each of those shots is searched again with the caption's own words, and a new shot is kept only when it matches clearly better.
 
 1. Open **Posting › Versions**. Booked reels with captions over the wrong picture are listed at the top. Press **Re-cut these N**.
 2. Each new cut is rendered at 9:16, checked, and watched by the AI reviewer. It is offered only when the reviewer finds it better.
-3. Watch **Live** and **New** side by side. Each changed shot shows its caption, the old and new file, and how well each matches. Under the players, **What changed** lines up both versions as shot strips on one time axis, with their words under them: a new clip is outlined in yellow, the same clip at a new time is dashed blue, new words are yellow. The chips above say which of clips, words, timing, look and music changed. Each version's review score says what it was based on (**watched the video** or **from still frames**); when the two differ, the studio cannot say which is better and says so.
+3. One reel is shown at a time; the row above it lists every reel with a better cut ready, a click away. Booked reels kept as they are fold into one line under the summary. Watch **Live** and **New** side by side. Each changed shot shows its caption, the old and new file, and how well each matches. Beside the players, **What changed** lines up both versions as shot strips on one time axis, with their words under them: a new clip is outlined in yellow, the same clip at a new time is dashed blue, new words are yellow. The chips above say which of clips, words, timing, look and music changed. Each version's review score says what it was based on (**watched the video** or **from still frames**); when the two differ, the studio cannot say which is better and says so.
 4. Choose:
    - **Use the new version**: the studio renders every size and network file (about 10 minutes), approves it, and swaps its bookings at the same times. Your press is the approval.
    - **Keep the live one**: the new cut is set aside. Nothing changes.
@@ -281,7 +301,9 @@ After a reel gets new words or a new render, **Posting › Calendar** marks its 
 
 ### Reels say the same thing
 
-**Reels › Words** shows how many reels repeat another reel's words.
+![Reels › Words: every headline with its wear bar, last and next use, and how the reels using it did](img/pages/words.gif)
+
+**Reels › Words** shows how many reels repeat another reel's words, in four tabs, each at its own address: **Headlines** (`#/words/headlines`), **Lines** (`#/words/lines`: every kept line, filtered by kind or by a word, 20 at a time), **Suggestions waiting** (`#/words/waiting`: ask for new lines, add your own, approve or reject suggestions) and **Same words** (`#/words/same`). Headlines is a table, 20 headlines a page, sorted by wear (click a column to sort by uses, last time out, result or the words); click a headline, or move with the arrow keys, and its reels, its numbers and every post that carries it open in the panel beside the table.
 
 **How worn each headline is** gives every headline one bar: its posts already out (solid) and booked (hatched), when it last went out and next goes out, how many networks show it within two weeks either side of today, and how its posts did against a typical post on the same network (once at least two have numbers). **Worn** (red) means it is on most of your networks in those two weeks; Plan posts keeps a headline off a network for two weeks, so a worn one barely gets a slot. Pick fresh words for new reels, or press **Stop using**. Click a row for the reels that use it.
 
@@ -510,6 +532,8 @@ Two project settings change how shots are graded (both are plain fields in the p
 Each shot in `manifest.json` records what was done: `shots[].color` (measured values, the target, the gains) and `shots[].stab` (the measured shake, the threshold, and whether it was steadied, with the reason).
 
 ## When something goes wrong
+
+![Results › Activity log: every job of the last day, one lane per kind, coloured by result; a bar opens its log lines](img/pages/log.gif)
 
 First look at **What needs you** under the top bar, and the **red or amber button** next to the bell. They list what went
 wrong and stay until it is fixed, even if the page was closed when it happened.

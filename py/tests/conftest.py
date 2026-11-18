@@ -10,6 +10,17 @@ os.environ["STUDIO_DATA"] = tempfile.mkdtemp(prefix="tsumagoi-studio-test-")
 os.environ["STUDIO_AESTHETIC_FETCH"] = "0"  # no download of the aesthetic head during tests
 os.environ.setdefault("STUDIO_RANCH", "1")
 
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _ai_health_per_test(tmp_path, monkeypatch):
+    """Each test starts with no AI service marked out (studio.fallback's <data>/ai-health.json is per test), so one
+    test's "out of credit" never sends another test's step to a backup."""
+    from studio import fallback
+
+    monkeypatch.setattr(fallback, "health_file", lambda: tmp_path / "ai-health.json")
+
 
 def pytest_collection_modifyitems(config, items):
     """A test marked `ranch` reads the owner's own Tsumagoi files (the ranch overlay: shared/reels.json, words,

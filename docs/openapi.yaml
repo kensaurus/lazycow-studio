@@ -3371,6 +3371,139 @@ paths:
                       aiSpent: { type: number }
                       aiLeft: { type: number }
         default: { $ref: "#/components/responses/CodedError" }
+  /api/ai/health:
+    get:
+      tags: [AI]
+      operationId: getAiHealth
+      summary: >-
+        When a service runs out (py/studio/fallback.py, docs/ai-api.md). Each AI service's health from <data>/ai-health.json
+        (ok, out_of_credit until a time, auth until its key changes, rate_limited or unavailable for 10 minutes), each
+        capability's backup list in the order it is asked (your own list, or the automatic one) and what it runs on now,
+        the auto-switch settings, and the problems the Needs-you strip shows. Reads only; never a key.
+      responses:
+        "200":
+          description: Health, backups and problems.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  settings:
+                    type: object
+                    properties:
+                      on: { type: boolean, description: the master switch }
+                      maxRise: { type: number, description: a backup may cost up to this many times the first choice's estimate (default 2) }
+                      caps: { type: object, additionalProperties: { type: boolean }, description: auto-switch per capability (voice false by default) }
+                  capabilities:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        auto: { type: boolean }
+                        provider: { type: string, nullable: true }
+                        model: { type: string, nullable: true }
+                        source: { type: string, enum: [yours, auto] }
+                        backup: { type: string, nullable: true, description: the first backup that would take over now }
+                        chain:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              provider: { type: string }
+                              model: { type: string }
+                              providerName: { type: string }
+                              label: { type: string }
+                              hasKey: { type: boolean }
+                              perReel: { type: number, nullable: true }
+                              docs: { type: string, nullable: true }
+                              skip: { type: string, nullable: true, description: why it would be passed over now (no key, no price, unofficial, needs a voice) }
+                              health: { type: string, enum: [ok, out_of_credit, auth, rate_limited, unavailable] }
+                        using:
+                          type: object
+                          nullable: true
+                          description: set while the block's own service is marked out
+                          properties:
+                            from: { type: string }
+                            kind: { type: string }
+                            provider: { type: string, nullable: true }
+                            since: { type: number, nullable: true, description: epoch seconds of the first switch since the mark }
+                            backup: { type: boolean }
+                  providers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        state: { type: string, enum: [ok, out_of_credit, auth, rate_limited, unavailable] }
+                        since: { type: number, nullable: true }
+                        until: { type: number, nullable: true }
+                        message: { type: string, nullable: true }
+                        billing: { type: string, nullable: true }
+                        caps: { type: array, items: { type: string } }
+                  problems:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        provider: { type: string }
+                        kind: { type: string, enum: [out_of_credit, auth] }
+                        level: { type: string, enum: [amber, red] }
+                        caps: { type: array, items: { type: string } }
+                        noBackup: { type: array, items: { type: string } }
+                        switched: { type: array, items: { type: object, properties: { provider: { type: string }, name: { type: string }, n: { type: integer } } } }
+        default: { $ref: "#/components/responses/CodedError" }
+  /api/ai/fallback:
+    post:
+      tags: [AI]
+      operationId: setAiFallback
+      summary: >-
+        The automatic switch's settings, saved in <data>/workflow.json (`autoSwitch`, `fallback`). Send any of: the master
+        switch, the max price rise, one capability's auto-switch, or its backup list (null goes back to the automatic one).
+        An unofficial model needs acceptRisk. Answers with the same view as GET /api/ai/health, plus warnings.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                on: { type: boolean }
+                maxRise: { type: number, minimum: 1, maximum: 10 }
+                capability: { type: string, enum: [voice, music, sfx, upscale, slowmo, img2video, bg-cut, llm, vision] }
+                auto: { type: boolean }
+                chain:
+                  type: array
+                  nullable: true
+                  maxItems: 8
+                  items:
+                    type: object
+                    required: [provider, model]
+                    properties:
+                      provider: { type: string }
+                      model: { type: string }
+                      voice: { type: string }
+                      acceptRisk: { type: boolean }
+      responses:
+        "200": { description: Saved; the health view with `saved` and `warnings`. }
+        default: { $ref: "#/components/responses/CodedError" }
+  /api/ai/health/reset:
+    post:
+      tags: [AI]
+      operationId: resetAiHealth
+      summary: '"Try X again": forget one service''s out-of-credit, key or busy mark ({provider}), or every mark ({all: true}). The next call asks it first again.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider: { type: string }
+                all: { type: boolean }
+      responses:
+        "200": { description: The health view, as GET /api/ai/health. }
+        default: { $ref: "#/components/responses/CodedError" }
   /api/ai:
     get:
       tags: [AI]

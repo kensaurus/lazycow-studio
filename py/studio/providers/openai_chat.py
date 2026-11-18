@@ -30,9 +30,12 @@ def headers(key: str, *, openrouter: bool = False) -> dict:
 
 
 def post(http, url: str, payload: dict, who: str, key: str = "", *, timeout: int = 180, openrouter: bool = False):
-    """(status, headers, body as a dict)."""
+    """(status, headers, body as a dict). An error that comes as a list of one (Gemini: [{"error": {…}}]) is that one."""
     status, h, raw = http("POST", url, who, data=json.dumps(payload).encode("utf-8"), headers=headers(key, openrouter=openrouter), timeout=timeout)
-    return status, h, _json(raw)
+    body = _json(raw)
+    if isinstance(body, list):
+        body = body[0] if body and isinstance(body[0], dict) else {}
+    return status, h, body
 
 
 def text_of(body: dict) -> str:
