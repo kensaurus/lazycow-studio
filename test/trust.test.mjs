@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { join, resolve } from "node:path";
 import test from "node:test";
-import { approvalRefusal, insideRoots, isNet, isSlug, MIN_TOKEN, pathKey, parseRange, readJson, refusal, serverMode, strayPath, tokenOk, TOKEN_COOKIE, trustRules } from "../server/trust.mjs";
+import { approvalRefusal, AUTH_LIMIT, authFailLine, authLimiter, clientIp, COOKIE_DAYS, insideRoots, isNet, isSlug, MIN_TOKEN, overHttps, pathKey, proxyPeer, parseRange, readJson, refusal, serverMode, strayPath, tokenAttempt, tokenCookie, tokenOk, TOKEN_COOKIE, trustRules } from "../server/trust.mjs";
 
 const rules = trustRules(4317);
 const req = (method, headers) => ({ method, headers: { host: "127.0.0.1:4317", ...headers } });
@@ -173,4 +173,76 @@ test("server mode: an allowed host gets in with the token, a rebinding name stil
   assert.equal(refusal({ method: "GET", url: "/api/overview", headers: { host: "10.0.0.5:4317", ...auth } }, any), null, "* accepts any name, with the token");
   assert.equal(refusal({ method: "GET", url: "/api/overview", headers: { host: "10.0.0.5:4317" } }, any), "token");
   assert.equal(refusal({ method: "GET", url: "/api/overview", headers: { host: "evil.example" } }, trustRules(4317)), "host", "the default never takes another name");
+});
+
+test("wrong tokens: which token a request presents, counted once per wrong value, never the token itself", () => {
+  const t = "s3cret-token-of-24-chars";
+  assert.deepEqual(tokenAttempt({}, "", t), { state: "none" }, "nothing presented is not a failure");
+  assert.deepEqual(tokenAttempt({ authorization: "Bearer wrong" }, "", ""), { state: "none" }, "no token set: nothing to fail");
+  assert.deepEqual(tokenAttempt({ authorization: `Bearer ${t}` }, "", t), { state: "ok" });
+  assert.deepEqual(tokenAttempt({ cookie: `${TOKEN_COOKIE}=${t}` }, "", t), { state: "ok" });
+  assert.deepEqual(tokenAttempt({}, t, t), { state: "ok" }, "/?token=");
+  assert.deepEqual(tokenAttempt({ cookie: `${TOKEN_COOKIE}=old`, authorization: `Bearer ${t}` }, "", t), { state: "ok" }, "one right one is enough");
+  for (const [h, q] of [[{ authorization: "Bearer guess" }, ""], [{ authorization: "Basic Zm9vOmJhcg==" }, ""], [{ cookie: `${TOKEN_COOKIE}=%E0` }, ""], [{}, "guess"]]) {
+    const r = tokenAttempt(h, q, t);
+    assert.equal(r.state, "wrong", JSON.stringify(h) + q);
+    assert.match(r.key, /^[0-9a-f]{16}$/);
+  }
+  assert.equal(tokenAttempt({ authorization: "Bearer a" }, "", t).key, tokenAttempt({ authorization: "Bearer a" }, "", t).key, "the same wrong value, the same key");
+  assert.notEqual(tokenAttempt({ authorization: "Bearer a" }, "", t).key, tokenAttempt({ authorization: "Bearer b" }, "", t).key);
+  const at = new Date("2026-11-19T01:02:03Z");
+  assert.equal(authFailLine("203.0.113.9", "GET", "/api/about", at), "2026-11-19T01:02:03.000Z lazycow auth failed ip=203.0.113.9 method=GET path=/api/about");
+  const forged = authFailLine("203.0.113.9", "GET", "/api/x\nlazycow auth failed ip=1.1.1.1 ", at);
+  assert.equal(forged.split("\n").length, 1, "a path cannot add a line");
+  assert.match(forged, /^2026-11-19T01:02:03\.000Z lazycow auth failed ip=203\.0\.113\.9 method=GET path=\S+$/, "nor a space a fail2ban pattern could read");
+  assert.equal(authFailLine("::1", "PO ST\n", "/", at), "2026-11-19T01:02:03.000Z lazycow auth failed ip=::1 method=POST path=/");
+});
+
+test("wrong tokens: a per-address pause after 10 in 10 minutes; others and successes are untouched; memory stays bounded", () => {
+  assert.deepEqual([AUTH_LIMIT.tries, AUTH_LIMIT.windowMs], [10, 600_000]);
+  const lim = authLimiter();
+  const t0 = 1_000_000;
+  for (let i = 0; i < 9; i++) assert.equal(lim.fail("203.0.113.9", `k${i}`, t0 + i), true);
+  assert.equal(lim.fail("203.0.113.9", "k0", t0 + 20), false, "the same wrong value again (an old cookie) is not counted or logged twice");
+  assert.equal(lim.wait("203.0.113.9", t0 + 30), 0, "9 different wrong values: still allowed");
+  assert.equal(lim.fail("203.0.113.9", "k9", t0 + 40), true);
+  assert.equal(lim.wait("203.0.113.9", t0 + 40), 600, "the 10th: paused until the window from the first failure ends");
+  assert.equal(lim.wait("203.0.113.9", t0 + 599_000), 1);
+  assert.equal(lim.wait("198.51.100.7", t0 + 40), 0, "another address is not paused");
+  assert.equal(lim.wait("203.0.113.9", t0 + 600_000), 0, "the window passed");
+  assert.equal(lim.fail("203.0.113.9", "k0", t0 + 600_001), true, "a new window counts from zero");
+  const small = authLimiter({ tries: 2, windowMs: 1000, maxIps: 3 });
+  for (let i = 0; i < 50; i++) small.fail(`10.0.0.${i}`, "k", i);
+  assert.ok(small.size() <= 3, `kept ${small.size()} addresses`);
+  for (let i = 0; i < 50; i++) small.fail("10.9.9.9", `k${i}`, 100);
+  small.fail("10.9.9.10", "k", 5000);
+  assert.ok(small.size() <= 3);
+});
+
+test("the client's address is the TCP peer, and forwarded headers count only from a trusted proxy", () => {
+  const r = (remoteAddress, headers = {}, encrypted) => ({ socket: { remoteAddress, encrypted }, headers });
+  assert.equal(clientIp(r("::ffff:203.0.113.9")), "203.0.113.9");
+  assert.equal(clientIp(r("2001:db8::1")), "2001:db8::1");
+  assert.equal(clientIp(r("127.0.0.1", { "x-forwarded-for": "198.51.100.7" })), "127.0.0.1", "not trusted: a client writes that header itself");
+  assert.equal(clientIp(r("127.0.0.1", { "x-forwarded-for": "6.6.6.6, 198.51.100.7" }), true), "198.51.100.7", "trusted: the address the nearest proxy added");
+  assert.equal(clientIp(r("127.0.0.1", { "x-forwarded-for": "1.1.1.1 ip=2.2.2.2" }), true), "unknown", "never anything a log line could be bent by");
+  assert.equal(clientIp(r(undefined)), "unknown");
+  assert.equal(overHttps(r("127.0.0.1", {}, true)), true, "a TLS socket");
+  assert.equal(overHttps(r("127.0.0.1", { "x-forwarded-proto": "https" })), false, "not trusted");
+  assert.equal(overHttps(r("127.0.0.1", { "x-forwarded-proto": "https" }), true), true);
+  assert.equal(overHttps(r("127.0.0.1", { "x-forwarded-proto": "http" }), true), false);
+});
+
+test("the token cookie lasts 30 days, HttpOnly and SameSite=Lax, and is Secure over HTTPS", () => {
+  assert.equal(COOKIE_DAYS, 30);
+  assert.equal(tokenCookie("a b"), `${TOKEN_COOKIE}=a%20b; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`);
+  assert.equal(tokenCookie("t", true), `${TOKEN_COOKIE}=t; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000; Secure`);
+});
+
+test("STUDIO_TRUST_PROXY trusts only a proxy next to the studio: loopback or a private network", () => {
+  const r = (remoteAddress) => ({ socket: { remoteAddress }, headers: {} });
+  for (const ip of ["127.0.0.1", "::1", "::ffff:127.0.0.1", "10.0.0.5", "172.18.0.1", "172.31.255.1", "192.168.1.20", "::ffff:192.168.1.20", "fd12:3456::1", "fc00::2"])
+    assert.equal(proxyPeer(r(ip)), true, ip);
+  for (const ip of ["203.0.113.9", "172.32.0.1", "172.15.0.1", "8.8.8.8", "2001:db8::1", "::ffff:8.8.8.8", "fe80::1", "", undefined])
+    assert.equal(proxyPeer(r(ip)), false, String(ip));
 });

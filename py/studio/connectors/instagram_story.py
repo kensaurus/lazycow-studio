@@ -63,6 +63,14 @@ def account(creds: dict | None = None) -> dict:
 
 def status() -> dict:
     try:
+        stored = fb._load()
+    except Exception:
+        stored = {"token": "unreadable"}  # let account() say what is wrong with it
+    if not stored or not stored.get("token"):
+        # Facebook was never connected: nothing to sign in to "again". An error here showed every new studio a red
+        # "Instagram Stories needs connecting again" alert (self-host audit 19 Nov).
+        return {"connected": False, "account": None, "error": None}
+    try:
         ig = account()
     except RuntimeError as err:
         return {"connected": False, "account": None, "error": str(err)}

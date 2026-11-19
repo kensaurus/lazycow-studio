@@ -32,6 +32,10 @@ def test_networks_in_use_and_the_latest_failure_unless_a_later_post_went_out():
     assert nc.last_failure(posts, "x", NOW) is None, "a later post went out"
     old = [{"network": "x", "status": "failed", "at": at(-24 * 20)}]
     assert nc.last_failure(old, "x", NOW) is None, "older than 14 days"
+    rebooked = [{"network": "bluesky", "slug": "focus", "status": "failed", "at": at(-1)},
+                {"network": "bluesky", "slug": "focus", "status": "queued", "at": at(24 * 25)}]
+    assert nc.last_failure(rebooked, "bluesky", NOW) is None, "booked again: handled"
+    assert nc.last_failure(rebooked[:1] + [{**rebooked[1], "slug": "other"}], "bluesky", NOW) is not None, "another reel does not count"
 
 
 def test_check_lists_each_network_with_its_fix_and_survives_one_crash(monkeypatch):
