@@ -262,7 +262,8 @@ def _in_use(posts: list[dict], now: datetime) -> set[str]:
 
 
 def last_failure(posts: list[dict], net: str, now: datetime) -> dict | None:
-    """The newest post on this network that failed or went missing in the last FAIL_DAYS, unless a later one went out."""
+    """The newest post on this network that failed or went missing in the last FAIL_DAYS, unless a later one went out
+    or that reel is booked again on this network (the fix the check itself gives)."""
     mine = sorted((p for p in posts if p.get("network") == net and _when(p.get("at"))), key=lambda p: _when(p["at"]))
     bad = None
     for p in mine:
@@ -273,6 +274,9 @@ def last_failure(posts: list[dict], net: str, now: datetime) -> dict | None:
             bad = p
         elif p.get("status") == "posted" and bad and at > _when(bad["at"]):
             bad = None
+    if bad and any(p.get("slug") == bad.get("slug") and p.get("status") in ("planned", "queued", "scheduled", "posted")
+                   and _when(p["at"]) > _when(bad["at"]) for p in mine):
+        return None
     return bad
 
 

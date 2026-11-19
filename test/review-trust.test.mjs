@@ -80,6 +80,13 @@ test("loopback page requests work; a DNS-rebinding Host and another site's subre
   assert.equal((await call("GET", "/", { headers: { "sec-fetch-site": "cross-site", "sec-fetch-mode": "navigate" } })).status, 200);
 });
 
+test("desktop use without a token is unchanged: /api/health gives the whole report, and a stray Bearer is no failure", async () => {
+  const h = JSON.parse((await call("GET", "/api/health")).body);
+  assert.equal(typeof h.build, "string");
+  assert.equal(typeof h.machine?.threads, "number");
+  for (let i = 0; i < 12; i++) assert.equal((await call("GET", "/api/about", { headers: { authorization: `Bearer nope-${i}` } })).status, 200);
+});
+
 test("a POST from another origin, or cross-site with no Origin, is refused before anything runs", async () => {
   assert.equal((await call("POST", "/api/job/cancel", { headers: { origin: "https://evil.example", "content-type": "application/json" }, body: { slug: "a" } })).status, 403);
   assert.equal((await call("POST", "/api/job/cancel", { headers: { "sec-fetch-site": "cross-site" }, body: { slug: "a" } })).status, 403);

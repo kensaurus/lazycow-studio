@@ -2,6 +2,40 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.24.1 (2026-11-19)
+
+Self-host hardening. Desktop use without `STUDIO_API_TOKEN` is unchanged.
+
+### Changed
+- **`GET /api/health` without the token says only `{"ok":true}`** when a token is set (always so in server mode): no
+  version, build, processor, memory or free disk. With the token (header or cookie) it answers in full as before.
+  Docker's health check only needs the 200.
+- **Wrong tokens are logged and paused.** Each wrong token (header, cookie or `/?token=`) is one line,
+  `<time> lazycow auth failed ip=<address> method=<method> path=<path>`, for fail2ban or CrowdSec; never the token and
+  never the query. The same wrong value from one address counts once. After 10 different wrong tokens from one address
+  in 10 minutes, that address gets 429 with `Retry-After` until 10 minutes after its first failure, without its token
+  being checked; other addresses are not affected.
+- **`STUDIO_TRUST_PROXY=1` for setups behind a reverse proxy.** The studio then reads the visitor's address from
+  `X-Forwarded-For` and HTTPS from `X-Forwarded-Proto`, only when the connection comes from loopback or a private
+  network (where the proxy or Docker's port mapping is), so a visitor from the internet cannot fake either. Off by
+  default: the address is the connection's ([docs/self-host.md](docs/self-host.md) › Wrong tokens).
+- **The token cookie lasts 30 days instead of a year,** and is marked `Secure` over HTTPS: a TLS connection, or
+  `X-Forwarded-Proto: https` from a trusted proxy.
+- **`compose.yaml` drops every Linux capability** and sets `no-new-privileges`; commented `cpus` and `mem_limit`
+  lines show how to leave processor threads for other services.
+- **A refused name says which.** A request by a name not in `STUDIO_ALLOWED_HOSTS` gets 403 naming that Host and the
+  setting to add it to, instead of "the studio only answers its own page on this machine".
+
+### Fixed
+- **Instagram Stories no longer says "connect again" on a new studio.** With Facebook never connected, Accounts shows
+  Stories as not connected, without the red alert. A stored token that cannot be read still says so.
+
+### Docs
+- **docs/self-host.md:** the download-and-start commands, the example cafe for a studio with no themes, a changed port
+  needs `STUDIO_ALLOWED_HOSTS`, a proxy that runs in Docker too, Docker publishing ports past `ufw`, the first
+  `/?token=` in a proxy's log, MCP over SSH, backing up before moving the version pin, the restore commands, the
+  Remotion licence, and a "Wrong tokens" section with a fail2ban filter.
+
 ## 0.24.0 (2026-11-18)
 
 ### Added

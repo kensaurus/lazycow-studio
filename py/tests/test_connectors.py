@@ -357,3 +357,18 @@ def test_facebook_refuses_a_time_more_than_29_days_ahead(secrets, reel, monkeypa
     with pytest.raises(RuntimeError, match="29 days"):
         facebook.post(reel, "test", at=datetime.now() + timedelta(days=40))
     assert fake.calls == []
+
+
+def test_instagram_stories_with_facebook_never_connected_is_not_an_error(monkeypatch):
+    """A new studio has no Facebook connection: Stories are not connected, not "connect again" (self-host audit 19 Nov).
+    A stored token that cannot be read still says so."""
+    from studio.connectors import instagram_story
+    monkeypatch.setattr(facebook, "_load", lambda: None)
+    assert instagram_story.status() == {"connected": False, "account": None, "error": None}
+    monkeypatch.setattr(facebook, "_load", lambda: {"page_id": "1"})
+    assert instagram_story.status() == {"connected": False, "account": None, "error": None}
+
+    def unreadable():
+        raise ValueError("bad padding")
+    monkeypatch.setattr(facebook, "_load", unreadable)
+    assert "could not be read" in instagram_story.status()["error"]

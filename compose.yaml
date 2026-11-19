@@ -18,6 +18,8 @@ services:
       # Every name the browser uses to reach the studio, exactly as it shows in the address bar (host:port, or the
       # proxy's host name alone), comma-separated.
       STUDIO_ALLOWED_HOSTS: ${STUDIO_ALLOWED_HOSTS:-localhost:4317,127.0.0.1:4317}
+      # 1 behind a reverse proxy: trust X-Forwarded-For/-Proto from loopback or private addresses (docs/self-host.md).
+      STUDIO_TRUST_PROXY: ${STUDIO_TRUST_PROXY:-}
       # Your audience's time zone (IANA name, e.g. Asia/Tokyo). Empty = the container's, which is UTC.
       STUDIO_TZ: ${STUDIO_TZ:-}
     volumes:
@@ -26,5 +28,11 @@ services:
       # Your footage, read only. Set LAZYCOW_FOOTAGE in .env to its folder on this server.
       - ${LAZYCOW_FOOTAGE:-./footage}:/footage:ro
     shm_size: 1gb       # Chrome (the words on screen) needs more than Docker's 64 MB default
+    # The studio runs as user 10001 and needs no Linux capabilities (renders verified with both lines below).
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    # Renders use every processor thread. To keep some for other services on this box, uncomment and adjust:
+    # cpus: 6
+    # mem_limit: 12g
 volumes:
   studio-data:

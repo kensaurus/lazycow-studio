@@ -4,11 +4,11 @@
  *          no cross-site reads or GET side effects from another site's page, bounded JSON bodies, slugs and
  *          network ids that can never become a command-line option, byte ranges, the folder allow-list and the
  *          approval gate every posting route shares.
- * DEPENDENCIES: node:path
+ * DEPENDENCIES: node:crypto, node:path
  * USAGE: import { refusal, trustRules, readJson, isSlug, ... } from "./trust.mjs" (server/review.mjs).
  * NOTES: Pure functions, so test/trust.test.mjs checks each rule without starting the server.
  */
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { resolve, sep } from "node:path";
 
 /* A slug or network id goes on Python's command line (`studio reels --build <slug>`, `studio publish <slug> <net>`).
@@ -65,7 +65,8 @@ export function serverMode(env = {}, token = "") {
    carries it, so another program (or another user of a shared computer) cannot drive the studio just by knowing its
    port: a program sends "Authorization: Bearer <token>"; the browser gets it once from /?token=<token> (the address the
    studio prints when it starts), which sets the TOKEN_COOKIE cookie. Origin and Sec-Fetch headers are no proof here:
-   any local program can send them. /api/health stays open (it only says whether the studio runs). /share/<id> links
+   any local program can send them. /api/health stays open (without the token it says only that the studio runs;
+   review.mjs healthFor). /share/<id> links
    are answered before these rules (server/review.mjs): each id is 192 random bits and expires after 15 minutes. */
 export const TOKEN_COOKIE = "lazycow_token";
 const same = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && timingSafeEqual(x, y); };
@@ -77,6 +78,116 @@ export function tokenOk(headers, token) {
   return (bearer !== "" && same(bearer, token)) || (cookie !== "" && same(cookie, token));
 }
 const OPEN_WITHOUT_TOKEN = /^\/api\/health(\?|$)/;
+
+/* ---------- Wrong tokens, the cookie, and who asked (docs/self-host.md, 0.24.1) ---------- */
+
+/* X-Forwarded-For and X-Forwarded-Proto are written by whoever sends the request, and believing them would let a
+   guesser pick the address that gets paused or banned. So they are believed only with STUDIO_TRUST_PROXY=1 and only
+   from a proxy next to the studio: a TCP peer on loopback or a private network (Docker, LAN), see proxyPeer(). Without
+   it, behind a proxy (or Docker's port mapping) every visitor has the proxy's address. */
+
+/** Is the TCP peer on loopback or a private network (where a reverse proxy in front of the studio lives)?
+ *  10/8, 172.16/12, 192.168/16, 127/8, ::1, fc00::/7, and those written as IPv4-in-IPv6. */
+export function proxyPeer(req) {
+  const ip = String(req?.socket?.remoteAddress || "").replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/i, "").toLowerCase();
+  const v4 = ip.match(/^(\d+)\.(\d+)\.\d+\.\d+$/);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+  }
+  return ip === "::1" || /^f[cd][0-9a-f]{2}:/.test(ip);
+}
+
+/** The address a request came from, safe to put in a log line: the TCP peer, or with trustProxy the address the
+ *  nearest proxy added last to X-Forwarded-For. IPv4 in IPv6 (::ffff:1.2.3.4) is written as IPv4. */
+export function clientIp(req, trustProxy = false) {
+  let ip = String(req?.socket?.remoteAddress || "");
+  if (trustProxy) {
+    const fwd = String(req?.headers?.["x-forwarded-for"] || "").split(",").map((s) => s.trim()).filter(Boolean).pop();
+    if (fwd) ip = fwd;
+  }
+  ip = ip.replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/i, "");
+  return /^[0-9a-fA-F:.]{2,45}$/.test(ip) ? ip : "unknown";
+}
+
+/** Did the request come over HTTPS? A TLS socket, or X-Forwarded-Proto: https from a trusted proxy. */
+export function overHttps(req, trustProxy = false) {
+  if (req?.socket?.encrypted) return true;
+  return trustProxy && String(req?.headers?.["x-forwarded-proto"] || "").split(",")[0].trim().toLowerCase() === "https";
+}
+
+/** How long the browser keeps the token after /?token=…: 30 days, then it opens that address again. */
+export const COOKIE_DAYS = 30;
+/** The Set-Cookie value that keeps the token in the browser; Secure when the request came over HTTPS. */
+export function tokenCookie(token, secure = false) {
+  return `${TOKEN_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${COOKIE_DAYS * 86400}${secure ? "; Secure" : ""}`;
+}
+
+/**
+ * Which token a request presents (Authorization, the cookie, or ?token=) and whether it is right.
+ * Returns {state: "none"} (nothing presented, or no token set), {state: "ok"} (one of them is the token), or
+ * {state: "wrong", key} where key is a short hash of the wrong values: the limiter counts each wrong value once, so
+ * a browser that still holds an old cookie after the token changed is one failure, not one per request. The key is
+ * never logged, and the token never is.
+ */
+export function tokenAttempt(headers = {}, query = "", token = "") {
+  if (!token) return { state: "none" };
+  const auth = String(headers.authorization || "");
+  const rawCookie = new RegExp(`(?:^|;\\s*)${TOKEN_COOKIE}=([^;]+)`).exec(headers.cookie || "")?.[1] || "";
+  const q = String(query || "");
+  if (!auth && !rawCookie && !q) return { state: "none" };
+  if (tokenOk(headers, token) || (q !== "" && same(q, token))) return { state: "ok" };
+  const key = createHash("sha256").update(`${auth}\n${rawCookie}\n${q}`).digest("hex").slice(0, 16);
+  return { state: "wrong", key };
+}
+
+/** Wrong tokens allowed per address in one window before it is paused (answered 429 without looking at the token). */
+export const AUTH_LIMIT = { tries: 10, windowMs: 10 * 60e3, maxIps: 10_000 };
+
+/**
+ * A per-address count of wrong tokens. The window starts at an address's first failure; after `tries` different wrong
+ * values inside it, wait() gives the seconds left until the window ends. Another address's success or failure changes
+ * nothing here. At most `maxIps` addresses are kept: expired ones go first, then the oldest.
+ */
+export function authLimiter({ tries, windowMs, maxIps } = AUTH_LIMIT) {
+  const seen = new Map();  // ip -> { since, keys: Set }
+  const live = (ip, now) => {
+    const e = seen.get(ip);
+    if (e && now - e.since >= windowMs) { seen.delete(ip); return null; }
+    return e || null;
+  };
+  const prune = (now) => {
+    for (const [ip, e] of seen) if (now - e.since >= windowMs) seen.delete(ip);
+    for (const ip of seen.keys()) { if (seen.size < maxIps) break; seen.delete(ip); }
+  };
+  return {
+    /** Seconds until this address may try again; 0 when it may now. */
+    wait(ip, now = Date.now()) {
+      const e = live(ip, now);
+      return e && e.keys.size >= tries ? Math.max(1, Math.ceil((e.since + windowMs - now) / 1000)) : 0;
+    },
+    /** Count a wrong token. True when this wrong value is new for this address in this window (log it). */
+    fail(ip, key, now = Date.now()) {
+      let e = live(ip, now);
+      if (!e) {
+        if (seen.size >= maxIps) prune(now);
+        e = { since: now, keys: new Set() };
+        seen.set(ip, e);
+      }
+      if (e.keys.has(key)) return false;
+      if (e.keys.size < tries) e.keys.add(key);
+      return true;
+    },
+    size: () => seen.size,
+  };
+}
+
+/** One line per wrong token, for fail2ban or CrowdSec. Never the token: the URL path only (no query), at most 200 characters. */
+export function authFailLine(ip, method, path, now = new Date()) {
+  const p = String(path || "/").replace(/[^\x21-\x7e]/g, "?").slice(0, 200);
+  const m = String(method || "").replace(/[^A-Za-z]/g, "").slice(0, 10) || "?";
+  return `${now.toISOString()} lazycow auth failed ip=${ip} method=${m} path=${p}`;
+}
 
 /**
  * Why a request may not go on, or null when it may.

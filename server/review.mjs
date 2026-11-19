@@ -42,7 +42,7 @@ import { setStartup, startupState } from "../scripts/autostart.mjs";
 import qrcode from "qrcode-generator";
 import { defaultProjectsDir, isRanch, ranchOverlay } from "../shared/ranch.mjs";
 import { createStore as problemStore, findProblems } from "./problems.mjs";
-import { approvalRefusal, insideRoots, isSlug, pathKey, strayPath, NET_RX, parseRange, readJson, refusal, serverMode, SLUG_RX, tokenOk, TOKEN_COOKIE, trustRules } from "./trust.mjs";
+import { approvalRefusal, authFailLine, authLimiter, clientIp, insideRoots, isSlug, overHttps, pathKey, proxyPeer, strayPath, NET_RX, parseRange, readJson, refusal, serverMode, SLUG_RX, tokenAttempt, tokenCookie, tokenOk, trustRules } from "./trust.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SELF = fileURLToPath(import.meta.url);
@@ -1889,7 +1889,7 @@ function healthView() {
   let version = "";
   try { version = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version; } catch { /* optional */ }
   return {
-    build: BUILD, current, stale: current !== BUILD, pageBuild: buildId([PAGE]), version, started: new Date(STARTED).toISOString(), restartPending,
+    ok: true, build: BUILD, current, stale: current !== BUILD, pageBuild: buildId([PAGE]), version, started: new Date(STARTED).toISOString(), restartPending,
     pinned: PINNED,  // a studio started for one project (STUDIO_PROJECT): the main studio offers "Open its studio" for it
     queue: { running: running ? running.slug : null, queued: queue.length },
     machine: { threads: facts.threads, cpu: facts.cpuModel, ramGb: Math.round(facts.ramGb), platform: facts.platform },
@@ -2040,6 +2040,16 @@ const MODE = serverMode({ STUDIO_HOST: pick("STUDIO_HOST", ""), STUDIO_ALLOWED_H
 if (MODE.error) { console.error(MODE.error); process.exit(78); }  // EX_CONFIG: a restart loop would not fix it
 const TRUST = trustRules(PORT, API_TOKEN, MODE.extra);
 const LOCAL_HOST = TRUST.host;
+/* STUDIO_TRUST_PROXY=1 (docs/self-host.md): believe X-Forwarded-For and X-Forwarded-Proto from a reverse proxy on
+   loopback or a private network only (server/trust.mjs proxyPeer), so the wrong-token pause and log name the visitor and
+   the cookie is Secure behind HTTPS. Off: the TCP peer, and those headers are ignored, because anyone can send them. */
+const TRUST_PROXY_SETTING = /^(1|true|yes)$/i.test(String(pick("STUDIO_TRUST_PROXY", "")).trim());
+const trustsProxy = (req) => TRUST_PROXY_SETTING && proxyPeer(req);
+/* Wrong tokens: one log line each (fail2ban, CrowdSec) and a pause per address after AUTH_LIMIT (docs/self-host.md). */
+const authFails = authLimiter();
+/* With a token (always so in server mode), /api/health tells a caller without it only {ok: true}: the version, build,
+   processor, memory and free disk are for the owner. Desktop use without a token is unchanged. */
+const HEALTH_PRIVATE = MODE.remote || Boolean(API_TOKEN);
 /* The rules live in server/trust.mjs (tested in test/trust.test.mjs), applied once per request in createServer below.
    GETs from another site's page (an <img>, fetch or EventSource) are refused too; a top-level navigation (a link,
    Google returning to /oauth/youtube) is not. */
@@ -2080,14 +2090,28 @@ const server = createServer(async (req, res) => {
   // then thought the studio was down. The old name keeps working for pages and scripts written before the rename.
   if (url.pathname === "/api/collect" || url.pathname.startsWith("/api/collect/")) url.pathname = "/api/intake" + url.pathname.slice(12);
   if (url.pathname.startsWith("/share/") && LOCAL_HOST.test(req.headers.host || "")) return serveShare(req, res, url);
+  if (API_TOKEN) {
+    // An address that sent too many wrong tokens waits out its window, and its token is not even looked at.
+    const ip = clientIp(req, trustsProxy(req)), wait = authFails.wait(ip);
+    if (wait) {
+      if (req.method === "GET" && url.pathname === "/api/health" && LOCAL_HOST.test(req.headers.host || "")) return send(res, 200, { ok: true });
+      res.setHeader("retry-after", String(wait));
+      return send(res, 429, { error: `too many wrong tokens from this address: try again in ${Math.ceil(wait / 60)} min` });
+    }
+    if (LOCAL_HOST.test(req.headers.host || "")) {
+      const tried = tokenAttempt(req.headers, url.pathname === "/" ? url.searchParams.get("token") || "" : "", API_TOKEN);
+      if (tried.state === "wrong" && authFails.fail(ip, tried.key)) console.error(authFailLine(ip, req.method, url.pathname));
+    }
+  }
   // With an API token: opening /?token=<token> once (the address printed at start) keeps it in this browser as a cookie.
   if (API_TOKEN && url.pathname === "/" && url.searchParams.has("token") && LOCAL_HOST.test(req.headers.host || "")
       && tokenOk({ authorization: `Bearer ${url.searchParams.get("token")}` }, API_TOKEN)) {
-    res.writeHead(303, { location: "/", "set-cookie": `${TOKEN_COOKIE}=${encodeURIComponent(API_TOKEN)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`, "cache-control": "no-store" });
+    res.writeHead(303, { location: "/", "set-cookie": tokenCookie(API_TOKEN, overHttps(req, trustsProxy(req))), "cache-control": "no-store" });
     return res.end();
   }
   const why = refusal(req, TRUST);
   if (why === "token") return send(res, 401, { error: "this studio asks for its API token: open the address it printed when it started (…/?token=…), or send Authorization: Bearer <STUDIO_API_TOKEN>" });
+  if (why === "host") return send(res, 403, { error: `the studio does not answer to the name "${String(req.headers.host || "").slice(0, 100)}": add it to STUDIO_ALLOWED_HOSTS (docs/self-host.md)` });
   if (why) return send(res, 403, { error: "the studio only answers its own page on this machine" });
   try {
     if (req.method === "GET" && url.pathname === "/") {
@@ -2119,7 +2143,7 @@ const server = createServer(async (req, res) => {
       return sendText(res, 200, readFileSync(join(ROOT, DOC_PATHS[name]), "utf8"), { "content-type": "text/plain; charset=utf-8", "cache-control": "no-cache" });
     }
     if (req.method === "GET" && url.pathname === "/api/health") {
-      return send(res, 200, healthView());
+      return send(res, 200, HEALTH_PRIVATE && !tokenOk(req.headers, API_TOKEN) ? { ok: true } : healthView());
     }
     if (req.method === "POST" && url.pathname === "/api/restart") {
       const b = await body(req);
@@ -3588,7 +3612,9 @@ function listen(attempt = 0) {
   server.once("error", async (err) => {
     if (err.code !== "EADDRINUSE") throw err;
     let other = null;
-    try { other = await (await fetch(`http://127.0.0.1:${PORT}/api/health`, { signal: AbortSignal.timeout(1500) })).json(); } catch { other = null; }
+    // With a token the other studio shows its build only to a caller that carries it (HEALTH_PRIVATE).
+    const headers = API_TOKEN ? { authorization: `Bearer ${API_TOKEN}` } : {};
+    try { other = await (await fetch(`http://127.0.0.1:${PORT}/api/health`, { headers, signal: AbortSignal.timeout(1500) })).json(); } catch { other = null; }
     const twin = other?.build === BUILD && !other?.restartPending;  // this very build, serving: a double start
     if (!twin && attempt * LISTEN_STEP < LISTEN_PATIENCE) {
       if (attempt && attempt % 40 === 0) console.error(`Port ${PORT} is still held (${other?.build ? `studio ${other.build}` : "no answer"}); waiting for it to let go.`);
