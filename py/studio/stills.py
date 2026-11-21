@@ -302,6 +302,131 @@ def photo_palette(paths: list[Path], n: int = 5) -> list[str]:
     return out[:n]
 
 
+SUBJECT_PROMPTS = ["a photo of an animal", "a photo of a person", "a photo of people", "a photo of a tent",
+                   "a photo of a car or a van", "a photo of a plate of food", "a photo of a campfire", "a photo of a building",
+                   "a photo of a hot air balloon", "a photo of a laptop on a table"]
+BACKGROUND_PROMPTS = ["a photo of empty sky", "a photo of leaves and branches", "a photo of grass", "a photo of the ground",
+                      "a photo of a plain wall", "a blurry photo"]
+
+
+def _clip_subject(path: Path) -> tuple[float, float, float] | None:
+    """Where the subject is by meaning: CLIP scores nine overlapping crops for looking like a subject (an animal, a
+    person, a tent, a car, food...) rather than background (sky, foliage, grass). Returns (x, y, confidence) or None.
+    Saliency alone takes busy foliage for the subject (21 Nov: a leopard in a tree); meaning does not."""
+    try:
+        import numpy as np
+        from PIL import Image
+
+        from studio import library
+
+        model, preprocess, tok, _, torch, _ = library._model()
+        with Image.open(path) as im:
+            im = im.convert("RGB")
+            w, h = im.size
+            centres, crops = [], []
+            for cy in (0.25, 0.5, 0.75):
+                for cx in (0.25, 0.5, 0.75):
+                    cw, ch = w * 0.5, h * 0.5
+                    x0, y0 = min(max(0, cx * w - cw / 2), w - cw), min(max(0, cy * h - ch / 2), h - ch)
+                    crops.append(preprocess(im.crop((int(x0), int(y0), int(x0 + cw), int(y0 + ch)))))
+                    centres.append(((x0 + cw / 2) / w, (y0 + ch / 2) / h))
+        with torch.no_grad():
+            img = model.encode_image(torch.stack(crops))
+            img = img / img.norm(dim=-1, keepdim=True)
+            txt = model.encode_text(tok(SUBJECT_PROMPTS + BACKGROUND_PROMPTS))
+            txt = txt / txt.norm(dim=-1, keepdim=True)
+        sim = (img @ txt.T).numpy()
+        k = len(SUBJECT_PROMPTS)
+        score = sim[:, :k].max(axis=1) - sim[:, k:].max(axis=1)
+        weights = np.exp((score - score.max()) * 60)
+        weights /= weights.sum()
+        x = float(sum(wt * c[0] for wt, c in zip(weights, centres)))
+        y = float(sum(wt * c[1] for wt, c in zip(weights, centres)))
+        return x, y, float(score.max() - np.median(score))
+    except Exception:  # noqa: BLE001 - no model, no torch: saliency alone still gives a point
+        return None
+
+
+def focal_point(path: Path) -> tuple[float, float]:
+    """Where the subject is, as (x, y) in 0..1: the point a frame keeps in view when it crops the photo.
+
+    What imgix crop=focalpoint and Cloudinary g_auto do, from parts this studio already has: faces from YuNet (the
+    strongest pull), spectral-residual saliency (Hou & Zhang, CVPR 2007: what stands out from the photo's own texture),
+    and smartcrop.js's edge and saturation cues, weighted away from the borders. The centroid of the strongest tenth of
+    that map is the focal point; with nothing that stands out, the middle."""
+    import cv2
+    import numpy as np
+
+    img = cv2.imread(str(path))
+    if img is None:
+        return 0.5, 0.5
+    h0, w0 = img.shape[:2]
+    small = cv2.resize(img, (128, max(1, round(128 * h0 / w0))), interpolation=cv2.INTER_AREA)
+    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255
+    # spectral residual: the log amplitude minus its local average, taken back to the image plane
+    f = np.fft.fft2(gray)
+    log_amp, phase = np.log(np.abs(f) + 1e-8), np.angle(f)
+    residual = log_amp - cv2.blur(log_amp.astype(np.float32), (3, 3))
+    sal = (np.abs(np.fft.ifft2(np.exp(residual + 1j * phase))) ** 2).astype(np.float32)
+    sal = cv2.GaussianBlur(sal, (9, 9), 2.5)
+    edges = cv2.GaussianBlur(np.abs(cv2.Laplacian(gray, cv2.CV_32F)), (9, 9), 3)
+    hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV).astype(np.float32)
+    satur = (hsv[..., 1] / 255) * (hsv[..., 2] / 255)
+
+    def norm(a):
+        return (a - a.min()) / (float(np.ptp(a)) or 1.0)
+
+    score = norm(sal) * 0.55 + norm(edges) * 0.25 + norm(satur) * 0.2
+    yy, xx = np.mgrid[0:score.shape[0], 0:score.shape[1]]
+    cy, cx = (score.shape[0] - 1) / 2, (score.shape[1] - 1) / 2
+    score = score * (1 - 0.45 * (((xx - cx) / (cx or 1)) ** 2 + ((yy - cy) / (cy or 1)) ** 2) / 2)  # borders count less
+    face_found = False
+    face_model = DATA / "bin" / "face_detection_yunet_2023mar.onnx"
+    if face_model.exists():  # a face is the subject: it outweighs everything else in the frame
+        try:
+            det = cv2.FaceDetectorYN.create(str(face_model), "", (small.shape[1], small.shape[0]), 0.7)
+            _, faces = det.detect(small)
+            for row in faces if faces is not None else []:
+                fx, fy, fw, fh = (int(v) for v in row[:4])
+                score[max(0, fy):fy + fh, max(0, fx):fx + fw] += 3.0
+                face_found = True
+        except cv2.error:
+            pass
+    cut = np.quantile(score, 0.9)
+    top = np.where(score >= cut, score, 0)
+    total = float(top.sum())
+    sx, sy = ((float((top * xx).sum() / total / max(1, score.shape[1] - 1)), float((top * yy).sum() / total / max(1, score.shape[0] - 1)))
+              if total > 0 else (0.5, 0.5))
+    if face_found:
+        return round(sx, 3), round(sy, 3)  # the face boost already dominates the map
+    meaning = _clip_subject(path)
+    if meaning and meaning[2] > 0.015:  # CLIP sees a clear subject in one part of the photo: follow it, nudged by saliency
+        mx, my, _ = meaning
+        return round(0.7 * mx + 0.3 * sx, 3), round(0.7 * my + 0.3 * sy, 3)
+    return round(sx, 3), round(sy, 3)
+
+
+FOCAL_CACHE = OUT / "_focal.json"
+
+
+def cached_focal(source: Path, prepared: Path) -> tuple[float, float]:
+    """focal_point, kept per source photo (path, size and time), so a photo used again costs nothing."""
+    try:
+        st = source.stat()
+        key = f"{source}|{st.st_size}|{int(st.st_mtime)}"
+    except OSError:
+        return focal_point(prepared)
+    try:
+        cache = json.loads(FOCAL_CACHE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        cache = {}
+    if key not in cache:
+        cache[key] = list(focal_point(prepared))
+        FOCAL_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        FOCAL_CACHE.write_text(json.dumps(cache), encoding="utf-8")
+    return tuple(cache[key])
+
+
 def cover_first(prepared: list[dict]) -> list[dict]:
     """The first slide is the one the feed and the profile grid show: put the photo that makes the best cover first,
     a well-scored one that is not near black (21 Nov: an "after dark" set opened on a black frame)."""
@@ -470,7 +595,8 @@ def make(n: int = 10, style: str | None = None, theme: str | None = None, seed: 
             except Exception as err:  # noqa: BLE001 - an unreadable photo is left out, not the whole set
                 print(f"skipped {Path(ph['path']).name}: {err}", file=sys.stderr)
                 continue
-            prepared.append({"src": rel, "w": w, "h": h, "asset": ph["id"], "file": ph["file"], "tagsJa": ph.get("tagsJa", [])[:3], "aes": ph.get("aesthetic")})
+            fx, fy = cached_focal(Path(ph["path"]), PUB / rel)
+            prepared.append({"src": rel, "w": w, "h": h, "fx": fx, "fy": fy, "asset": ph["id"], "file": ph["file"], "tagsJa": ph.get("tagsJa", [])[:3], "aes": ph.get("aesthetic")})
         if not prepared:
             continue
         if st["id"] in ("riso", "pixel", "typeclip", "contact"):  # duotone, pixels and letter-cuts turn a dark photo into a black block
@@ -482,16 +608,8 @@ def make(n: int = 10, style: str | None = None, theme: str | None = None, seed: 
 
             prepared.sort(key=lambda ph: _light(ph) < 0.18)  # stable: bright ones first, dark ones only fill in
         prepared = cover_first(prepared)
-        if st["id"] == "pixel":  # a real pixel look needs a tiny picture stretched without smoothing; CSS alone blurs it
-            from PIL import Image
-
-            for ph in prepared:
-                small = ph["src"].replace(".jpg", "-px.png")
-                with Image.open(PUB / ph["src"]) as im:
-                    im.convert("RGB").resize((96, max(1, round(96 * im.height / im.width))), Image.BOX).quantize(colors=24).save(PUB / small)
-                ph["src"] = small
         props = {"style": st["id"], "panels": st["panels"], "w": SLIDE_W, "h": SLIDE_H, "seed": seed + k,
-                 "photos": [{"src": p["src"], "w": p["w"], "h": p["h"]} for p in prepared],
+                 "photos": [{"src": p["src"], "w": p["w"], "h": p["h"], "fx": p["fx"], "fy": p["fy"]} for p in prepared],
                  **{key: th[key] for key in ("title", "titleJa", "sub", "kicker", "notes", "notesJa", "poem", "items", "hookJa", "hookEn", "palette")},
                  "handle": b.get("handle") or b.get("name") or "", "brand": b.get("name") or "", "date": f"'{now:%y %m %d}",
                  "photoPalette": photo_palette([PUB / ph["src"] for ph in prepared]),

@@ -2,6 +2,24 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.25.1 (2026-11-21)
+
+Photo posts crop and break lines in the right places.
+
+### Changed
+- **Crops keep the subject.** Each photo gets a focal point once (kept per photo): faces from YuNet first, then where CLIP
+  sees a subject (an animal, a person, a tent, food...) rather than sky or foliage, then spectral-residual saliency
+  (Hou & Zhang 2007) with smartcrop-style edge and colour cues. Every frame centres that point, clamped so the photo
+  still fills it, instead of cutting from the middle (a leopard in a tree, two people by a tent).
+- **Japanese breaks between phrases** (`word-break: auto-phrase`, BudouX in Chromium) with balanced lines: no lone
+  character on a last line, no ellipsis cutting a caption.
+- **Arch windows** replace the cut-out shapes: one tall arched window a slide (two on some), on one baseline with a
+  keyline frame, in the subject's own colour.
+- **Poster grid** replaces the maximal collage: a 2 x 6 grid with even gutters, square cells, one display face and one
+  Japanese face, everything aligned.
+- **The pixel game keeps photos sharp** inside its pixel frame and dialogue box.
+- Phone widgets rotate through the place's true facts instead of repeating one.
+
 ## 0.25.0 (2026-11-21)
 
 Photo posts in 22 looks, auto-booking that learns from Results, and switching AI services when one runs out.
