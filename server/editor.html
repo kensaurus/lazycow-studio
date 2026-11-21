@@ -3893,14 +3893,25 @@ button.hchip { cursor: pointer; }
   .ph-prog .bar { flex: 0 0 160px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
   .ph-prog .bar i { display: block; height: 100%; background: var(--accent); transition: width .4s; }
   .ph-wrap { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 18px; align-items: start; }
-  .ph-list { list-style: none; margin: 0; padding: 0; max-height: calc(100vh - 230px); overflow: auto; display: grid; gap: 6px; }
-  .ph-list button { display: flex; gap: 10px; width: 100%; text-align: left; padding: 6px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); align-items: center; }
+  .ph-list { list-style: none; margin: 0; padding: 0 4px 0 0; max-height: calc(100vh - 330px); overflow: hidden auto; display: grid; gap: 4px; align-content: start; }
+  .ph-list .grp { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted, #888); padding: 8px 4px 2px; position: sticky; top: 0; background: var(--bg); z-index: 1; }
+  .ph-list button { box-sizing: border-box; display: flex; gap: 10px; width: 100%; text-align: left; padding: 5px 6px; border-radius: 10px; border: 1px solid transparent; background: none; align-items: center; min-width: 0; }
+  .ph-list button:hover { background: var(--panel); }
+  .ph-list b, .ph-list .meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ph-list .marks { margin-left: auto; display: flex; gap: 4px; flex: none; color: var(--ok, #2a8); }
   .ph-list button.on { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); background: var(--panel); color: inherit; }
-  .ph-list img { width: 52px; height: 65px; object-fit: cover; border-radius: 6px; flex: none; }
-  .ph-list span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .ph-list img { width: 40px; height: 50px; object-fit: cover; border-radius: 5px; flex: none; }
+  .ph-list span { display: flex; flex-direction: column; gap: 2px; min-width: 0; } .ph-list .marks { flex-direction: row; }
   .ph-main h3 { margin: 0; }
   .ph-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
-  .ph-ok { display: flex; align-items: center; gap: 8px; } .ph-ok p { margin: 0; }
+  .ph-ok { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } .ph-ok p { margin: 0; }
+  .ph-ok .icon-only { padding: 6px 8px; }
+  .ph-bar .note { margin: 0 0 4px; }
+  .ph-phone.story video { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; display: block; }
+  .ph-slides { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  /* the mock-ups fit the window's height, so the page stays one screen (owner: no long pages) */
+  .ph-view .ph-phone { width: clamp(220px, calc((100vh - 620px) * 0.8), 340px); }
+  .ph-view .ph-phone.story { width: clamp(220px, calc((100vh - 460px) * 0.5625), 340px); }
   .ph-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
   .ph-tabs button { padding: 5px 12px; border-radius: 999px; }
   .ph-tabs button.on { background: var(--accent); color: var(--on-accent, #fff); border-color: var(--accent); }
@@ -3931,7 +3942,7 @@ button.hchip { cursor: pointer; }
   .ph-strip { display: flex; gap: 6px; overflow-x: auto; padding: 0 12px 8px; } .ph-strip img { height: 240px; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 10px; flex: none; }
   .ph-four { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin: 0 12px; border-radius: 14px; overflow: hidden; aspect-ratio: 16 / 10; }
   .ph-four img { width: 100%; height: 100%; object-fit: cover; display: block; min-height: 0; }
-  .ph-all { margin: 16px 0 0; } .ph-all img { width: 100%; border-radius: 8px; display: block; } .ph-all figcaption { margin-top: 6px; }
+  .ph-all { margin: 0; width: 100%; } .ph-all > img { width: 100%; border-radius: 8px; display: block; } .ph-all figcaption { margin: 8px 0; }
   .ph-all .linkish { background: none; border: 0; padding: 0; color: var(--bad, #c33); cursor: pointer; }
   @media (max-width: 860px) { .ph-wrap { grid-template-columns: 1fr; } .ph-list { max-height: none; grid-auto-flow: column; grid-auto-columns: 220px; overflow-x: auto; } .ph-phone, .ph-card { width: 100%; max-width: 360px; } }
 </style>
@@ -4894,6 +4905,7 @@ function live() {
     if (j.slug === "score-all") { scoreBusy = isActive(j) ? tr("pa.scoring", { i: (j.done || 0) + (j.status === "running" ? 1 : 0), n: j.of || "…" }) : ""; if (page === "results") renderHome(true); if (!isActive(j)) { scoreMap = null; predView = null; loadScores(); loadPerf(); toast(`${ico(j.status === "done" ? "check" : "alert", "sm")} ${esc(jobLabel(j.label))}`, 8000); } }
     if (j.kind === "make" && !isActive(j)) loadOverview().catch(() => {});
     if (j.slug === "stills") phJob(j);
+    if (j.slug === "stills-story") phStoryJob(j);
     if (["done", "error", "cancelled"].includes(j.status)) { const w = jobWaiters.get(j.slug); if (w) { jobWaiters.delete(j.slug); w(j); } }
     if (j.slug === "discover") {
       if (foot.picker) {
@@ -5151,7 +5163,10 @@ const I18N = {
     "st.missing": "Not found", "pd.seen": "seen live {t}", "pd.unseen": "not confirmed yet",
     "news.missing": "{s} on {n} was not found after its time: {w}", "news.signin": "{n}: {f}",
     "nav.videos": "Long videos", "sub.videos": "Long videos",
-    "nav.photos": "Photo posts", "sub.photos": "Photo posts", "ph.intro": "Carousels and a Story made from your photos in 22 looks taken from this year's design trends (bento grids, risograph zines, neo-brutal, photo-in-the-letters, travel tickets, pixel games and more). Every set picks its own colours from its photos and its own layout, with a caption for every network. Nothing posts by itself: check it here, then save the slides and post them in the app (Instagram lets you add music there).",
+    "nav.photos": "Photo posts", "sub.photos": "Photo posts", "ph.intro": "Carousels and Stories from your photos, in 22 looks, with a caption for every network. Nothing posts by itself: check a set here, then post it as an Instagram Story or send it to Drive to post by hand.",
+    "ph.tab.all": "All slides", "ph.story.post": "Post to Instagram Story", "ph.story.ask": "Post this set to Instagram as a Story now? It shows for 24 hours on {h}.",
+    "ph.story.posting": "Sending the Story…", "ph.story.posted": "Story posted {d}", "ph.story.done": "Sent to Instagram as a Story", "ph.story.vnote": "This is what Post to Instagram Story sends: the slides one after another, about {s} seconds, without sound (add music in the app if you post it by hand).",
+    "ph.story.view": "View", "ph.dl": "Download each slide:",
     "ph.make": "Make {n}, all different", "ph.anylook": "Every look", "ph.anytheme": "Any subject", "ph.making": "Making photo posts", "ph.made": "{n} photo posts made", "ph.none": "No photo posts yet. Press the button above: about a minute for ten.",
     "ph.slides": "{n} slides", "ph.tab.ig": "Instagram post", "ph.tab.grid": "Profile grid", "ph.tab.story": "Story", "ph.tab.fb": "Facebook", "ph.tab.threads": "Threads", "ph.tab.x": "X", "ph.tab.bsky": "Bluesky",
     "ph.copy": "Copy caption", "ph.copied": "Caption copied", "ph.save": "Save slides", "ph.delete": "Delete", "ph.askdel": "Delete this photo post?", "ph.all": "All slides side by side: titles and prints run across the joins",
@@ -5491,7 +5506,10 @@ const I18N = {
     "st.missing": "見つからない", "pd.seen": "公開を確認 {t}", "pd.unseen": "未確認",
     "news.missing": "{s}（{n}）が予約時刻を過ぎても見つかりません：{w}", "news.signin": "{n}：{f}",
     "nav.videos": "長い動画", "sub.videos": "長い動画",
-    "nav.photos": "写真投稿", "sub.photos": "写真投稿", "ph.intro": "写真から作るカルーセルとストーリーズ。今年のデザイントレンド（ベントーグリッド、リソ印刷ジン、ネオブルータル、文字の中に写真、旅のチケット、ドット絵ゲームなど）から22種類。色は写真から、レイアウトも毎回変わり、ネットワークごとのキャプション付き。自動では投稿しません。ここで確認して、スライドを保存し、アプリから投稿してください（Instagramはアプリで音楽を追加できます）。",
+    "nav.photos": "写真投稿", "sub.photos": "写真投稿", "ph.intro": "写真から作るカルーセルとストーリーズ。22種類のデザインで、ネットワークごとのキャプション付き。自動では投稿しません。ここで確認して、Instagramストーリーズに投稿するか、Driveに送って手で投稿してください。",
+    "ph.tab.all": "全スライド", "ph.story.post": "Instagramストーリーズに投稿", "ph.story.ask": "このセットを今すぐInstagramのストーリーズに投稿しますか？ {h} に24時間表示されます。",
+    "ph.story.posting": "ストーリーズを送信中…", "ph.story.posted": "{d}にストーリーズ投稿済み", "ph.story.done": "Instagramのストーリーズに投稿しました", "ph.story.vnote": "「Instagramストーリーズに投稿」で送られる動画です。スライドが順に流れます（約{s}秒、音なし。手で投稿するときはアプリで音楽を追加できます）。",
+    "ph.story.view": "見る", "ph.dl": "1枚ずつ保存：",
     "ph.make": "{n}種類のデザインで作る", "ph.anylook": "すべてのデザイン", "ph.anytheme": "題材はおまかせ", "ph.making": "写真投稿を作成中", "ph.made": "写真投稿を{n}件作りました", "ph.none": "まだありません。上のボタンを押してください（10件で約1分）。",
     "ph.slides": "{n}枚", "ph.tab.ig": "Instagram投稿", "ph.tab.grid": "プロフィール", "ph.tab.story": "ストーリーズ", "ph.tab.fb": "Facebook", "ph.tab.threads": "Threads", "ph.tab.x": "X", "ph.tab.bsky": "Bluesky",
     "ph.copy": "キャプションをコピー", "ph.copied": "コピーしました", "ph.save": "スライドを保存", "ph.delete": "削除", "ph.askdel": "この写真投稿を削除しますか？", "ph.all": "全スライドを横に並べて：タイトルや写真がつなぎ目をまたぎます",
@@ -7105,7 +7123,7 @@ document.addEventListener("click", async (e) => {
    the Instagram post (swipe), the profile grid (3:4 crop), the Story, Facebook, Threads, X and Bluesky. A list on the
    left, one set on the right, so the page stays one screen. Nothing here posts. */
 let phView = null, phSel = null, phTab = "ig", phLook = "", phTheme = "", phLoading = false;
-const PH_TABS = ["ig", "grid", "story", "fb", "threads", "x", "bsky"];
+const PH_TABS = ["ig", "story", "grid", "fb", "threads", "x", "bsky", "all"];
 const PH_LIMIT = { instagram: 2200, facebook: 63206, threads: 500, x: 280, bluesky: 300 };
 const phFile = (s, f) => `/api/stills/file?id=${encodeURIComponent(s.id)}&f=${f}&v=${encodeURIComponent(s.created || "")}`;
 async function loadPhotos() {
@@ -7124,6 +7142,16 @@ function phJob(j) {
   }
   const bar = $("#phProg");
   if (bar && page === "photos") bar.outerHTML = phProgress(j); else if (page === "photos" && atHome()) renderHome(true);
+}
+function phStoryJob(j) {
+  if (!phView) return;
+  phView.storyJob = j;
+  if (!isActive(j)) {
+    if (j.status === "done") toast(`${ico("send", "sm")} ${esc(tr("ph.story.done"))}`, 7000);
+    else if (j.status === "error") toast(`${ico("alert", "sm")} ${esc((j.lines || []).slice(-1)[0] || "failed")}`, 12000);
+    loadPhotos(); return;
+  }
+  if (page === "photos" && atHome()) renderHome(true);
 }
 function phProgress(j) {
   if (!j || !isActive(j)) return `<div id="phProg" hidden></div>`;
@@ -7154,8 +7182,15 @@ function phMock(s) {
       <img class="me" src="${phFile(s, s.slides[0])}" alt="">${others.map((o) => `<img src="${phFile(o, o.slides[0])}" alt="" loading="lazy">`).join("")}</div></div>
       <div class="ph-side"><p class="meta">${tr("ph.gridnote")}</p></div>`;
   }
-  if (phTab === "story") return `<div class="ph-phone story"><div class="ph-bars"><i></i></div><div class="ph-top over">${avatar}<b>${esc(handle)}</b></div><img src="${phFile(s, s.story)}" alt=""></div>
-      <div class="ph-side"><p class="meta">${tr("ph.storynote")}</p><a class="btn sm" download href="${phFile(s, s.story)}">${ico("download", "sm")}story.jpg</a></div>`;
+  if (phTab === "story") {
+    const vid = s.storyVideo ? phFile(s, s.storyVideo) : "";
+    return `<div class="ph-phone story"><div class="ph-bars"><i></i></div><div class="ph-top over">${avatar}<b>${esc(handle)}</b></div>${vid
+        ? `<video src="${vid}" autoplay muted loop playsinline aria-label="${esc(s.themeJa)}"></video>` : `<img src="${phFile(s, s.story)}" alt="">`}</div>
+      <div class="ph-side"><p class="meta">${vid ? esc(tr("ph.story.vnote", { s: Math.round(3 * s.slides.length + 1.5) })) : tr("ph.storynote")}</p>
+        <div class="row wrap">${vid ? `<a class="btn sm" download href="${vid}">${ico("download", "sm")}story.mp4</a>` : ""}<a class="btn sm" download href="${phFile(s, s.story)}">${ico("download", "sm")}story.jpg</a></div></div>`;
+  }
+  if (phTab === "all") return `<figure class="ph-all"><img src="${phFile(s, "strip.jpg")}" alt=""><figcaption class="meta">${tr("ph.all")}</figcaption>
+      <div class="ph-slides"><span class="meta">${tr("ph.dl")}</span>${s.slides.map((f, i) => `<a class="btn sm" download href="${phFile(s, f)}">${ico("download", "sm")}${i + 1}</a>`).join("")}</div></figure>`;
   if (phTab === "fb") {
     const more = s.slides.length - 4;
     return `<div class="ph-card"><div class="ph-top">${avatar}<div><b>${esc(name)}</b><div class="meta">· 🌐</div></div></div><p class="ph-txt">${esc((s.captions?.facebook || "").split("\n").slice(0, 3).join("\n"))}</p>
@@ -7188,22 +7223,34 @@ function renderPhotos() {
       <select data-phtheme aria-label="subject">${opt("", tr("ph.anytheme"), phTheme)}${(tpl?.themes || PH_THEMES).map(([id, en, ja]) => opt(id, lang === "ja" ? ja : en, phTheme)).join("")}</select>
       ${phProgress(phView.job)}</div></div>`;
   if (!sets.length) { $("#home").innerHTML = head + subTabsHtml() + bar + `<p class="empty">${tr("ph.none")}</p>`; return; }
-  const list = `<ul class="ph-list">${sets.map((x) => `<li><button class="${x.id === s.id ? "on" : ""}" data-phsel="${esc(x.id)}">
-      <img src="${phFile(x, x.slides[0])}" alt="" loading="lazy"><span><b>${esc(lang === "ja" ? x.styleJa : x.styleEn)}</b><span class="meta">${esc(lang === "ja" ? x.themeJa : x.themeEn)} · ${esc(tr("ph.slides", { n: x.panels }))}</span>
-      <span class="meta">${esc(shortDay(String(x.created || "").slice(0, 10)))}</span></span></button></li>`).join("")}</ul>`;
+  // one heading per batch ("21 Nov 13:01"), not the same date under every item
+  let lastBatch = "";
+  const list = `<ul class="ph-list">${sets.map((x) => {
+    const c = String(x.created || ""), batch = `${shortDay(c.slice(0, 10))} ${c.slice(11, 16)}`;
+    const grp = batch !== lastBatch ? `<li class="grp">${esc(batch)}</li>` : "";
+    lastBatch = batch;
+    const marks = `${x.storyPosted ? `<span title="${esc(tr("ph.story.posted", { d: shortDay(String(x.storyPosted.at).slice(0, 10)) }))}">${ico("send", "sm")}</span>` : ""}${x.approved ? `<span title="${esc(tr("ph.sent", { d: shortDay(String(x.approved.at).slice(0, 10)) }))}">${ico("check", "sm")}</span>` : ""}`;
+    return `${grp}<li><button class="${x.id === s.id ? "on" : ""}" data-phsel="${esc(x.id)}" title="${esc(`${lang === "ja" ? x.styleJa : x.styleEn} · ${lang === "ja" ? x.themeJa : x.themeEn}`)}">
+      <img src="${phFile(x, x.slides[0])}" alt="" loading="lazy"><span><b>${esc(lang === "ja" ? x.styleJa : x.styleEn)}</b><span class="meta">${esc(lang === "ja" ? x.themeJa : x.themeEn)} · ${esc(tr("ph.slides", { n: x.panels }))}</span></span>${marks ? `<span class="marks">${marks}</span>` : ""}</button></li>`;
+  }).join("")}</ul>`;
   const tabs = `<div class="ph-tabs" role="tablist">${PH_TABS.map((t) => `<button role="tab" aria-selected="${t === phTab}" class="${t === phTab ? "on" : ""}" data-phtab="${t}">${tr(`ph.tab.${t}`)}</button>`).join("")}</div>`;
-  const strip = `<figure class="ph-all"><img src="${phFile(s, "strip.jpg")}" alt=""><figcaption class="meta">${tr("ph.all")} · ${esc(tr("ph.slides", { n: s.panels }))}
-      · ${s.slides.map((f, i) => `<a download href="${phFile(s, f)}">${i + 1}</a>`).join(" ")} · <button class="linkish" data-phdel="${esc(s.id)}">${ico("trash", "sm")}${tr("ph.delete")}</button></figcaption></figure>`;
+  const sj = phView.storyJob && isActive(phView.storyJob) ? phView.storyJob : null;
+  const storyBtn = s.storyPosted
+    ? `<p class="meta ok">${ico("send", "sm")} ${esc(tr("ph.story.posted", { d: shortDay(String(s.storyPosted.at).slice(0, 10)) + " " + String(s.storyPosted.at).slice(11, 16) }))}${s.storyPosted.url ? ` · <a href="${escUrl(s.storyPosted.url)}" target="_blank" rel="noopener">${tr("ph.story.view")}</a>` : ""}</p>`
+    : sj ? `<button class="primary" disabled>${ico("clock", "sm")}${esc(tr("ph.story.posting"))} ${esc(sj.label || "")}</button>`
+    : `<button class="primary" data-phstory="${esc(s.id)}">${ico("send", "sm")}${tr("ph.story.post")}</button>`;
   const ready = s.approved ? `<p class="meta ok">${ico("check", "sm")} ${esc(tr("ph.sent", { d: shortDay(String(s.approved.at).slice(0, 10)) }))} <span class="mono" title="${esc(s.approved.folder)}">${esc(String(s.approved.folder).split(/[\\/]/).pop())}</span></p>`
-    : `<button class="primary" data-phok="${esc(s.id)}" title="${esc(tr("ph.sendtip"))}">${ico("send", "sm")}${tr("ph.send")}</button>`;
-  $("#home").innerHTML = head + subTabsHtml() + bar + `<div class="ph-wrap">${list}<section class="ph-main"><div class="ph-head"><h3>${esc(lang === "ja" ? s.styleJa : s.styleEn)} · ${esc(lang === "ja" ? s.themeJa : s.themeEn)}</h3><div class="ph-ok">${ready}</div></div>${tabs}<div class="ph-view">${phMock(s)}</div>${strip}</section></div>`;
+    : `<button data-phok="${esc(s.id)}" title="${esc(tr("ph.sendtip"))}">${ico("folder", "sm")}${tr("ph.send")}</button>`;
+  const del = `<button class="icon-only" data-phdel="${esc(s.id)}" title="${esc(tr("ph.delete"))}" aria-label="${esc(tr("ph.delete"))}">${ico("trash", "sm")}</button>`;
+  $("#home").innerHTML = head + subTabsHtml() + bar + `<div class="ph-wrap">${list}<section class="ph-main"><div class="ph-head"><h3>${esc(lang === "ja" ? s.styleJa : s.styleEn)} · ${esc(lang === "ja" ? s.themeJa : s.themeEn)} <span class="meta">· ${esc(tr("ph.slides", { n: s.panels }))}</span></h3><div class="ph-ok">${storyBtn}${ready}${del}</div></div>${tabs}<div class="ph-view">${phMock(s)}</div></section></div>`;
+  document.querySelector(".ph-list button.on")?.scrollIntoView({ block: "nearest" });
 }
 const PH_STYLES = [["pano", "Seamless panorama", "つながるパノラマ"], ["polaroid", "Polaroid collage", "ポラロイド"], ["film", "Film strip", "フィルム"], ["magazine", "Magazine", "マガジン"], ["dump", "Photo dump", "フォトダンプ"],
   ["scrapbook", "Scrapbook", "スクラップブック"], ["gallery", "Gallery", "ギャラリー"], ["tategaki", "Vertical poem", "縦書き"], ["guide", "Save-worthy guide", "保存したくなるガイド"], ["newspaper", "Newspaper", "新聞"]];
 const PH_THEMES = [["autumn", "Autumn", "秋"], ["stay", "Tents", "テント泊"], ["views", "Views", "景色"], ["work", "Work", "山で働く"], ["food", "Food", "ごはん"], ["night", "Night", "夜"], ["winter", "Winter", "冬"]];
 const subTabsHtml = () => "";  // renderHome adds the section's tabs itself (subTabs)
 document.addEventListener("click", async (e) => {
-  const t = e.target.closest("[data-phsel],[data-phtab],[data-phmake],[data-phcopy],[data-phdel],[data-phok]");
+  const t = e.target.closest("[data-phsel],[data-phtab],[data-phmake],[data-phcopy],[data-phdel],[data-phok],[data-phstory]");
   if (!t || page !== "photos") return;
   if (t.dataset.phsel) { phSel = t.dataset.phsel; renderHome(true); return; }
   if (t.dataset.phtab) { phTab = t.dataset.phtab; renderHome(true); return; }
@@ -7214,6 +7261,13 @@ document.addEventListener("click", async (e) => {
     try { const r = await api("/api/stills/approve", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: t.dataset.phok }) });
       toast(`${ico("check", "sm")} ${esc(tr("ph.sentto", { n: r.files }))}`, 6000); await loadPhotos(); }
     catch (err) { t.disabled = false; toast(`${ico("alert", "sm")} ${esc(err.message)}`, 8000); }
+    return;
+  }
+  if (t.dataset.phstory) {
+    if (!confirm(tr("ph.story.ask", { h: brandView?.handle || "Instagram" }))) return;
+    t.disabled = true;
+    try { phView.storyJob = await api("/api/stills/story", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: t.dataset.phstory }) }); renderHome(true); }
+    catch (err) { t.disabled = false; toast(`${ico("alert", "sm")} ${esc(err.message)}`, 9000); }
     return;
   }
   if (t.dataset.phdel) {

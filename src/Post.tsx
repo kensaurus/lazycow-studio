@@ -733,38 +733,100 @@ const Ticket: React.FC<PostProps> = (p) => {
   );
 };
 
-/* 17. Contact sheet with grease pencil */
+/* 17. Contact sheet: the roll, then the picks (owner, 21 Nov: the old one "doesn't make sense": random crosses on good
+   photos, a loupe over a picture, labels on every frame). Slide 1 is the sheet as a photographer prints it: four film
+   strips of four frames on photo paper, sprocket holes and frame numbers on the film's edge, and the picks circled in
+   red grease pencil and numbered. Every next slide is one pick, enlarged as a print with its black film border, its
+   frame number, and its line. */
+const GREASE = "#d8261c";
+const loop = (cx: number, cy: number, rx: number, ry: number, r: () => number) => {
+  // a hand-drawn loop: a slightly wobbly ellipse that overshoots where it started, as a grease pencil does
+  const pts: string[] = [], turns = 1.12, n = 40, start = r() * Math.PI * 2;
+  for (let k = 0; k <= n; k++) {
+    const a = start + (k / n) * turns * Math.PI * 2, wob = 1 + (r() - 0.5) * 0.05 + (k / n) * 0.05;
+    pts.push(`${(cx + Math.cos(a) * rx * wob).toFixed(1)},${(cy + Math.sin(a) * ry * wob).toFixed(1)}`);
+  }
+  return `M${pts.join(" L")}`;
+};
+const FilmStrip: React.FC<{ x: number; y: number; w: number; h: number; band: number; paper: string }> = ({ x, y, w, h, band, paper }) => {
+  const hw = 12, hh = 17, holes = Math.floor((w - 20) / (hw * 2.4)), step = (w - 20) / holes;
+  return (
+    <div style={{ position: "absolute", left: x, top: y, width: w, height: h, background: "#141414" }}>
+      {[(band - hh) / 2, h - band + (band - hh) / 2].map((top, b) => Array.from({ length: holes }, (_, k) => (
+        <div key={`${b}-${k}`} style={{ position: "absolute", left: 10 + k * step + (step - hw) / 2, top, width: hw, height: hh, borderRadius: 3, background: paper }} />
+      )))}
+    </div>
+  );
+};
 const Contact: React.FC<PostProps> = (p) => {
   const { w, h, panels } = p, r = rng(p.seed + 17);
-  const red = "#e2231a", fw = 470, fh = 318;
-  let k = 0;
+  const paper = "#eeebe4", ink = "#161616", edge = "#e39a3b", grey = "#6b665e";
+  const picks = Math.max(1, panels - 1), cols = 4, rows = 4, frames = cols * rows;
+  const sx = 40, sw = w - 80, band = 34, gap = 10, pad = 12;
+  const fw = Math.floor((sw - 2 * pad - (cols - 1) * gap) / cols), fh = Math.round(fw / 1.5), sh = fh + 2 * band, top = 262, sgap = 20;
+  // which frames were picked: one per strip while there are strips, somewhere along it
+  const order = Array.from({ length: rows }, (_, i) => i).sort(() => r() - 0.5);
+  const pickAt = Array.from({ length: picks }, (_, k) => order[k % rows] * cols + Math.floor(r() * cols)).sort((a, b) => a - b);
+  // the picks show the set's best photos (stills.cover_first puts them first); the rest fill the other frames in order
+  let next = picks;
+  const photoOf = Array.from({ length: frames }, (_, f) => { const k = pickAt.indexOf(f); return k >= 0 ? k : next++; });
+  const num = (f: number) => String(f + 1).padStart(2, "0");
+  const edgeText: React.CSSProperties = { fontFamily: "IBM Plex Mono", fontSize: 15, color: edge, background: "#141414", padding: "0 6px", letterSpacing: "0.08em", fontVariantNumeric: "tabular-nums", lineHeight: "20px" };
   return (
-    <AbsoluteFill style={{ background: "#121212" }}>
-      {Array.from({ length: panels }, (_, i) => {
-        const x = i * w, pick = Math.floor(r() * 6), reject = (pick + 1 + Math.floor(r() * 4)) % 6;
+    <AbsoluteFill style={{ background: paper }}>
+      {/* slide 1: the sheet */}
+      <Text x={sx} y={58} w={sw} style={{ fontFamily: "IBM Plex Mono", fontSize: 22, color: grey, letterSpacing: "0.18em" }}>{`CONTACT SHEET · ROLL 01 · ${p.date}`}</Text>
+      <Text x={sx} y={100} w={sw} style={{ fontFamily: "Zen Kaku Gothic New", fontWeight: 700, fontSize: 56, lineHeight: 1.25, color: ink }}>{p.hookJa || p.titleJa}</Text>
+      {Array.from({ length: rows }, (_, row) => {
+        const y = top + row * (sh + sgap);
         return (
-          <React.Fragment key={i}>
-            {Array.from({ length: 6 }, (_, j) => {
-              const fx = x + 50 + (j % 2) * (fw + 40), fy = 170 + Math.floor(j / 2) * (fh + 62), n = k++;
+          <React.Fragment key={row}>
+            <FilmStrip x={sx} y={y} w={sw} h={sh} band={band} paper={paper} />
+            {Array.from({ length: cols }, (_, c) => {
+              const f = row * cols + c, fx = sx + pad + c * (fw + gap);
               return (
-                <React.Fragment key={j}>
-                  <Box x={fx} y={fy} w={fw} h={fh}><Photo p={at(p.photos, n)} filter="contrast(1.05)" /></Box>
-                  <Text x={fx} y={fy + fh + 8} style={{ fontFamily: "IBM Plex Mono", fontSize: 20, color: "#f2a33a" }}>{`${n + 1}  ▸  ${n + 1}A   ${SHORT(p)} 400`}</Text>
-                  {j === pick ? <div style={{ position: "absolute", left: fx - 30, top: fy - 26, width: fw + 60, height: fh + 52, border: `7px solid ${red}`, borderRadius: "48% 52% 46% 54% / 50% 44% 56% 50%", transform: `rotate(${(r() - 0.5) * 6}deg)` }} /> : null}
-                  {j === reject ? <svg style={{ position: "absolute", left: fx, top: fy }} width={fw} height={fh}><path d={`M20 20 L${fw - 20} ${fh - 20} M${fw - 20} 20 L20 ${fh - 20}`} stroke={red} strokeWidth={8} strokeLinecap="round" opacity={0.85} /></svg> : null}
-                  {j === pick ? <Text x={fx + fw - 160} y={fy - 70} style={{ fontFamily: "Caveat", fontSize: 58, color: red, transform: "rotate(-6deg)" }}>{i === 0 ? "this one ✓" : at(p.notes, i)}</Text> : null}
+                <React.Fragment key={c}>
+                  <Box x={fx} y={y + band} w={fw} h={fh}><Photo p={at(p.photos, photoOf[f])} /></Box>
+                  <Text x={fx + 4} y={y + sh - band + 7} style={edgeText}>{`${num(f)}  ▸${num(f)}A`}</Text>
                 </React.Fragment>
               );
             })}
+            <Text x={sx + sw - 200} y={y + 7} style={edgeText}>{`${SHORT(p)} 400`}</Text>
           </React.Fragment>
         );
       })}
-      <Text x={50} y={30} w={w - 100} style={{ fontFamily: "IBM Plex Mono", fontSize: 24, color: "#aaa", letterSpacing: "0.2em" }}>{`CONTACT SHEET · ${p.title.toUpperCase()} · ${p.date}`}</Text>
-      <Text x={50} y={70} w={w - 100} style={{ fontFamily: "Zen Kaku Gothic New", fontWeight: 700, fontSize: 52, color: "#fff" }}>{p.hookJa}</Text>
-      <div style={{ position: "absolute", left: (panels - 1) * w + 560, top: 760, width: 440, height: 440, borderRadius: "50%", border: "18px solid #2b2b2b", boxShadow: "0 0 0 4px #555, 0 30px 60px rgba(0,0,0,0.6)", overflow: "hidden" }}>
-        <Photo p={at(p.photos, (panels - 1) * 6)} style={{ transform: "scale(1.9)" }} />
-      </div>
-      <Text x={(panels - 1) * w + 60} y={h - 120} w={w - 120} style={{ fontFamily: "Zen Kaku Gothic New", fontWeight: 700, fontSize: 40, color: "#fff" }}>{p.hookJa} <span style={{ fontFamily: "IBM Plex Mono", fontSize: 24, color: "#aaa" }}>{p.handle}</span></Text>
+      <svg style={{ position: "absolute", left: 0, top: 0, overflow: "visible" }} width={w} height={h}>
+        {pickAt.map((f, k) => {
+          const row = Math.floor(f / cols), c = f % cols, cx = sx + pad + c * (fw + gap) + fw / 2, cy = top + row * (sh + sgap) + band + fh / 2;
+          return <path key={k} d={loop(cx, cy, fw * 0.6, fh * 0.7, r)} fill="none" stroke={GREASE} strokeWidth={7} strokeLinecap="round" strokeLinejoin="round" opacity={0.92} />;
+        })}
+      </svg>
+      {pickAt.map((f, k) => {
+        const row = Math.floor(f / cols), c = f % cols, cx = sx + pad + c * (fw + gap) + fw / 2, cy = top + row * (sh + sgap) + band;
+        return <Text key={k} x={Math.min(w - 70, cx + fw * 0.46)} y={cy - 66} style={{ fontFamily: "Caveat", fontWeight: 700, fontSize: 64, color: GREASE, transform: "rotate(-8deg)" }}>{k + 1}</Text>;
+      })}
+      <Text x={sx} y={h - 80} w={sw / 2} style={{ fontFamily: "IBM Plex Mono", fontSize: 22, color: grey }}>{p.handle}</Text>
+      <Text x={w / 2} y={h - 98} w={sw / 2} style={{ fontFamily: "Caveat", fontWeight: 700, fontSize: 46, color: GREASE, textAlign: "right" }}>{`picks ${pickAt.map((f) => num(f)).join(" · ")} →`}</Text>
+
+      {/* slides 2...: one pick each, printed with its film border */}
+      {pickAt.map((f, k) => {
+        const x = (k + 1) * w, ph = at(p.photos, k), tall = !!ph && ph.h > ph.w;
+        const pw = tall ? 640 : sw - 60, phh = tall ? 853 : Math.round((sw - 60) / 1.5), b = 24;
+        // the print and its line, centred on the slide between the header and the handle
+        const block = phh + 2 * b + 30 + 210, py = Math.max(120, Math.round(110 + (h - 200 - block) / 2)), px = x + (w - pw) / 2 - b, below = py + phh + 2 * b + 30;
+        return (
+          <React.Fragment key={k}>
+            <Text x={x + sx} y={58} w={sw} style={{ fontFamily: "IBM Plex Mono", fontSize: 22, color: grey, letterSpacing: "0.18em" }}>{`PICK ${k + 1} / ${picks} · FRAME ${num(f)}`}</Text>
+            <div style={{ position: "absolute", left: px, top: py, width: pw + 2 * b, height: phh + 2 * b + 30, background: "#141414", boxShadow: "0 20px 40px rgba(0,0,0,0.18)" }} />
+            <Box x={px + b} y={py + b} w={pw} h={phh}><Photo p={ph} /></Box>
+            <Text x={px + b} y={py + phh + b + 10} style={{ ...edgeText, fontSize: 17 }}>{`${num(f)}  ▸${num(f)}A   ${SHORT(p)} 400`}</Text>
+            <Text x={px + pw + 2 * b - 60} y={py - 56} style={{ fontFamily: "Caveat", fontWeight: 700, fontSize: 76, color: GREASE, transform: "rotate(-8deg)" }}>{k + 1}</Text>
+            <Text x={x + sx + 20} y={below + 50} w={sw - 40} style={{ fontFamily: "Zen Kaku Gothic New", fontWeight: 700, fontSize: 52, lineHeight: 1.35, color: ink }}>{at(p.notesJa, k)}</Text>
+            <Text x={x + sx + 20} y={below + 130} w={sw - 40} style={{ fontFamily: "IBM Plex Mono", fontSize: 24, color: grey }}>{at(p.notes, k)}</Text>
+            {k === picks - 1 ? <Text x={x + sx + 20} y={h - 80} style={{ fontFamily: "IBM Plex Mono", fontSize: 22, color: grey }}>{p.handle}</Text> : null}
+          </React.Fragment>
+        );
+      })}
     </AbsoluteFill>
   );
 };

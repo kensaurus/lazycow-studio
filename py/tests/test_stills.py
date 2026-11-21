@@ -226,3 +226,52 @@ def test_the_focal_point_is_kept_per_source_photo(tmp_path, monkeypatch):
     Image.new("RGB", (10, 10)).save(src)
     assert stills.cached_focal(src, src) == (0.3, 0.7) and stills.cached_focal(src, src) == (0.3, 0.7)
     assert len(calls) == 1
+
+
+def _story_set(out):
+    d = out / "1121-090000-01-contact-autumn"
+    d.mkdir(parents=True)
+    for k, colour in enumerate(("#c84", "#48c", "#8c4"), 1):
+        Image.new("RGB", (stills.SLIDE_W, stills.SLIDE_H), colour).save(d / f"slide-0{k}.jpg")
+    meta = {"id": d.name, "style": "contact", "theme": "autumn", "styleJa": "コンタクトシート", "themeJa": "嬬恋の秋",
+            "slides": ["slide-01.jpg", "slide-02.jpg", "slide-03.jpg"], "story": "story.jpg", "captions": {}}
+    (d / "meta.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    return d
+
+
+def test_the_story_video_steps_through_every_slide_in_9_16(tmp_path, monkeypatch):
+    import subprocess
+
+    from studio.config import ffprobe_bin
+
+    monkeypatch.setattr(stills, "OUT", tmp_path)
+    d = _story_set(tmp_path)
+    video = stills.story_video(d.name)
+    probe = subprocess.run([str(ffprobe_bin()), "-v", "error", "-show_entries", "stream=codec_type,width,height:format=duration",
+                            "-of", "json", str(video)], capture_output=True, text=True, check=True)
+    info = json.loads(probe.stdout)
+    v = next(s for s in info["streams"] if s["codec_type"] == "video")
+    assert (v["width"], v["height"]) == (stills.STORY_W, stills.STORY_H)
+    assert any(s["codec_type"] == "audio" for s in info["streams"])  # a silent track: Instagram wants one
+    assert 9.0 <= float(info["format"]["duration"]) <= 12.0  # 3 slides, about 3 s each
+    assert not (d / "_story").exists()  # the frames are cleaned up
+    assert stills.file_path(d.name, "story.mp4") == video
+
+
+def test_a_story_goes_once_and_the_set_remembers_it(tmp_path, monkeypatch):
+    from studio.connectors import instagram_story
+
+    monkeypatch.setattr(stills, "OUT", tmp_path)
+    d = _story_set(tmp_path)
+    sent = []
+    monkeypatch.setattr(stills, "story_video", lambda sid: (d / "story.mp4").write_bytes(b"mp4") and d / "story.mp4")
+    monkeypatch.setattr(instagram_story, "post", lambda video, *a, **k: sent.append(video) or {"url": "https://instagram.com/stories/x/1", "remote_id": "1"})
+    r = stills.post_story(d.name)
+    assert r["posted"] and r["url"].endswith("/1") and sent == [d / "story.mp4"]
+    meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+    assert meta["storyPosted"]["id"] == "1" and meta["storyVideo"] == "story.mp4"
+    with pytest.raises(RuntimeError, match="went to Instagram"):
+        stills.post_story(d.name)
+    assert len(sent) == 1
+    with pytest.raises(ValueError):
+        stills.post_story("../x")

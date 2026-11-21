@@ -2626,7 +2626,7 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "GET" && url.pathname === "/api/stills/file") {
       const id = url.searchParams.get("id") || "", f = url.searchParams.get("f") || "";
-      if (!/^[a-z0-9][a-z0-9-]{2,80}$/.test(id) || !/^(slide-\d{2}|strip|story)\.jpg$/.test(f)) return send(res, 400, "id and f", "text/plain");
+      if (!/^[a-z0-9][a-z0-9-]{2,80}$/.test(id) || !/^((slide-\d{2}|strip|story)\.jpg|story\.mp4)$/.test(f)) return send(res, 400, "id and f", "text/plain");
       return sendFile(req, res, join(DATA, "stills", id, f));
     }
     if (req.method === "POST" && url.pathname === "/api/stills/approve") {
@@ -2634,6 +2634,15 @@ const server = createServer(async (req, res) => {
       if (!/^[a-z0-9][a-z0-9-]{2,80}$/.test(String(b.id || ""))) return send(res, 400, { error: "id: a photo post's id" });
       try { return send(res, 200, await pyResult(["stills", "approve", b.id], null, 60_000)); }
       catch (e) { return send(res, e.status || 500, { error: e.message }); }
+    }
+    // Post a set to Instagram as a Story now (stills.post_story: a short video of its slides). Outward-facing: the UI
+    // asks first; one set at a time; a set already sent says when.
+    if (req.method === "POST" && url.pathname === "/api/stills/story") {
+      const b = await body(req);
+      if (!/^[a-z0-9][a-z0-9-]{2,80}$/.test(String(b.id || ""))) return send(res, 400, { error: "id: a photo post's id" });
+      const cur = jobs.get("stills-story");
+      if (cur && cur.status === "running") return send(res, 409, { error: "A Story is being sent; wait for it to finish." });
+      return send(res, 200, jobView(startTask("stills-story", "stills", ["stills", "story", b.id])));
     }
     if (req.method === "POST" && url.pathname === "/api/stills/delete") {
       const b = await body(req);
