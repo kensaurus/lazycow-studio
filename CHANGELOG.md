@@ -2,6 +2,23 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.25.3 (2026-11-21)
+
+Photo-post Stories can be booked, and their numbers are kept.
+
+### Added
+- **Schedule Story** on a photo post: books it for the next free lunchtime (12:15 in the audience's zone, one photo
+  Story a day; the reels' Stories stay at 19:00) and the studio sends it then, as it sends the reels' Stories. **Take
+  back** cancels it. A set whose slides show a face (YuNet) is booked only after a yes. Bookings show on Posting, the
+  week grid and Today as "Story (photo post)". `POST /api/stills/schedule`, `/api/stills/unschedule`,
+  `python -m studio stills schedule|unschedule <id>`.
+- **Story numbers are read and kept:** photo Stories (network `photo-story`) are read like the reels' Stories (an hour
+  after, about every 6 hours, once more before they expire): views, reach, profile visits, navigation. The Story tab
+  shows them, and the looks so far, best first. They stay out of the reels' learning model.
+
+### Changed
+- **Post now** also logs the Story in the posting log, so its numbers are read.
+
 ## 0.25.2 (2026-11-21)
 
 Photo posts go out as Instagram Stories, and the page fits one screen.

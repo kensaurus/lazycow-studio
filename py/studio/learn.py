@@ -147,6 +147,7 @@ def comparable(now: datetime | None = None, posts: list[dict] | None = None, row
     from studio.projects import load
 
     posts = perf.live_posts(now) if posts is None else posts
+    posts = [p for p in posts if p["network"] != "photo-story"]  # photo posts are not reels (studio.stills.look_results)
     rows = perf.readings() if rows is None else rows
     by_post: dict[int, list[dict]] = {}
     for r in rows:

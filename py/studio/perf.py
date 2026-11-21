@@ -649,7 +649,13 @@ class InstagramStory(Collector):
         return out, notes
 
 
-COLLECTORS: dict[str, Collector] = {c.network: c for c in (YouTube(), Facebook(), Bluesky(), InstagramStory())}
+class PhotoStory(InstagramStory):
+    """A photo post's Story (studio.stills, network "photo-story"): the same Instagram Story numbers, kept apart from
+    the reels' Stories so each is judged on its own."""
+    network, name = "photo-story", "Instagram Stories (photo posts)"
+
+
+COLLECTORS: dict[str, Collector] = {c.network: c for c in (YouTube(), Facebook(), Bluesky(), InstagramStory(), PhotoStory())}
 
 
 def _story_due(post: dict, mine: list[dict], now: datetime, fresh: bool) -> str | None:
@@ -800,7 +806,7 @@ def collect(req: dict | None = None) -> dict:
                 manual.append({"post_id": p["id"], "slug": p["slug"], "network": p["network"], "age_h": p["age_h"],
                                "checkpoint": checkpoint(p["age_h"]), "url": p.get("url")})
             continue
-        due = _story_due if p["network"] == "instagram-story" else _due
+        due = _story_due if p["network"] in ("instagram-story", "photo-story") else _due
         why = due(p, [r for r in mine if r["source"] == "api"], now, fresh)
         if why:
             by_net.setdefault(p["network"], []).append({**p, "why": why})
