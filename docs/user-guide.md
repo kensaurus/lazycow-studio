@@ -328,7 +328,7 @@ The V2 row on the timeline holds cutaways (a detail shot for about a second) and
 **Reels › Photo posts › Make 10, all different** draws ten carousels (and a Story that shares each) from your photos, in
 ten of 22 looks: seamless panorama, polaroids, film strip, magazine, photo dump, scrapbook, gallery, vertical poem, a
 numbered guide, newspaper, bento grid, arch windows, neo-brutal, risograph zine, photo in the letters, travel tickets,
-contact sheet, aura, poster grid, "in numbers", phone widgets and a pixel game. It takes about a minute and a half.
+contact sheet (the roll, then the picks), aura, poster grid, "in numbers", phone widgets and a pixel game. It takes about a minute and a half.
 Pick one look or one subject to make three of just that.
 
 - **Crops keep the subject:** each photo gets a focal point (faces first, then what CLIP sees as the subject, then what
@@ -338,9 +338,13 @@ Pick one look or one subject to make three of just that.
   no "First snow". The best bright photo is the cover. Small people far away can still slip in: look before you post.
 - **Check it the way people will see it:** the Instagram post (swipe it), the profile grid (only the middle 3:4 of slide 1
   shows), the Story, Facebook, Threads, X and Bluesky, each with its own caption and a length counted the network's way.
-- **Post it:** **Approve and send to Drive** copies the slides in order, the Story and one caption file per network to the
-  ready folder. Post them in the Instagram app and add music there (carousels with music can show in Reels). The studio
-  does not post photo posts by itself yet.
+- **Post it as a Story:** **Post to Instagram Story** sends the set to your Instagram account (the one linked to your
+  Facebook Page) as a Story, after asking: a short 9:16 video with the slides one after another, about 3 seconds each,
+  the one the Story tab plays. Once per set; the set then says when it went, with a link.
+- **Or post it by hand:** **Approve and send to Drive** copies the slides in order, the Story and one caption file per
+  network to the ready folder. Post them in the Instagram app and add music there (carousels with music can show in
+  Reels). The studio does not post carousels to the feed by itself.
+- **All slides** shows the set side by side, with a download for each slide; the bin deletes the set.
 - Words come from your brand: your name, handle and hashtags. The ranch workspace has its own subjects and true facts;
   any other project gets neutral words and never made-up numbers.
 

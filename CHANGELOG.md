@@ -2,6 +2,25 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.25.2 (2026-11-21)
+
+Photo posts go out as Instagram Stories, and the page fits one screen.
+
+### Added
+- **Post to Instagram Story** on a photo post: after asking, the set goes to the Instagram account linked to the
+  Facebook Page as a Story, a 9:16 video of its slides (about 3 s each, sliding in), sent the way reels already are.
+  Once per set; the set shows when it went with a link. The Story tab plays that video before you send it.
+  `POST /api/stills/story`, `python -m studio stills story <id>`.
+
+### Changed
+- **The contact sheet makes sense:** slide 1 is the roll on photo paper (four film strips, sprocket holes, frame numbers
+  on the film's edge) with the picks circled in grease pencil and numbered; each next slide is one pick, printed large
+  with its black film border and its line. No more crossed-out photos, a loupe over a picture, or a label on every frame.
+- **Photo posts page:** a short intro; the list grouped by batch with one heading each (not a date under every item)
+  and marks for sent and posted; the actions together at the top (Post to Instagram Story, Approve and send to Drive,
+  delete); the side-by-side strip moved to an **All slides** tab; the mock-ups sized to the window, so the page is one
+  screen.
+
 ## 0.25.1 (2026-11-21)
 
 Photo posts crop and break lines in the right places.

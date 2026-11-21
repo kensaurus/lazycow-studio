@@ -195,7 +195,7 @@ def main() -> None:
     pub.add_argument("--unbook", type=int, default=None, help="take this Facebook booking back, nothing in its place (row kept as dropped)")
 
     stl = sub.add_parser("stills", help="photo posts: carousels and a Story from the footage's photos, in the looks of shared/post-templates.json")
-    stl.add_argument("action", choices=["make", "list", "delete", "approve"])
+    stl.add_argument("action", choices=["make", "list", "delete", "approve", "story"])
     stl.add_argument("id", nargs="?", default=None, help="delete: the set's id")
     stl.add_argument("--n", type=int, default=10)
     stl.add_argument("--style", default=None)
@@ -226,6 +226,8 @@ def main() -> None:
                 "themes": [[t["id"], t["title"], t["titleJa"]] for t in stills.themes()]}}, ensure_ascii=False))
         elif args.action == "approve":
             print("RESULT " + json.dumps(stills.approve(args.id or ""), ensure_ascii=False))
+        elif args.action == "story":  # send the set to Instagram as a Story now (a short video of its slides)
+            print("RESULT " + json.dumps(stills.post_story(args.id or ""), ensure_ascii=False))
         else:
             print("RESULT " + json.dumps({"deleted": stills.delete(args.id or "")}))
     elif args.cmd == "tag":

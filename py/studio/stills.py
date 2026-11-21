@@ -518,6 +518,114 @@ def story(folder: Path, cover: Path, photo: Path, theme: dict, handle: str) -> s
     return "story.jpg"
 
 
+# ---------------------------------------------------------------- the Story as a short video, and sending it
+
+# An Instagram Story made through the API is a video sent by resumable upload (studio.connectors.instagram_story);
+# an image Story would need the picture on a public URL first (BL-049). So the set's Story is a short 9:16 video that
+# steps through its slides: each held STORY_HOLD_S, the next sliding in over STORY_SLIDE_S. Inside the safe area
+# (Instagram draws its own bar over the top ~250 px and the reply box over the bottom ~300 px).
+STORY_HOLD_S, STORY_SLIDE_S, STORY_FPS = 3.0, 0.45, 30
+
+
+def _theme_of(meta: dict) -> dict:
+    return next((t for t in themes() if t.get("id") == meta.get("theme")), {"kicker": meta.get("styleJa", ""), "titleJa": meta.get("themeJa", "")})
+
+
+def _story_frame(bg, slide: Path, k: int, n: int, theme: dict, handle: str):
+    from PIL import Image, ImageDraw
+
+    # no title above the slide: every cover already carries it (21 Nov: the first Story said it twice); the slide
+    # takes the room instead, inside Instagram's safe area
+    frame = bg.copy()
+    with Image.open(slide) as c:
+        cw = 900
+        card = c.convert("RGB").resize((cw, round(cw * SLIDE_H / SLIDE_W)), Image.LANCZOS)
+    x, y = (STORY_W - card.width) // 2, 300
+    mask = Image.new("L", card.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, card.width, card.height), 26, fill=255)
+    frame.paste(card, (x, y), mask)
+    d = ImageDraw.Draw(frame)
+    dots_y, gap = y + card.height + 44, 26
+    left = (STORY_W - (n - 1) * gap) / 2
+    for i in range(n):
+        r = 7 if i == k else 5
+        d.ellipse((left + i * gap - r, dots_y - r, left + i * gap + r, dots_y + r), fill=(255, 255, 255) if i == k else (160, 160, 160))
+    if handle:
+        f = _font("ZenKakuGothicNew-Medium.ttf", 32)
+        w = d.textlength(handle, font=f)
+        d.text(((STORY_W - w) / 2, dots_y + 34), handle, font=f, fill=(255, 255, 255))
+    return frame
+
+
+def story_video(set_id: str) -> Path:
+    """<set>/story.mp4: the set's slides one after another in a 9:16 Story, 3 s each, sliding in from the right."""
+    from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+
+    from studio.brand import brand
+    from studio.config import ffmpeg_bin
+
+    if not ID_RX.match(set_id or ""):
+        raise ValueError("id: a photo post's id")
+    folder = OUT / set_id
+    meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
+    slides = [folder / s for s in meta["slides"]]
+    theme, handle = _theme_of(meta), (brand().get("handle") or "")
+    with Image.open(slides[0]) as first:  # the cover, blurred and dimmed, behind every slide
+        bg = ImageOps.fit(first.convert("RGB"), (STORY_W, STORY_H), Image.LANCZOS).filter(ImageFilter.GaussianBlur(40))
+    bg = ImageEnhance.Brightness(bg).enhance(0.55)
+    tmp = folder / "_story"
+    tmp.mkdir(exist_ok=True)
+    frames = []
+    for k, s in enumerate(slides):
+        f = tmp / f"f{k:02d}.jpg"
+        _story_frame(bg, s, k, len(slides), theme, handle).convert("RGB").save(f, "JPEG", quality=94)
+        frames.append(f)
+    hold = [STORY_HOLD_S + (0.6 if k == 0 else 0) + (STORY_SLIDE_S if 0 < k < len(frames) - 1 else 0) for k in range(len(frames))]
+    if len(frames) > 1:
+        hold[-1] += STORY_SLIDE_S + 0.5
+    cmd = [str(ffmpeg_bin()), "-y", "-v", "error"]
+    for f, t in zip(frames, hold):
+        cmd += ["-loop", "1", "-framerate", str(STORY_FPS), "-t", f"{t:.2f}", "-i", str(f)]
+    cmd += ["-f", "lavfi", "-t", f"{sum(hold):.2f}", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"]
+    chain, last, offset = [], "0:v", 0.0
+    for k in range(1, len(frames)):
+        offset += hold[k - 1] - STORY_SLIDE_S
+        out = f"v{k}"
+        chain.append(f"[{last}][{k}:v]xfade=transition=slideleft:duration={STORY_SLIDE_S}:offset={offset:.2f}[{out}]")
+        last = out
+    chain.append(f"[{last}]format=yuv420p[v]")
+    out_file = folder / "story.mp4"
+    cmd += ["-filter_complex", ";".join(chain), "-map", "[v]", "-map", f"{len(frames)}:a", "-c:v", "libx264", "-preset", "medium",
+            "-crf", "18", "-r", str(STORY_FPS), "-c:a", "aac", "-b:a", "96k", "-shortest", "-movflags", "+faststart", str(out_file)]
+    subprocess.run(cmd, check=True, capture_output=True, timeout=300)
+    shutil.rmtree(tmp, ignore_errors=True)
+    return out_file
+
+
+def post_story(set_id: str) -> dict:
+    """Send the set to Instagram as a Story now (the video above), through the Facebook connection. Once per set: a
+    second call says when it went. The meta remembers it ({at, url, id})."""
+    from studio.connectors import instagram_story
+
+    if not ID_RX.match(set_id or ""):
+        raise ValueError("id: a photo post's id")
+    meta_file = OUT / set_id / "meta.json"
+    if not meta_file.exists():
+        raise FileNotFoundError(f"no photo post {set_id}")
+    meta = json.loads(meta_file.read_text(encoding="utf-8"))
+    if meta.get("storyPosted"):
+        raise RuntimeError(f"this set went to Instagram as a Story at {meta['storyPosted']['at']}")
+    print("STAGE 1/2 making the Story video", flush=True)
+    video = story_video(set_id)
+    if meta.get("storyVideo") != "story.mp4":
+        meta["storyVideo"] = "story.mp4"
+    print("STAGE 2/2 sending it to Instagram", flush=True)
+    sent = instagram_story.post(video)
+    meta["storyPosted"] = {"at": datetime.now(JST).isoformat(timespec="seconds"), "url": sent.get("url") or "", "id": sent.get("remote_id") or ""}
+    meta_file.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"posted": True, **meta["storyPosted"]}
+
+
 # ---------------------------------------------------------------- make, list, delete
 
 # Mean CLIP match of a subject's 8 best photos. Measured 21 Nov: on the ranch's library every subject scored 0.264-0.312;
@@ -653,6 +761,12 @@ def make(n: int = 10, style: str | None = None, theme: str | None = None, seed: 
         s["story"] = story(folder, folder / s["slides"][0], PUB / s["photos"][0]["src"], th, b.get("handle") or "")
         s["alt"] = [f"{s['themeJa']} {i + 1}/{s['panels']}" for i in range(s["panels"])]
         (folder / "meta.json").write_text(json.dumps(s, ensure_ascii=False, indent=2), encoding="utf-8")
+        try:  # the Story as a video, to watch here before it is sent (post_story makes it again if it is missing)
+            story_video(s["id"])
+            s["storyVideo"] = "story.mp4"
+            (folder / "meta.json").write_text(json.dumps(s, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as err:  # noqa: BLE001 - the carousel is still good without it
+            print(f"note: no Story video for {s['id']}: {err}", flush=True)
         made.append(s["id"])
     out = {"made": made, "skipped": skipped, "seed": seed}
     print("RESULT " + json.dumps(out, ensure_ascii=False), flush=True)
@@ -675,7 +789,7 @@ def list_sets() -> list[dict]:
 
 def file_path(set_id: str, name: str) -> Path | None:
     """The file of a set the server may send: only slides, the strip and the Story inside <data>/stills/<id>/."""
-    if not ID_RX.match(set_id or "") or not re.match(r"^(slide-\d{2}|strip|story)\.jpg$", name or ""):
+    if not ID_RX.match(set_id or "") or not re.match(r"^(slide-\d{2}|strip|story)\.jpg$|^story\.mp4$", name or ""):
         return None
     p = OUT / set_id / name
     return p if p.is_file() else None

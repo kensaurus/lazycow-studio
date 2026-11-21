@@ -2101,7 +2101,7 @@ paths:
       summary: One file of a photo post — a 1080x1350 slide, the whole strip, or the 1080x1920 Story.
       parameters:
         - { name: id, in: query, required: true, schema: { type: string } }
-        - { name: f, in: query, required: true, schema: { type: string, pattern: "^(slide-\\d{2}|strip|story)\\.jpg$" } }
+        - { name: f, in: query, required: true, schema: { type: string, pattern: "^((slide-\\d{2}|strip|story)\\.jpg|story\\.mp4)$" } }
       responses:
         "200": { description: The JPEG. }
         "404": { description: No such set or file. }
@@ -2116,6 +2116,18 @@ paths:
             schema: { type: object, required: [id], properties: { id: { type: string } } }
       responses:
         "200": { description: "{approved: true, folder, files}" }
+  /api/stills/story:
+    post:
+      tags: [Reels]
+      operationId: postStillsStory
+      summary: Post a photo post to Instagram as a Story now — a short 9:16 video of its slides (story.mp4), sent through the Facebook connection. Once per set. Starts a job (slug stills-story); 409 while one is sending.
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [id], properties: { id: { type: string } } }
+      responses:
+        "200": { description: "The job; its result is {posted: true, at, url, id}" }
+        "409": { description: "A Story is already being sent" }
   /api/stills/delete:
     post:
       tags: [Reels]
