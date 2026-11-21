@@ -91,11 +91,11 @@
     },
     {
       "id": "shapes",
-      "en": "Cut-out shapes",
-      "ja": "かたち切り抜き",
+      "en": "Arch windows",
+      "ja": "アーチの窓",
       "panels": 5,
       "photos": 7,
-      "what": "Photos cut into arches, circles, pills and blobs on bold colour, with a giant word running behind them across the slides."
+      "what": "One tall arched window a slide (two on some), lined up on one baseline with a keyline frame, the caption under the window."
     },
     {
       "id": "brutal",
@@ -147,11 +147,11 @@
     },
     {
       "id": "maximal",
-      "en": "Maximal collage",
-      "ja": "マキシマル",
+      "en": "Poster grid",
+      "ja": "ポスターグリッド",
       "panels": 4,
       "photos": 10,
-      "what": "Controlled chaos: cut-out photos at every scale, clashing colour blocks, starburst badges and scribbles."
+      "what": "Bold but ordered: a 2 x 6 grid with even gutters and square cells of photos, colour blocks with one big number, and text."
     },
     {
       "id": "numbers",
@@ -175,7 +175,7 @@
       "ja": "ドット絵ゲーム",
       "panels": 4,
       "photos": 4,
-      "what": "A retro game: pixelated photos, a dialogue box, warmth meters and a save point at the end."
+      "what": "A retro game around your photos: pixel borders, a dialogue box, warmth meters and a save point. The photos stay sharp."
     }
   ],
   "themes": [

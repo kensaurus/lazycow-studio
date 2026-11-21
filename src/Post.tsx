@@ -8,10 +8,10 @@
  * DEPENDENCIES: remotion (Img, staticFile, delayRender), public/fonts (OFL, with their licences)
  * USAGE: rendered by scripts/post-stills.mjs (bundle once, renderStill per set); registered in src/Root.tsx as "Post".
  */
-import React, { useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import { AbsoluteFill, Img, cancelRender, continueRender, delayRender, staticFile } from "remotion";
 
-export type PostPhoto = { src: string; w: number; h: number };
+export type PostPhoto = { src: string; w: number; h: number; fx?: number; fy?: number };
 export type PostItem = { head: string; line: string };
 export type PostProps = {
   style: string; panels: number; w: number; h: number; seed: number;
@@ -26,7 +26,7 @@ export type PostProps = {
   /* Where the post is from, for the looks that print a place (a masthead, a postmark, a boarding pass). The ranch
      workspace passes TSUMAGOI / 嬬恋 / 1,444 / GUNMA · JAPAN; any other brand its own name and no altitude or region. */
   place?: string; placeJa?: string; placeLong?: string; alt?: string; region?: string; origin?: { code: string; ja: string };
-  ticket?: { seat: string; gate: string; cls: string };
+  ticket?: { seat: string; gate: string; cls: string; code?: string };
 };
 const PLACE = (p: PostProps) => (p.place || p.brand || "HELLO").toUpperCase().slice(0, 16);
 /* A short form for labels and stamps: the first word of a long name ("CAFE" of "CAFE KUMO & BAKERY"), never cut mid-word. */
@@ -112,11 +112,25 @@ const rng = (seed: number) => {
   return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 };
 const at = <T,>(list: T[], i: number): T => list[((i % list.length) + list.length) % list.length];
-const Photo: React.FC<{ p: PostPhoto | undefined; style?: React.CSSProperties; filter?: string }> = ({ p, style, filter }) =>
-  p ? <Img src={staticFile(p.src)} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", filter, ...style }} />
+/* The frame a photo is drawn in, so it can put the photo's subject (fx, fy from stills.focal_point) in the middle of
+   the frame instead of cutting it off: the object-position imgix's focal-point crop would choose, clamped so the
+   photo still covers the frame. A frame of unknown size falls back to percentages of the focal point. */
+const FrameCtx = createContext<{ w: number; h: number } | null>(null);
+const Frame: React.FC<{ w: number; h: number; children?: React.ReactNode }> = ({ w, h, children }) => <FrameCtx.Provider value={{ w, h }}>{children}</FrameCtx.Provider>;
+const focus = (p: PostPhoto, frame: { w: number; h: number } | null): string => {
+  const fx = p.fx ?? 0.5, fy = p.fy ?? 0.5;
+  if (!frame || !p.w || !p.h) return `${(fx * 100).toFixed(1)}% ${(fy * 100).toFixed(1)}%`;
+  const s = Math.max(frame.w / p.w, frame.h / p.h), rw = p.w * s, rh = p.h * s;
+  const ox = Math.min(0, Math.max(frame.w - rw, frame.w / 2 - fx * rw)), oy = Math.min(0, Math.max(frame.h - rh, frame.h / 2 - fy * rh));
+  return `${ox.toFixed(1)}px ${oy.toFixed(1)}px`;
+};
+const Photo: React.FC<{ p: PostPhoto | undefined; style?: React.CSSProperties; filter?: string }> = ({ p, style, filter }) => {
+  const frame = useContext(FrameCtx);
+  return p ? <Img src={staticFile(p.src)} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: focus(p, frame), display: "block", filter, ...style }} />
     : <div style={{ width: "100%", height: "100%", background: "#ccc", ...style }} />;
+};
 const Box: React.FC<{ x: number; y: number; w: number; h: number; style?: React.CSSProperties; children?: React.ReactNode }> = ({ x, y, w, h, style, children }) => (
-  <div style={{ position: "absolute", left: x, top: y, width: w, height: h, overflow: "hidden", ...style }}>{children}</div>
+  <div style={{ position: "absolute", left: x, top: y, width: w, height: h, overflow: "hidden", ...style }}><Frame w={w} h={h}>{children}</Frame></div>
 );
 const Text: React.FC<{ x: number; y: number; w?: number; style: React.CSSProperties; children: React.ReactNode }> = ({ x, y, w, style, children }) => (
   <div style={{ position: "absolute", left: x, top: y, width: w, ...style }}>{children}</div>
@@ -168,7 +182,7 @@ const Polaroid: React.FC<PostProps> = (p) => {
       <AbsoluteFill style={{ transform: "scale(1.08)" }}><Photo p={p.photos[0]} filter="blur(26px) brightness(0.88) saturate(1.1)" /></AbsoluteFill>
       {frames.map((f) => (
         <div key={f.i} style={{ position: "absolute", left: f.x, top: f.y, width: fw, padding: pad, paddingBottom: fw * 0.2, background: "#f7f4ec", boxShadow: SHADOW, transform: `rotate(${f.t.toFixed(2)}deg)` }}>
-          <div style={{ width: pic, height: pic }}><Photo p={at(p.photos.slice(1).length ? p.photos.slice(1) : p.photos, f.i - 1)} /></div>
+          <div style={{ width: pic, height: pic }}><Frame w={pic} h={pic}><Photo p={at(p.photos.slice(1).length ? p.photos.slice(1) : p.photos, f.i - 1)} /></Frame></div>
           {f.note ? <div style={{ position: "absolute", left: pad, right: pad, bottom: fw * 0.04, fontFamily: "Caveat", fontSize: 44, color: "#3b3b3b", textAlign: "center" }}>{f.note}</div> : null}
         </div>
       ))}
@@ -511,26 +525,42 @@ const Bento: React.FC<PostProps> = (p) => {
   );
 };
 
-/* 12. Cut-out shapes on bold colour, a giant word behind */
-const SHAPES = ["50% 50% 0 0 / 38% 38% 0 0", "50%", "999px", "63% 37% 54% 46% / 55% 48% 52% 45%", "0 50% 50% 50%", "40% 60% 30% 70% / 60% 30% 70% 40%"];
+/* 12. Arch windows: one tall arched window a slide (two on some), lined up on the same baseline, a keyline arch
+   around each like a window frame, the caption under the window's left edge. Replaced random blobs and stray circles
+   (owner, 21 Nov: "cut out shapes are nice but look so weird... what about plain windows"). */
+const Arch: React.FC<{ x: number; y: number; w: number; h: number; ph?: PostPhoto; line: string }> = ({ x, y, w, h, ph, line }) => (
+  <>
+    <div style={{ position: "absolute", left: x - 18, top: y - 18, width: w + 36, height: h + 36, borderRadius: `${(w + 36) / 2}px ${(w + 36) / 2}px 6px 6px`, border: `3px solid ${line}`, opacity: 0.7 }} />
+    <Box x={x} y={y} w={w} h={h} style={{ borderRadius: `${w / 2}px ${w / 2}px 4px 4px` }}><Photo p={ph} /></Box>
+  </>
+);
 const Shapes: React.FC<PostProps> = (p) => {
-  const { w, h, panels } = p, r = rng(p.seed + 12), c = colours(p, r);
-  const word = (p.variant || 0) % 2 ? PLACE(p) : p.title.toUpperCase();
+  const { w, h, panels } = p;
+  const mix = (hex: string, k: number) => "#" + [0, 2, 4].map((i) => Math.round(parseInt(hex.slice(1 + i, 3 + i), 16) * (1 - k) + 255 * k).toString(16).padStart(2, "0")).join("");
+  const bg = [p.palette.bg, mix(p.palette.bg, 0.12)], line = p.palette.paper;  // the subject's own tone, not a photo's sky blue
+  let k = 0;
   return (
-    <AbsoluteFill style={{ background: c.a }}>
-      {Array.from({ length: panels }, (_, i) => <Box key={i} x={i * w} y={0} w={w} h={h} style={{ background: i % 2 ? c.a : c.b }} />)}
-      <Text x={-40} y={h * 0.2} w={panels * w + 80} style={{ fontFamily: "Anton", fontSize: 620, lineHeight: 0.85, color: inkOn(c.a), opacity: 0.16, whiteSpace: "nowrap", textAlign: "center", letterSpacing: "-0.01em" }}>{word}</Text>
+    <AbsoluteFill style={{ background: bg[0] }}>
       {Array.from({ length: panels }, (_, i) => {
-        const big = 560 + r() * 160, sh = SHAPES[Math.floor(r() * SHAPES.length)], x = i * w + 120 + r() * 220, y = 150 + r() * 260;
-        const cross = i < panels - 1 && r() > 0.35;
+        const x = i * w, two = i > 0 && (i + (p.variant || 0)) % 3 === 2, ink = inkOn(bg[i % 2]);
+        const aw = two ? 380 : 620, ah = two ? 760 : i === 0 ? 820 : 900, top = i === 0 ? 330 : 150;
+        const left = two ? x + (w - (aw * 2 + 80)) / 2 : x + (w - aw) / 2;
         return (
           <React.Fragment key={i}>
-            <Box x={x} y={y} w={big} h={big * (sh === "999px" ? 1.5 : 1.15)} style={{ borderRadius: sh, boxShadow: "0 30px 60px rgba(0,0,0,0.28)" }}><Photo p={at(p.photos, i)} /></Box>
-            {cross ? <Box x={(i + 1) * w - 170} y={h - 520 - r() * 200} w={340} h={340} style={{ borderRadius: SHAPES[(i + 1) % SHAPES.length], boxShadow: "0 20px 40px rgba(0,0,0,0.25)", border: `10px solid ${c.paper}` }}><Photo p={at(p.photos, panels + i)} /></Box> : null}
-            <Text x={i * w + 80} y={h - 200} w={w - 160} style={{ color: inkOn(i % 2 ? c.a : c.b) }}>
-              <div style={{ fontFamily: "Zen Maru Gothic", fontWeight: 700, fontSize: 52 }}>{i === 0 ? p.titleJa : at(p.notesJa, i - 1)}</div>
-              <div style={{ fontFamily: "Jost", fontSize: 30, letterSpacing: "0.12em", marginTop: 6 }}>{i === 0 ? `${p.handle} — ${String(i + 1).padStart(2, "0")}` : at(p.notes, i - 1)}</div>
+            <Box x={x} y={0} w={w} h={h} style={{ background: bg[i % 2] }} />
+            <Arch x={left} y={top} w={aw} h={ah} ph={at(p.photos, k++)} line={line} />
+            {two ? <Arch x={left + aw + 80} y={top} w={aw} h={ah} ph={at(p.photos, k++)} line={line} /> : null}
+            {i === 0 ? (
+              <Text x={x + 80} y={90} w={w - 160} style={{ color: ink, textAlign: "center" }}>
+                <div style={{ fontFamily: "Jost", fontWeight: 500, fontSize: 26, letterSpacing: "0.32em" }}>{p.kicker}</div>
+                <div style={{ fontFamily: "Zen Maru Gothic", fontWeight: 700, fontSize: 82, marginTop: 14, textWrap: "balance" } as React.CSSProperties}>{p.titleJa}</div>
+              </Text>
+            ) : null}
+            <Text x={two ? left : x + (w - aw) / 2} y={top + ah + 44} w={two ? aw * 2 + 80 : aw} style={{ color: ink }}>
+              <div style={{ fontFamily: "Zen Maru Gothic", fontWeight: 700, fontSize: 44 }}>{i === 0 ? p.hookJa : at(p.notesJa, i - 1)}</div>
+              <div style={{ fontFamily: "Jost", fontSize: 28, letterSpacing: "0.06em", marginTop: 6, opacity: 0.85 }}>{i === 0 ? p.handle : at(p.notes, i - 1)}</div>
             </Text>
+            <Text x={x + w - 160} y={h - 70} style={{ fontFamily: "Jost", fontWeight: 500, fontSize: 24, letterSpacing: "0.2em", color: ink, opacity: 0.7 }}>{`${String(i + 1).padStart(2, "0")} / ${String(panels).padStart(2, "0")}`}</Text>
           </React.Fragment>
         );
       })}
@@ -587,8 +617,10 @@ const Riso: React.FC<PostProps> = (p) => {
           <React.Fragment key={i}>
             {duo(at(p.photos, i * 2), i % 2 ? ink2 : ink1, x + 60 + r() * 60, 120 + r() * 80, 640, 820, (r() - 0.5) * 6, `a${i}`)}
             {duo(at(p.photos, i * 2 + 1), i % 2 ? ink1 : ink2, x + 520 + r() * 60, 640 + r() * 80, 560, 520, (r() - 0.5) * 8, `b${i}`)}
-            <Text x={x + 70} y={h - 210} w={w * 0.84} style={{ fontFamily: "Caveat", fontSize: 50, color: ink2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{at(p.notes, i)}</Text>
-            <Text x={x + 76} y={h - 140} w={w * 0.84} style={{ fontFamily: "Zen Old Mincho", fontWeight: 700, fontSize: 34, color: "#222", whiteSpace: "nowrap" }}>{at(p.notesJa, i)}</Text>
+            <Text x={x + 70} y={h - 230} w={w * 0.6} style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 14px", background: "rgba(243,238,226,0.92)" }}>
+              <span style={{ fontFamily: "Caveat", fontSize: 46, color: ink2, lineHeight: 1.05 }}>{at(p.notes, i)}</span>
+              <span style={{ fontFamily: "Zen Old Mincho", fontWeight: 700, fontSize: 32, color: "#222" }}>{at(p.notesJa, i)}</span>
+            </Text>
           </React.Fragment>
         );
       })}
@@ -664,7 +696,7 @@ const Ticket: React.FC<PostProps> = (p) => {
           <div style={{ display: "flex", alignItems: "center", gap: 40, marginTop: 30 }}>
             <div><div style={{ fontFamily: "Barlow Condensed", fontWeight: 600, fontSize: 170, lineHeight: 0.9, color: "#111" }}>{p.origin?.code || "HOME"}</div><div style={{ fontFamily: "Zen Kaku Gothic New", fontSize: 32 }}>{p.origin?.ja || "いつもの街"}</div></div>
             <div style={{ fontFamily: "IBM Plex Mono", fontSize: 70, color: c.pop }}>✈︎ ─ ─ →</div>
-            <div><div style={{ fontFamily: "Barlow Condensed", fontWeight: 600, fontSize: 170, lineHeight: 0.9, color: "#111" }}>{PLACE(p).replace(/[^A-Z]/g, "").slice(0, 3) || "GO!"}</div><div style={{ fontFamily: "Zen Kaku Gothic New", fontSize: 32 }}>{PLACEJA(p)}{p.alt ? ` · ${p.alt} m` : ""}</div></div>
+            <div><div style={{ fontFamily: "Barlow Condensed", fontWeight: 600, fontSize: 170, lineHeight: 0.9, color: "#111" }}>{p.ticket?.code || PLACE(p).replace(/[^A-Z]/g, "").slice(0, 3) || "GO!"}</div><div style={{ fontFamily: "Zen Kaku Gothic New", fontSize: 32 }}>{PLACEJA(p)}{p.alt ? ` · ${p.alt} m` : ""}</div></div>
           </div>
           <div style={{ display: "flex", gap: 60, marginTop: 40, fontFamily: "IBM Plex Mono", fontSize: 26, color: "#333" }}>
             <div>SEAT<br /><b style={{ fontSize: 40 }}>{p.ticket?.seat || "01A"}</b></div><div>GATE<br /><b style={{ fontSize: 40 }}>{p.ticket?.gate || "A"}</b></div><div>DATE<br /><b style={{ fontSize: 40 }}>{p.date.replace("'", "")}</b></div><div>CLASS<br /><b style={{ fontSize: 40 }}>{p.ticket?.cls || "WEEKEND"}</b></div>
@@ -761,31 +793,48 @@ const Aura: React.FC<PostProps> = (p) => {
   );
 };
 
-/* 19. Maximal collage: controlled chaos */
-const Burst: React.FC<{ x: number; y: number; s: number; bg: string; text: string; rot: number }> = ({ x, y, s, bg, text, rot }) => (
-  <div style={{ position: "absolute", left: x, top: y, width: s, height: s, background: bg, transform: `rotate(${rot}deg)`, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center",
-    clipPath: "polygon(50% 0%, 61% 18%, 82% 10%, 79% 32%, 100% 38%, 84% 55%, 96% 75%, 74% 76%, 70% 98%, 52% 84%, 33% 98%, 28% 77%, 6% 78%, 16% 57%, 0% 40%, 20% 32%, 16% 10%, 38% 18%)",
-    fontFamily: "Anton", fontSize: s * 0.16, color: inkOn(bg), lineHeight: 1 }}>{text}</div>
-);
+/* 19. Poster grid: bold, but ordered (owner, 21 Nov: the maximal collage's fonts and layout "trigger my OCD").
+   Each slide is a 2 x 6 grid with even 14 px gutters and square corners; cells are photos, colour blocks with one big
+   word or number, or a text cell; one display face (Anton) and one Japanese face, all left-aligned to the cell. */
+const POSTER: [number, number, number, number, string][][] = [
+  [[0, 0, 2, 4, "photo"], [0, 4, 1, 2, "fact"], [1, 4, 1, 2, "note"]],
+  [[0, 0, 2, 1, "word"], [0, 1, 1, 5, "photo"], [1, 1, 1, 3, "photo"], [1, 4, 1, 2, "note"]],
+  [[0, 0, 1, 3, "photo"], [1, 0, 1, 3, "photo"], [0, 3, 2, 1, "fact"], [0, 4, 2, 2, "photo"]],
+  [[0, 0, 1, 2, "note"], [1, 0, 1, 4, "photo"], [0, 2, 1, 4, "photo"], [1, 4, 1, 2, "fact"]],
+];
 const Maximal: React.FC<PostProps> = (p) => {
-  const { w, h, panels } = p, r = rng(p.seed + 19), c = colours(p, r), facts = factsOf(p).filter((f) => f.unit);
-  const blocks = [c.a, c.pop, c.b, c.pop2];
+  const { w, h, panels } = p, r = rng(p.seed + 19), c = colours(p, r), facts = factsOf(p);
+  const m = 40, g = 14, cw = (w - m * 2 - g) / 2, rh = (h - m * 2 - g * 5) / 6;
+  const blocks = [c.pop, c.a, c.pop2, c.b];
+  let k = 0, f = 0, n = 0;
   return (
-    <AbsoluteFill style={{ background: c.paper }}>
-      {Array.from({ length: panels * 2 }, (_, i) => <Box key={`b${i}`} x={i * (w / 2) + (r() - 0.5) * 60} y={(r() * 0.5) * h} w={w / 2 + 40} h={h * (0.4 + r() * 0.6)} style={{ background: blocks[i % blocks.length], transform: `rotate(${(r() - 0.5) * 8}deg)` }} />)}
-      {Array.from({ length: p.photos.length }, (_, i) => {
-        const s = 300 + r() * 420, x = (i / p.photos.length) * panels * w + (r() - 0.3) * 200, y = 80 + r() * (h - s - 120);
-        return <Box key={`p${i}`} x={x} y={y} w={s} h={s * (0.8 + r() * 0.5)} style={{ border: "12px solid #fff", boxShadow: "0 20px 40px rgba(0,0,0,0.3)", transform: `rotate(${(r() - 0.5) * 16}deg)`, overflow: "hidden" }}><Photo p={at(p.photos, i)} /></Box>;
+    <AbsoluteFill style={{ background: "#f4f1ea" }}>
+      {Array.from({ length: panels }, (_, i) => {
+        const cells = i === 0 ? [[0, 0, 2, 2, "title"], [0, 2, 2, 3, "photo"], [0, 5, 1, 1, "fact"], [1, 5, 1, 1, "photo"]] as [number, number, number, number, string][]
+          : POSTER[(i - 1 + (p.variant || 0)) % POSTER.length];
+        return cells.map(([cx, cy, cwN, chN, kind], j) => {
+          const x = i * w + m + cx * (cw + g), y = m + cy * (rh + g), ww = cwN * cw + (cwN - 1) * g, hh = chN * rh + (chN - 1) * g;
+          const bg = blocks[(i + j) % blocks.length], ink = inkOn(bg);
+          const pad = { padding: "26px 30px", boxSizing: "border-box" as const, display: "flex", flexDirection: "column" as const, justifyContent: "flex-end" };
+          if (kind === "photo") return <Box key={`${i}-${j}`} x={x} y={y} w={ww} h={hh}><Photo p={at(p.photos, k++)} /></Box>;
+          if (kind === "title") return (
+            <Box key={`${i}-${j}`} x={x} y={y} w={ww} h={hh} style={{ background: "#151515", color: "#fff", ...pad }}>
+              <div style={{ fontFamily: "Anton", fontSize: p.title.length > 16 ? 112 : 140, lineHeight: 0.9, textTransform: "uppercase", textWrap: "balance" } as React.CSSProperties}>{p.title}</div>
+              <div style={{ fontFamily: "Zen Kaku Gothic New", fontWeight: 700, fontSize: 36, marginTop: 14, color: bg }}>{p.titleJa}　{p.handle}</div>
+            </Box>);
+          if (kind === "fact" || kind === "word") { const ft = at(facts, f++); return (
+            <Box key={`${i}-${j}`} x={x} y={y} w={ww} h={hh} style={{ background: bg, color: ink, ...pad }}>
+              <div style={{ fontFamily: "Anton", fontSize: Math.min(hh * 0.62, 150), lineHeight: 0.9 }}>{ft.big}<span style={{ fontSize: Math.min(hh * 0.3, 64) }}>{ft.unit}</span></div>
+              <div style={{ fontFamily: "Zen Kaku Gothic New", fontWeight: 700, fontSize: 28, marginTop: 8 }}>{ft.ja}</div>
+            </Box>); }
+          const note = n++;
+          return (
+            <Box key={`${i}-${j}`} x={x} y={y} w={ww} h={hh} style={{ background: "#fff", color: "#151515", ...pad, borderLeft: `10px solid ${bg}` }}>
+              <div style={{ fontFamily: "Zen Kaku Gothic New", fontWeight: 700, fontSize: 44, lineHeight: 1.3 }}>{at(p.notesJa, note)}</div>
+              <div style={{ fontFamily: "Anton", fontSize: 30, marginTop: 10, letterSpacing: "0.02em", textTransform: "uppercase", color: "#555" }}>{at(p.notes, note)}</div>
+            </Box>);
+        });
       })}
-      {Array.from({ length: panels }, (_, i) => (
-        <React.Fragment key={`t${i}`}>
-          <Burst x={i * w + 640 + r() * 200} y={80 + r() * 900} s={260} bg={pickOf(r, [c.pop, "#ffd23f", "#fff"])} text={i === 0 ? (p.alt ? `${p.alt}m!` : "NEW!") : `${at(facts, i).big}${at(facts, i).unit}`} rot={(r() - 0.5) * 30} />
-          <svg style={{ position: "absolute", left: i * w + 100, top: 900 }} width={800} height={260}><path d={`M10 ${130 + r() * 60} C 200 0, 300 260, 480 ${90 + r() * 80} S 760 40, 790 ${150 + r() * 60}`} fill="none" stroke="#111" strokeWidth={9} strokeLinecap="round" /></svg>
-          <Text x={i * w + 70} y={h - 240} w={w - 140} style={{ fontFamily: i % 2 ? "Kaisei Decol" : "Dela Gothic One", fontSize: 72, color: "#111", background: "#fff", padding: "6px 18px", display: "inline-block", transform: `rotate(${(r() - 0.5) * 6}deg)` }}>{i === 0 ? p.titleJa : at(p.notesJa, i - 1)}</Text>
-          <Text x={i * w + 90} y={h - 120} style={{ fontFamily: "Caveat", fontSize: 50, color: "#111" }}>{i === 0 ? p.handle : at(p.notes, i - 1)}</Text>
-        </React.Fragment>
-      ))}
-      <Text x={40} y={30} w={w - 80} style={{ fontFamily: "Anton", fontSize: p.title.length > 14 ? 172 : 232, lineHeight: 0.86, color: "#111", WebkitTextStroke: "3px #fff" }}>{p.title.toUpperCase()}</Text>
     </AbsoluteFill>
   );
 };
@@ -837,7 +886,8 @@ const Phone: React.FC<PostProps> = (p) => {
   return (
     <AbsoluteFill style={{ background: "#ddd" }}>
       {Array.from({ length: panels }, (_, i) => {
-        const x = i * w;
+        const x = i * w, ft = p.facts && p.facts.length ? at(p.facts, i) : null;
+        const stat = ft ? { big: ft.big, unit: ft.unit, label: ft.ja } : { big: String(p.photos.length), unit: "", label: "枚の写真 · photos" };
         return (
           <React.Fragment key={i}>
             <Box x={x} y={0} w={w} h={h}><Photo p={at(p.photos, i)} filter="blur(28px) brightness(1.05)" style={{ transform: "scale(1.2)" }} /></Box>
@@ -854,8 +904,8 @@ const Phone: React.FC<PostProps> = (p) => {
             {i % 2 ? null : (
               <div style={{ position: "absolute", left: x + 690, top: 260, width: 330, height: 600, padding: 34, boxSizing: "border-box", ...glass, display: "flex", flexDirection: "column", justifyContent: "space-between", color: "#111" }}>
                 <div style={{ fontFamily: "DM Sans", fontWeight: 600, fontSize: 26 }}>{`📍 ${PLACEJA(p)}`}</div>
-                <div style={{ fontFamily: "DM Sans", fontWeight: 300, fontSize: 120, lineHeight: 1 }}>{p.alt || String(p.photos.length)}<span style={{ fontSize: 44 }}>{p.alt ? "m" : ""}</span></div>
-                <div style={{ fontFamily: "Zen Kaku Gothic New", fontSize: 28 }}>{p.alt ? "標高 · above sea level" : "枚の写真 · photos"}</div>
+                <div style={{ fontFamily: "DM Sans", fontWeight: 300, fontSize: stat.big.length > 4 ? 88 : 120, lineHeight: 1 }}>{stat.big}<span style={{ fontSize: 44 }}>{stat.unit}</span></div>
+                <div style={{ fontFamily: "Zen Kaku Gothic New", fontSize: 28 }}>{stat.label}</div>
               </div>
             )}
             {/* chat bubbles */}
@@ -882,7 +932,7 @@ const Pixel: React.FC<PostProps> = (p) => {
         return (
           <React.Fragment key={i}>
             <div style={{ position: "absolute", left: x + 90, top: 140, width: 900, height: 720, overflow: "hidden", boxShadow: px("#fff"), background: "#000" }}>
-              <Photo p={at(p.photos, i)} style={{ imageRendering: "pixelated" }} />
+              <Frame w={900} h={720}><Photo p={at(p.photos, i)} /></Frame>
             </div>
             <div style={{ position: "absolute", left: x + 90, top: 920, width: 900, padding: "30px 40px", boxSizing: "border-box", background: "#1a1a3a", boxShadow: px("#fff"), color: "#fff" }}>
               <div style={{ fontFamily: "DotGothic16", fontSize: 44, lineHeight: 1.5 }}>{i === 0 ? `${p.titleJa}に とうちゃく した！` : at(p.notesJa, i - 1)}</div>
@@ -913,5 +963,7 @@ const LOOKS: Record<string, React.FC<PostProps>> = { pano: Pano, polaroid: Polar
 export const Post: React.FC<PostProps> = (props) => {
   useFonts(USES[props.style] || USES.pano);
   const Look = LOOKS[props.style] || Pano;
-  return <Look {...props} />;
+  // lang="ja" + auto-phrase: Japanese lines break between phrases, never mid-word (21 Nov: bubbles broke at odd places);
+  // balance: lines of even length, so no lone 「山」 on the last line (Chromium balances up to 6 lines, longer text wraps as usual)
+  return <AbsoluteFill lang="ja" style={{ wordBreak: "auto-phrase", lineBreak: "strict", textWrap: "balance" } as React.CSSProperties}><Look {...props} /></AbsoluteFill>;
 };

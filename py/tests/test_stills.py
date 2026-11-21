@@ -180,3 +180,49 @@ def test_hooks_vary_between_sets_of_one_subject():
     th = stills.themes()[0]
     seen = {stills.with_hook(th, random.Random(s))["hookJa"] for s in range(40)}
     assert len(seen) >= 3
+
+
+def test_focal_point_of_a_flat_photo_is_the_middle(tmp_path, monkeypatch):
+    monkeypatch.setattr(stills, "_clip_subject", lambda p: None)
+    f = tmp_path / "flat.jpg"
+    Image.new("RGB", (800, 600), (120, 130, 140)).save(f)
+    assert stills.focal_point(f) == (0.5, 0.5)
+
+
+def test_focal_point_follows_a_subject_off_the_middle(tmp_path, monkeypatch):
+    """A red tent in the upper right of a plain field: the crop must keep it, not the empty middle."""
+    import random
+
+    monkeypatch.setattr(stills, "_clip_subject", lambda p: None)
+    rnd = random.Random(1)
+    im = Image.new("RGB", (1200, 800), (90, 120, 80))
+    px = im.load()
+    for x in range(0, 1200, 3):  # a little grass texture everywhere
+        for y in range(0, 800, 3):
+            v = rnd.randint(-8, 8)
+            px[x, y] = (90 + v, 120 + v, 80 + v)
+    for x in range(860, 1020):
+        for y in range(120, 280):
+            px[x, y] = (210, 40, 30)
+    f = tmp_path / "tent.jpg"
+    im.save(f, quality=92)
+    fx, fy = stills.focal_point(f)
+    assert fx > 0.62 and fy < 0.42, (fx, fy)
+
+
+def test_clip_points_the_way_when_it_is_sure(tmp_path, monkeypatch):
+    monkeypatch.setattr(stills, "_clip_subject", lambda p: (0.2, 0.3, 0.05))
+    f = tmp_path / "flat.jpg"
+    Image.new("RGB", (800, 600), (120, 130, 140)).save(f)
+    fx, fy = stills.focal_point(f)
+    assert fx < 0.4 and fy < 0.4  # 70% meaning, 30% saliency (the middle here)
+
+
+def test_the_focal_point_is_kept_per_source_photo(tmp_path, monkeypatch):
+    monkeypatch.setattr(stills, "FOCAL_CACHE", tmp_path / "_focal.json")
+    calls = []
+    monkeypatch.setattr(stills, "focal_point", lambda p: calls.append(p) or (0.3, 0.7))
+    src = tmp_path / "a.jpg"
+    Image.new("RGB", (10, 10)).save(src)
+    assert stills.cached_focal(src, src) == (0.3, 0.7) and stills.cached_focal(src, src) == (0.3, 0.7)
+    assert len(calls) == 1

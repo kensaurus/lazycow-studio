@@ -327,10 +327,12 @@ The V2 row on the timeline holds cutaways (a detail shot for about a second) and
 
 **Reels › Photo posts › Make 10, all different** draws ten carousels (and a Story that shares each) from your photos, in
 ten of 22 looks: seamless panorama, polaroids, film strip, magazine, photo dump, scrapbook, gallery, vertical poem, a
-numbered guide, newspaper, bento grid, cut-out shapes, neo-brutal, risograph zine, photo in the letters, travel tickets,
-contact sheet, aura, maximal collage, "in numbers", phone widgets and a pixel game. It takes about a minute and a half.
+numbered guide, newspaper, bento grid, arch windows, neo-brutal, risograph zine, photo in the letters, travel tickets,
+contact sheet, aura, poster grid, "in numbers", phone widgets and a pixel game. It takes about a minute and a half.
 Pick one look or one subject to make three of just that.
 
+- **Crops keep the subject:** each photo gets a focal point (faces first, then what CLIP sees as the subject, then what
+  stands out), and every frame centres it. Japanese lines break between phrases, never mid-word.
 - **Which photos:** found by meaning for the subject (autumn, places to stay, views, work, food, night, winter), with no
   faces, no near-duplicates and no cluttered shelves. A subject your photos don't show is skipped, so a safari trip gets
   no "First snow". The best bright photo is the cover. Small people far away can still slip in: look before you post.
