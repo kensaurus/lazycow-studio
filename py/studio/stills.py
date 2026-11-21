@@ -602,28 +602,203 @@ def story_video(set_id: str) -> Path:
     return out_file
 
 
-def post_story(set_id: str) -> dict:
-    """Send the set to Instagram as a Story now (the video above), through the Facebook connection. Once per set: a
-    second call says when it went. The meta remembers it ({at, url, id})."""
-    from studio.connectors import instagram_story
+STORY_NET = "photo-story"       # its rows in the posting log: slug = the set's id
+STORY_SLOT = (12, 15)           # lunchtime in the audience's zone; reels' Stories go with YouTube at 19:00
+STORY_DAYS = 60                 # how far ahead a free day is looked for
 
+
+class FacesFound(ValueError):
+    """A slide shows someone's face: booking it needs the person's yes (force)."""
+
+
+def faces_in(set_id: str) -> list[int]:
+    """Slide numbers (1-based) where YuNet finds a face. The photos are picked with no faces, but small ones slip in
+    (21 Nov: two guests by a tent); a Story goes out to everyone, so it is checked before it is booked."""
+    import cv2
+    import numpy as np
+    from PIL import Image
+
+    try:  # OpenCV 5 prints a warning per detector about targets; nothing a person can act on
+        cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_ERROR)
+    except AttributeError:
+        pass
+    model = DATA / "bin" / "face_detection_yunet_2023mar.onnx"
+    meta = _meta(set_id)
+    if not model.exists():
+        return []
+    found = []
+    for k, name in enumerate(meta["slides"], 1):
+        with Image.open(OUT / set_id / name) as im:
+            arr = cv2.cvtColor(np.asarray(im.convert("RGB")), cv2.COLOR_RGB2BGR)
+        det = cv2.FaceDetectorYN.create(str(model), "", (arr.shape[1], arr.shape[0]), 0.75)
+        _, faces = det.detect(arr)
+        if faces is not None and any(f[2] >= 14 and f[3] >= 14 for f in faces):
+            found.append(k)
+    return found
+
+
+def _meta(set_id: str) -> dict:
     if not ID_RX.match(set_id or ""):
         raise ValueError("id: a photo post's id")
-    meta_file = OUT / set_id / "meta.json"
-    if not meta_file.exists():
+    f = OUT / set_id / "meta.json"
+    if not f.exists():
         raise FileNotFoundError(f"no photo post {set_id}")
-    meta = json.loads(meta_file.read_text(encoding="utf-8"))
+    return json.loads(f.read_text(encoding="utf-8"))
+
+
+def _save_meta(meta: dict) -> None:
+    (OUT / meta["id"] / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _tz():
+    from studio.posting import audience_tz
+
+    return audience_tz() or JST
+
+
+def story_rows() -> list[dict]:
+    """The photo Stories in the posting log that still count (booked, sent, failed): not taken back."""
+    from studio import posting
+
+    return [r for r in posting.posts() if r["network"] == STORY_NET and r["status"] not in ("replaced", "dropped")]
+
+
+def next_story_slot(now: datetime | None = None) -> datetime:
+    """The first day from today with no photo Story on it, at STORY_SLOT in the audience's zone (today only while the
+    slot is more than 10 minutes away): one a day, so they do not pile up."""
+    from studio import posting
+
+    tz = _tz()
+    now = (now or datetime.now(timezone.utc)).astimezone(tz)
+    taken = {posting.aware(r["at"]).astimezone(tz).date() for r in story_rows() if posting.aware(r["at"])}
+    for d in range(STORY_DAYS):
+        day = (now + timedelta(days=d)).date()
+        at = datetime(day.year, day.month, day.day, *STORY_SLOT, tzinfo=tz)
+        if at - now > timedelta(minutes=10) and day not in taken:
+            return at
+    raise RuntimeError(f"every day of the next {STORY_DAYS} already has a photo Story")
+
+
+def schedule_story(set_id: str, at: str | None = None, force: bool = False) -> dict:
+    """Book the set as an Instagram Story: the studio sends it at its time (publish.run_due, every minute), as it does
+    the reels' Stories. Next free lunchtime unless `at` is given. A set that shows a face needs force=True."""
+    from studio import posting
+    from studio.connectors import instagram_story
+
+    meta = _meta(set_id)
     if meta.get("storyPosted"):
+        raise ValueError(f"this set went to Instagram as a Story at {meta['storyPosted']['at']}")
+    if any(r["slug"] == set_id and r["status"] == "queued" for r in story_rows()):
+        raise ValueError("this set is already booked as a Story")
+    if not instagram_story.status().get("connected"):
+        raise ValueError("Instagram Stories are not connected: Accounts › Facebook › Connect")
+    if not force:
+        faces = faces_in(set_id)
+        if faces:
+            raise FacesFound(f"slide {', '.join(map(str, faces))} shows someone's face; a Story goes out to everyone. Book it anyway only if they agreed.")
+    when = datetime.fromisoformat(at) if at else next_story_slot()
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=_tz())
+    if when - datetime.now(timezone.utc) < timedelta(minutes=10):
+        raise ValueError("pick a time at least 10 minutes from now, or use Post to Instagram Story")
+    if not (OUT / set_id / "story.mp4").exists():
+        story_video(set_id)  # made now, so the booking cannot fail later for want of the file
+    pid = posting.queue(set_id, STORY_NET, when.isoformat(timespec="minutes"))
+    meta["storyQueued"] = {"id": pid, "at": when.isoformat(timespec="minutes")}
+    _save_meta(meta)
+    return {"queued": True, "id": pid, "at": meta["storyQueued"]["at"], "set": set_id}
+
+
+def unschedule_story(set_id: str) -> dict:
+    """Take a booked photo Story back before it goes (the row is removed: it never went out)."""
+    from studio import posting
+
+    meta = _meta(set_id)
+    rows = [r for r in story_rows() if r["slug"] == set_id and r["status"] == "queued"]
+    for r in rows:
+        posting.drop(int(r["id"]))
+    meta.pop("storyQueued", None)
+    _save_meta(meta)
+    return {"unbooked": len(rows), "set": set_id}
+
+
+def post_story(set_id: str, post_id: int | None = None) -> dict:
+    """Send the set to Instagram as a Story now (the video above), through the Facebook connection, and log it in the
+    posting log (network "photo-story") so its numbers are read while it is up (studio.perf) and kept. Once per set:
+    a second call says when it went. The meta remembers it ({at, url, id, post})."""
+    from studio import posting
+    from studio.connectors import instagram_story
+
+    meta = _meta(set_id)
+    if meta.get("storyPosted"):
+        if post_id:
+            posting.drop(int(post_id))
         raise RuntimeError(f"this set went to Instagram as a Story at {meta['storyPosted']['at']}")
     print("STAGE 1/2 making the Story video", flush=True)
     video = story_video(set_id)
-    if meta.get("storyVideo") != "story.mp4":
-        meta["storyVideo"] = "story.mp4"
+    meta["storyVideo"] = "story.mp4"
+    if not post_id:
+        post_id = posting.record(set_id, STORY_NET, "queued", datetime.now(_tz()).isoformat(timespec="minutes"))
     print("STAGE 2/2 sending it to Instagram", flush=True)
-    sent = instagram_story.post(video)
-    meta["storyPosted"] = {"at": datetime.now(JST).isoformat(timespec="seconds"), "url": sent.get("url") or "", "id": sent.get("remote_id") or ""}
-    meta_file.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        sent = instagram_story.post(video)
+    except Exception as err:
+        posting.settle(post_id, "failed", note=str(err)[:400])
+        raise
+    url, rid = sent.get("url") or "", str(sent.get("remote_id") or "")
+    posting.settle(post_id, "posted", url, rid)
+    posting.done(post_id, url)  # the time it actually went out
+    meta["storyPosted"] = {"at": datetime.now(JST).isoformat(timespec="seconds"), "url": url, "id": rid, "post": int(post_id)}
+    meta.pop("storyQueued", None)
+    _save_meta(meta)
     return {"posted": True, **meta["storyPosted"]}
+
+
+def send_due(row: dict) -> dict:
+    """publish.run_due's hand-off for a booked photo Story whose time has come."""
+    try:
+        out = post_story(row["slug"], int(row["id"]))
+    except FileNotFoundError as err:  # the set was deleted after it was booked: nothing to send
+        from studio import posting
+
+        posting.settle(int(row["id"]), "failed", note=str(err))
+        raise
+    return {"id": row["id"], "status": "posted", "url": out.get("url", ""), "network": STORY_NET, "slug": row["slug"]}
+
+
+def story_results(rows: list[dict] | None = None) -> dict[str, dict]:
+    """The latest numbers of each set's Story, read by studio.perf while it was up and kept in the catalog after it
+    is gone: {set id: {views, reach, shares, follows, profile_visits, total_interactions, navigation, age_h, at}}."""
+    from studio import perf
+
+    rows = perf.readings() if rows is None else rows
+    out: dict[str, dict] = {}
+    for r in rows:
+        if r.get("network") != STORY_NET:
+            continue
+        cur = out.get(r["slug"])
+        if cur and str(cur["at"]) > str(r["fetched_at"]):
+            continue
+        extra = r.get("extra") or {}
+        out[r["slug"]] = {**{k: r.get(k) for k in ("views", "reach", "shares", "follows") if r.get(k) is not None},
+                          **{k: extra[k] for k in ("profile_visits", "total_interactions", "navigation") if k in extra},
+                          "age_h": r.get("age_h"), "at": r["fetched_at"]}
+    return out
+
+
+def look_results(sets: list[dict]) -> list[dict]:
+    """Which looks and subjects people watched: the Stories' final readings averaged by look, best first. What the
+    next batches lean on as results come in (shown on the page; too few to steer the picks yet)."""
+    by: dict[str, list[dict]] = {}
+    for s in sets:
+        res = s.get("storyResult")
+        if res and isinstance(res.get("reach") or res.get("views"), int):
+            by.setdefault(s["style"], []).append(res)
+    out = []
+    for style, rs in by.items():
+        avg = lambda k: round(sum(r.get(k) or 0 for r in rs) / len(rs), 1)  # noqa: E731
+        out.append({"style": style, "stories": len(rs), "reach": avg("reach"), "views": avg("views"), "profile_visits": avg("profile_visits")})
+    return sorted(out, key=lambda x: -(x["reach"] or x["views"]))
 
 
 # ---------------------------------------------------------------- make, list, delete
@@ -784,6 +959,21 @@ def list_sets() -> list[dict]:
         except (OSError, ValueError):
             continue
     out.sort(key=lambda m: (m.get("created") or "", m.get("id") or ""), reverse=True)
+    # The posting log and the Story readings are the record: a booking, a send and its numbers, kept after it expires.
+    try:
+        rows, results = story_rows(), story_results()
+    except Exception:  # noqa: BLE001 - the sets still list without the catalog
+        rows, results = [], {}
+    for m in out:
+        q = next((r for r in rows if r["slug"] == m.get("id") and r["status"] == "queued"), None)
+        m.pop("storyQueued", None)
+        if q:
+            m["storyQueued"] = {"id": int(q["id"]), "at": q["at"]}
+        failed = next((r for r in rows if r["slug"] == m.get("id") and r["status"] == "failed"), None)
+        if failed and not m.get("storyPosted"):
+            m["storyFailed"] = {"id": int(failed["id"]), "at": failed["at"], "why": failed.get("note") or ""}
+        if m.get("id") in results:
+            m["storyResult"] = results[m["id"]]
     return out
 
 

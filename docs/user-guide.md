@@ -338,9 +338,14 @@ Pick one look or one subject to make three of just that.
   no "First snow". The best bright photo is the cover. Small people far away can still slip in: look before you post.
 - **Check it the way people will see it:** the Instagram post (swipe it), the profile grid (only the middle 3:4 of slide 1
   shows), the Story, Facebook, Threads, X and Bluesky, each with its own caption and a length counted the network's way.
-- **Post it as a Story:** **Post to Instagram Story** sends the set to your Instagram account (the one linked to your
-  Facebook Page) as a Story, after asking: a short 9:16 video with the slides one after another, about 3 seconds each,
-  the one the Story tab plays. Once per set; the set then says when it went, with a link.
+- **Post it as a Story:** **Schedule Story** books the set for the next free lunchtime (12:15, one photo Story a day;
+  reels' Stories go at 19:00) and the studio sends it then; **Take back** cancels it. **Post now** sends it at once,
+  after asking. Either way it is a short 9:16 video with the slides one after another, about 3 seconds each (the one the
+  Story tab plays), sent to the Instagram account linked to your Facebook Page, once per set. A set whose slides show a
+  face is not booked unless you say yes: a Story goes out to everyone. Bookings show on Posting as "Story (photo post)".
+- **Its numbers are kept:** an hour after it goes out, then about every 6 hours and once more before it disappears, the
+  studio reads the Story's views, reach, profile visits and how people moved through it; the Story tab shows them and
+  they stay after the Story is gone. The Story tab also lists the looks so far, best first.
 - **Or post it by hand:** **Approve and send to Drive** copies the slides in order, the Story and one caption file per
   network to the ready folder. Post them in the Instagram app and add music there (carousels with music can show in
   Reels). The studio does not post carousels to the feed by itself.

@@ -228,8 +228,8 @@ def test_the_focal_point_is_kept_per_source_photo(tmp_path, monkeypatch):
     assert len(calls) == 1
 
 
-def _story_set(out):
-    d = out / "1121-090000-01-contact-autumn"
+def _story_set(out, sid="1121-090000-01-contact-autumn"):
+    d = out / sid
     d.mkdir(parents=True)
     for k, colour in enumerate(("#c84", "#48c", "#8c4"), 1):
         Image.new("RGB", (stills.SLIDE_W, stills.SLIDE_H), colour).save(d / f"slide-0{k}.jpg")
@@ -262,7 +262,7 @@ def test_a_story_goes_once_and_the_set_remembers_it(tmp_path, monkeypatch):
     from studio.connectors import instagram_story
 
     monkeypatch.setattr(stills, "OUT", tmp_path)
-    d = _story_set(tmp_path)
+    d = _story_set(tmp_path, "1121-090000-02-contact-autumn")
     sent = []
     monkeypatch.setattr(stills, "story_video", lambda sid: (d / "story.mp4").write_bytes(b"mp4") and d / "story.mp4")
     monkeypatch.setattr(instagram_story, "post", lambda video, *a, **k: sent.append(video) or {"url": "https://instagram.com/stories/x/1", "remote_id": "1"})
@@ -275,3 +275,87 @@ def test_a_story_goes_once_and_the_set_remembers_it(tmp_path, monkeypatch):
     assert len(sent) == 1
     with pytest.raises(ValueError):
         stills.post_story("../x")
+
+
+
+def test_photo_stories_get_one_lunchtime_a_day():
+    from datetime import datetime
+
+    jst = stills.JST
+    at = lambda s: datetime.fromisoformat(s)  # noqa: E731
+    stills_rows = []
+    orig = stills.story_rows
+    try:
+        stills.story_rows = lambda: stills_rows
+        assert stills.next_story_slot(at("2026-11-21T11:00+09:00")) == datetime(2026, 11, 21, 12, 15, tzinfo=jst)
+        assert stills.next_story_slot(at("2026-11-21T12:10+09:00")) == datetime(2026, 11, 22, 12, 15, tzinfo=jst)  # too close
+        stills_rows.append({"slug": "x", "status": "queued", "at": "2026-11-22T12:15+09:00"})
+        assert stills.next_story_slot(at("2026-11-21T13:00+09:00")) == datetime(2026, 11, 23, 12, 15, tzinfo=jst)
+    finally:
+        stills.story_rows = orig
+
+
+def _bookable(tmp_path, monkeypatch, sid):
+    from studio.connectors import instagram_story
+
+    monkeypatch.setattr(stills, "OUT", tmp_path)
+    d = _story_set(tmp_path, sid)
+    monkeypatch.setattr(instagram_story, "status", lambda: {"connected": True})
+    monkeypatch.setattr(stills, "story_video", lambda s: (d / "story.mp4").write_bytes(b"mp4") and d / "story.mp4")
+    return d
+
+
+def test_a_set_with_a_face_is_booked_only_with_a_yes_and_only_once(tmp_path, monkeypatch):
+    from studio import posting
+
+    sid = "1121-090000-03-shapes-stay"
+    _bookable(tmp_path, monkeypatch, sid)
+    monkeypatch.setattr(stills, "faces_in", lambda s: [3])
+    with pytest.raises(stills.FacesFound, match="slide 3"):
+        stills.schedule_story(sid)
+    assert not [r for r in posting.posts() if r["slug"] == sid]
+    r = stills.schedule_story(sid, "2030-01-05T12:15+09:00", force=True)
+    row = next(x for x in posting.posts() if x["id"] == r["id"])
+    assert (row["network"], row["status"], row["slug"]) == ("photo-story", "queued", sid)
+    with pytest.raises(ValueError, match="already booked"):
+        stills.schedule_story(sid, "2030-01-06T12:15+09:00", force=True)
+    listed = next(s for s in stills.list_sets() if s["id"] == sid)
+    assert listed["storyQueued"]["id"] == r["id"]
+    assert stills.unschedule_story(sid)["unbooked"] == 1
+    assert not [x for x in posting.posts() if x["slug"] == sid]
+    assert "storyQueued" not in next(s for s in stills.list_sets() if s["id"] == sid)
+
+
+def test_a_booked_photo_story_goes_out_at_its_time_and_is_logged(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from studio import posting, publish
+    from studio.connectors import instagram_story
+
+    sid = "1121-090000-04-gallery-views"
+    _bookable(tmp_path, monkeypatch, sid)
+    monkeypatch.setattr(instagram_story, "post", lambda video, *a, **k: {"url": "https://www.instagram.com/stories/x/9", "remote_id": "9"})
+    pid = posting.queue(sid, "photo-story", (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(timespec="minutes"))
+    out = [r for r in publish._run_due() if r.get("slug") == sid]
+    assert out and out[0]["status"] == "posted"
+    row = next(x for x in posting.posts() if x["id"] == pid)
+    assert (row["status"], row["remote_id"]) == ("posted", "9")
+    meta = json.loads((tmp_path / sid / "meta.json").read_text(encoding="utf-8"))
+    assert meta["storyPosted"]["post"] == pid
+
+
+def test_story_numbers_are_kept_per_set_and_stay_out_of_the_reel_model():
+    from studio import learn
+
+    rows = [
+        {"network": "photo-story", "slug": "a", "fetched_at": "2026-11-21T14:00:00+09:00", "views": 10, "reach": 8, "extra": {}, "age_h": 1},
+        {"network": "photo-story", "slug": "a", "fetched_at": "2026-11-22T10:00:00+09:00", "views": 90, "reach": 70,
+         "extra": {"profile_visits": 4, "navigation": {"tap_forward": 30}}, "age_h": 21},
+        {"network": "instagram-story", "slug": "reel", "fetched_at": "2026-11-22T10:00:00+09:00", "views": 5, "extra": {}, "age_h": 21},
+    ]
+    res = stills.story_results(rows)
+    assert set(res) == {"a"} and res["a"]["views"] == 90 and res["a"]["profile_visits"] == 4 and res["a"]["navigation"]["tap_forward"] == 30
+    looks = stills.look_results([{"style": "shapes", "storyResult": res["a"]}, {"style": "pano"}])
+    assert looks == [{"style": "shapes", "stories": 1, "reach": 70.0, "views": 90.0, "profile_visits": 4.0}]
+    post = {"id": 1, "slug": "a", "network": "photo-story", "status": "posted", "at": "2026-11-21T13:00+09:00", "out_at": "2026-11-21T13:00+09:00", "age_h": 30}
+    assert learn.comparable(posts=[post], rows=[{**rows[1], "post_id": 1, "source": "api"}])["units"] == []

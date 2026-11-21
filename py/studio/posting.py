@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 
 from studio.db import connect
 
-NETWORKS = ("youtube", "instagram", "instagram-story", "threads", "facebook", "tiktok", "x", "linkedin", "gbp", "line-voom", "line-oa", "pinterest", "bluesky", "xiaohongshu", "kensaurus", "zenn", "note")
+NETWORKS = ("youtube", "instagram", "instagram-story", "photo-story", "threads", "facebook", "tiktok", "x", "linkedin", "gbp", "line-voom", "line-oa", "pinterest", "bluesky", "xiaohongshu", "kensaurus", "zenn", "note")
 
 POSTS_SQL = """
 CREATE TABLE IF NOT EXISTS posts (

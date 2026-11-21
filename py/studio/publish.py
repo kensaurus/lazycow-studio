@@ -316,6 +316,11 @@ def _run_due() -> list[dict]:
         results.append({"id": pid, "status": "missing", "error": "missed while the studio was not running"})
     for row in posting.due():
         try:
+            if row["network"] == "photo-story":  # a photo post's Story (studio.stills), not a reel
+                from studio import stills
+
+                results.append(stills.send_due(row))
+                continue
             results.append(publish(row["slug"], row["network"], None, int(row["id"])))
         except NotApproved as err:
             # A reel sent back to review (new words, a new render) waits in the queue instead of failing:

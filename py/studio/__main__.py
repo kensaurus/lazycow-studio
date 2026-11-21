@@ -195,12 +195,14 @@ def main() -> None:
     pub.add_argument("--unbook", type=int, default=None, help="take this Facebook booking back, nothing in its place (row kept as dropped)")
 
     stl = sub.add_parser("stills", help="photo posts: carousels and a Story from the footage's photos, in the looks of shared/post-templates.json")
-    stl.add_argument("action", choices=["make", "list", "delete", "approve", "story"])
+    stl.add_argument("action", choices=["make", "list", "delete", "approve", "story", "schedule", "unschedule"])
     stl.add_argument("id", nargs="?", default=None, help="delete: the set's id")
     stl.add_argument("--n", type=int, default=10)
     stl.add_argument("--style", default=None)
     stl.add_argument("--theme", default=None)
     stl.add_argument("--seed", type=int, default=None)
+    stl.add_argument("--at", default=None, help="schedule: when (ISO with offset); default the next free lunchtime")
+    stl.add_argument("--force", action="store_true", help="schedule: book it although a slide shows a face")
 
     extra = sub.add_parser("extras")
     extra.add_argument("name", choices=["mask", "parallax", "takeout", "upscale", "beats", "gap"])
@@ -221,13 +223,23 @@ def main() -> None:
         if args.action == "make":
             stills.make(args.n, style=args.style, theme=args.theme, seed=args.seed)  # prints STAGE/PROGRESS and RESULT itself
         elif args.action == "list":
-            print("RESULT " + json.dumps({"sets": stills.list_sets(), "templates": {
+            sets = stills.list_sets()
+            print("RESULT " + json.dumps({"sets": sets, "looks": stills.look_results(sets), "templates": {
                 "styles": [[s["id"], s["en"], s["ja"]] for s in stills.styles()],
                 "themes": [[t["id"], t["title"], t["titleJa"]] for t in stills.themes()]}}, ensure_ascii=False))
         elif args.action == "approve":
             print("RESULT " + json.dumps(stills.approve(args.id or ""), ensure_ascii=False))
         elif args.action == "story":  # send the set to Instagram as a Story now (a short video of its slides)
             print("RESULT " + json.dumps(stills.post_story(args.id or ""), ensure_ascii=False))
+        elif args.action in ("schedule", "unschedule"):  # book it as a Story (the studio sends it then), or take it back
+            try:
+                out = (stills.schedule_story(args.id or "", args.at, args.force) if args.action == "schedule"
+                       else stills.unschedule_story(args.id or ""))
+            except stills.FacesFound as err:
+                out = {"error": str(err), "code": "faces"}
+            except (ValueError, FileNotFoundError, RuntimeError) as err:
+                out = {"error": str(err), "code": "refused"}
+            print("RESULT " + json.dumps(out, ensure_ascii=False))
         else:
             print("RESULT " + json.dumps({"deleted": stills.delete(args.id or "")}))
     elif args.cmd == "tag":

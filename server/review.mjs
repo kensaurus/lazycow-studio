@@ -2644,6 +2644,20 @@ const server = createServer(async (req, res) => {
       if (cur && cur.status === "running") return send(res, 409, { error: "A Story is being sent; wait for it to finish." });
       return send(res, 200, jobView(startTask("stills-story", "stills", ["stills", "story", b.id])));
     }
+    // Book a set as an Instagram Story (the studio sends it at its time, as the reels' Stories) or take it back.
+    // A set with a face on a slide is refused (409, code "faces") unless the person says yes (force).
+    if (req.method === "POST" && (url.pathname === "/api/stills/schedule" || url.pathname === "/api/stills/unschedule")) {
+      const b = await body(req);
+      if (!/^[a-z0-9][a-z0-9-]{2,80}$/.test(String(b.id || ""))) return send(res, 400, { error: "id: a photo post's id" });
+      const args = ["stills", url.pathname.endsWith("unschedule") ? "unschedule" : "schedule", b.id];
+      if (typeof b.at === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?([+-]\d{2}:\d{2}|Z)$/.test(b.at)) args.push("--at", b.at);
+      if (b.force === true) args.push("--force");
+      try {
+        const r = await pyResult(args, null, 120_000);
+        if (r.error) return send(res, r.code === "faces" ? 409 : 400, r);
+        return send(res, 200, r);
+      } catch (e) { return send(res, e.status || 500, { error: e.message }); }
+    }
     if (req.method === "POST" && url.pathname === "/api/stills/delete") {
       const b = await body(req);
       if (!/^[a-z0-9][a-z0-9-]{2,80}$/.test(String(b.id || ""))) return send(res, 400, { error: "id: a photo post's id" });

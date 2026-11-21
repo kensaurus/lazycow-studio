@@ -3906,6 +3906,7 @@ button.hchip { cursor: pointer; }
   .ph-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
   .ph-ok { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } .ph-ok p { margin: 0; }
   .ph-ok .icon-only { padding: 6px 8px; }
+  .ph-res { padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
   .ph-bar .note { margin: 0 0 4px; }
   .ph-phone.story video { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; display: block; }
   .ph-slides { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
@@ -4256,6 +4257,16 @@ const jobLabel = (l) => { const t = String(l || ""); if (lang !== "ja") return t
 let revOnly = null;  // a phone opened one reel: Review shows just that one
 function reelName(slug) {
   const r = (typeof overview !== "undefined" && overview?.reels || []).find((x) => x.slug === slug);
+  if (!r && /^\d{4}-\d{6}-\d{2}-[a-z]+-[a-z]+$/.test(slug || "")) {  // a photo post's Story (network photo-story)
+    const s = (globalThis.PH_SETS || []).find((x) => x.id === slug);
+    if (!globalThis.PH_SETS && !reelName.askedSets) {  // names live with the sets: read them once, then draw again
+      reelName.askedSets = true;
+      loadPhotos().then(() => { if (globalThis.PH_SETS && atHome()) renderHome(true); });
+    }
+    if (s) return `${lang === "ja" ? s.styleJa : s.styleEn} · ${lang === "ja" ? s.themeJa : s.themeEn}`;
+    const [, , , st, th] = slug.split("-");
+    return `${tr("nav.photos")} · ${st} · ${th}`;
+  }
   return String(r?.title || "").replace(/\s+/g, " ").trim() || slug;
 }
 const fmt = (t) => { const m = Math.floor(t / 60); return String(m).padStart(2, "0") + ":" + (t % 60).toFixed(2).padStart(5, "0"); };
@@ -4268,7 +4279,7 @@ const DEVICE_ICON = { dji: "drone", phone: "phone", canon: "camera", gopro: "cam
 const TAG_ICON = { snow: "snow", autumn: "leaf", night: "moon", sunset: "sun", flowers: "flower", fire: "flame", aerial: "drone", people: "user" };
 const SEASON_ICON = { winter: "snow", autumn: "leaf", summer: "sun", spring: "flower" };
 /* Each network: its brand mark (#n-… in the sprite; a letter where there is none) and brand colour. */
-const CH_STYLE = { instagram: ["@instagram", "#c13584"], "instagram-story": ["@instagram", "#e1306c"], threads: ["@threads", "#101010"], facebook: ["@facebook", "#1877f2"], "youtube-shorts": ["@youtube", "#e62117"], tiktok: ["@tiktok", "#101010"], x: ["@x", "#000"],
+const CH_STYLE = { instagram: ["@instagram", "#c13584"], "instagram-story": ["@instagram", "#e1306c"], "photo-story": ["@instagram", "#e1306c"], threads: ["@threads", "#101010"], facebook: ["@facebook", "#1877f2"], "youtube-shorts": ["@youtube", "#e62117"], tiktok: ["@tiktok", "#101010"], x: ["@x", "#000"],
   linkedin: ["@linkedin", "#0a66c2"], line: ["@line", "#06c755"], "line-voom": ["@line", "#06c755"], "line-oa": ["@line", "#06c755"], gbp: ["@gbp", "#4285f4"], pinterest: ["@pinterest", "#e60023"], bluesky: ["@bluesky", "#0085ff"], note: ["@note", "#41c9b4"],
   kensaurus: ["k", "#4d6b52"], zenn: ["Z", "#3ea8ff"], xiaohongshu: ["@xiaohongshu", "#ff2442"] };
 function netLogo(id, size = "") {
@@ -5167,6 +5178,11 @@ const I18N = {
     "ph.tab.all": "All slides", "ph.story.post": "Post to Instagram Story", "ph.story.ask": "Post this set to Instagram as a Story now? It shows for 24 hours on {h}.",
     "ph.story.posting": "Sending the Story…", "ph.story.posted": "Story posted {d}", "ph.story.done": "Sent to Instagram as a Story", "ph.story.vnote": "This is what Post to Instagram Story sends: the slides one after another, about {s} seconds, without sound (add music in the app if you post it by hand).",
     "ph.story.view": "View", "ph.dl": "Download each slide:",
+    "ph.sched": "Schedule Story", "ph.sched.tip": "Books it for the next free lunchtime (12:15); the studio sends it then, one photo Story a day. Reels' Stories go at 19:00.",
+    "ph.now": "Post now", "ph.booked": "Story booked {d}", "ph.unbook": "Take back", "ph.bookedto": "Booked as a Story for {d}", "ph.unbooked": "Story booking taken back",
+    "ph.faces": "{m}\n\nBook it anyway?", "ph.failed": "The Story did not go out: {m}",
+    "ph.res": "Story numbers", "ph.res.none": "Numbers come an hour after it goes out, then about every 6 hours while it is up; they are kept after it disappears.",
+    "ph.res.line": "{v} views · {r} reached · {p} profile visits", "ph.looks": "Stories so far, best first:",
     "ph.make": "Make {n}, all different", "ph.anylook": "Every look", "ph.anytheme": "Any subject", "ph.making": "Making photo posts", "ph.made": "{n} photo posts made", "ph.none": "No photo posts yet. Press the button above: about a minute for ten.",
     "ph.slides": "{n} slides", "ph.tab.ig": "Instagram post", "ph.tab.grid": "Profile grid", "ph.tab.story": "Story", "ph.tab.fb": "Facebook", "ph.tab.threads": "Threads", "ph.tab.x": "X", "ph.tab.bsky": "Bluesky",
     "ph.copy": "Copy caption", "ph.copied": "Caption copied", "ph.save": "Save slides", "ph.delete": "Delete", "ph.askdel": "Delete this photo post?", "ph.all": "All slides side by side: titles and prints run across the joins",
@@ -5510,6 +5526,11 @@ const I18N = {
     "ph.tab.all": "全スライド", "ph.story.post": "Instagramストーリーズに投稿", "ph.story.ask": "このセットを今すぐInstagramのストーリーズに投稿しますか？ {h} に24時間表示されます。",
     "ph.story.posting": "ストーリーズを送信中…", "ph.story.posted": "{d}にストーリーズ投稿済み", "ph.story.done": "Instagramのストーリーズに投稿しました", "ph.story.vnote": "「Instagramストーリーズに投稿」で送られる動画です。スライドが順に流れます（約{s}秒、音なし。手で投稿するときはアプリで音楽を追加できます）。",
     "ph.story.view": "見る", "ph.dl": "1枚ずつ保存：",
+    "ph.sched": "ストーリーズを予約", "ph.sched.tip": "次の空いている昼（12:15）に予約し、その時間にスタジオが送ります。写真のストーリーズは1日1本。リールのストーリーズは19:00です。",
+    "ph.now": "今すぐ投稿", "ph.booked": "{d}にストーリーズ予約済み", "ph.unbook": "予約を取り消す", "ph.bookedto": "{d}のストーリーズに予約しました", "ph.unbooked": "ストーリーズの予約を取り消しました",
+    "ph.faces": "{m}\n\nそれでも予約しますか？", "ph.failed": "ストーリーズを送れませんでした：{m}",
+    "ph.res": "ストーリーズの数字", "ph.res.none": "投稿の1時間後から、表示中は約6時間ごとに読み取ります。消えたあとも記録は残ります。",
+    "ph.res.line": "表示 {v} · リーチ {r} · プロフィール {p}", "ph.looks": "これまでのストーリーズ（良い順）：",
     "ph.make": "{n}種類のデザインで作る", "ph.anylook": "すべてのデザイン", "ph.anytheme": "題材はおまかせ", "ph.making": "写真投稿を作成中", "ph.made": "写真投稿を{n}件作りました", "ph.none": "まだありません。上のボタンを押してください（10件で約1分）。",
     "ph.slides": "{n}枚", "ph.tab.ig": "Instagram投稿", "ph.tab.grid": "プロフィール", "ph.tab.story": "ストーリーズ", "ph.tab.fb": "Facebook", "ph.tab.threads": "Threads", "ph.tab.x": "X", "ph.tab.bsky": "Bluesky",
     "ph.copy": "キャプションをコピー", "ph.copied": "コピーしました", "ph.save": "スライドを保存", "ph.delete": "削除", "ph.askdel": "この写真投稿を削除しますか？", "ph.all": "全スライドを横に並べて：タイトルや写真がつなぎ目をまたぎます",
@@ -6449,7 +6470,7 @@ function monitorHtml() {
 /* The next 7 days, one row per network, each cell filled by its state (batch A: booked on the site, the studio sends it,
    a reminder, failed or missing, out, an empty slot): one laneSvg in "cells" mode. Point at a cell for its posts; a
    click opens Posting's week at that network and day. The same bookings as Posting, read from the posting log. */
-const WEEK_ORDER = ["youtube", "instagram-story", ...POST_NETS.filter((n) => n !== "youtube")];
+const WEEK_ORDER = ["youtube", "instagram-story", "photo-story", ...POST_NETS.filter((n) => n !== "youtube")];
 function weekGridHtml() {
   const days = Array.from({ length: 7 }, (_, i) => wallOf(Date.now() + i * 864e5).slice(0, 10)), d = laneData(days);
   const rows = d.rows.filter((r) => d.items.some((x) => x.row === r.key) || [...d.gaps.keys()].some((k) => k.startsWith(r.key + "|")));
@@ -6879,7 +6900,8 @@ function makerEstimate() {
 }
 const NET_NAME = { youtube: "YouTube", instagram: "Instagram", tiktok: "TikTok", facebook: "Facebook", threads: "Threads", x: "X", linkedin: "LinkedIn", "line-voom": "LINE VOOM", "line-oa": "LINE", pinterest: "Pinterest", bluesky: "Bluesky", xiaohongshu: "小红书",
   // Two names the networks write in Japanese themselves (batch D): read in the page's language at each use.
-  get "instagram-story"() { return lang === "ja" ? "Instagram ストーリーズ" : "Instagram Story"; }, get gbp() { return lang === "ja" ? "Google マップ" : "Google Maps"; } };
+  get "instagram-story"() { return lang === "ja" ? "Instagram ストーリーズ" : "Instagram Story"; },
+  get "photo-story"() { return lang === "ja" ? "ストーリーズ（写真投稿）" : "Story (photo post)"; }, get gbp() { return lang === "ja" ? "Google マップ" : "Google Maps"; } };
 /* Where a reel is out, in one line: seven squares (one per network) and a sentence. */
 function netStrip(r) {
   const st = postState(r.slug);
@@ -7128,7 +7150,7 @@ const PH_LIMIT = { instagram: 2200, facebook: 63206, threads: 500, x: 280, blues
 const phFile = (s, f) => `/api/stills/file?id=${encodeURIComponent(s.id)}&f=${f}&v=${encodeURIComponent(s.created || "")}`;
 async function loadPhotos() {
   if (phLoading) return; phLoading = true;
-  try { phView = await api("/api/stills"); if (!phSel || !phView.sets.some((s) => s.id === phSel)) phSel = phView.sets[0]?.id || null; }
+  try { phView = await api("/api/stills"); globalThis.PH_SETS = phView.sets; if (!phSel || !phView.sets.some((s) => s.id === phSel)) phSel = phView.sets[0]?.id || null; }
   catch (e) { phView = { sets: [], error: e.message }; }
   finally { phLoading = false; if (page === "photos" && atHome()) renderHome(true); }
 }
@@ -7184,9 +7206,12 @@ function phMock(s) {
   }
   if (phTab === "story") {
     const vid = s.storyVideo ? phFile(s, s.storyVideo) : "";
+    const when = (iso) => `${shortDay(String(iso).slice(0, 10))} ${String(iso).slice(11, 16)}`;
     return `<div class="ph-phone story"><div class="ph-bars"><i></i></div><div class="ph-top over">${avatar}<b>${esc(handle)}</b></div>${vid
         ? `<video src="${vid}" autoplay muted loop playsinline aria-label="${esc(s.themeJa)}"></video>` : `<img src="${phFile(s, s.story)}" alt="">`}</div>
-      <div class="ph-side"><p class="meta">${vid ? esc(tr("ph.story.vnote", { s: Math.round(3 * s.slides.length + 1.5) })) : tr("ph.storynote")}</p>
+      <div class="ph-side">${s.storyPosted ? `<div class="ph-res"><b>${tr("ph.res")}</b> ${s.storyResult ? `<span>${esc(tr("ph.res.line", { v: s.storyResult.views ?? "–", r: s.storyResult.reach ?? "–", p: s.storyResult.profile_visits ?? "–" }))}</span> <span class="meta">· ${esc(when(s.storyResult.at))}</span>` : `<span class="meta">${tr("ph.res.none")}</span>`}</div>` : ""}
+        ${(phView.looks || []).length ? `<p class="meta">${tr("ph.looks")} ${(phView.looks || []).slice(0, 4).map((l) => `${esc((phView.templates?.styles || PH_STYLES).find((x) => x[0] === l.style)?.[lang === "ja" ? 2 : 1] || l.style)} (${esc(String(l.reach || l.views))}, ${l.stories})`).join(" · ")}</p>` : ""}
+        <p class="meta">${vid ? esc(tr("ph.story.vnote", { s: Math.round(3 * s.slides.length + 1.5) })) : tr("ph.storynote")}</p>
         <div class="row wrap">${vid ? `<a class="btn sm" download href="${vid}">${ico("download", "sm")}story.mp4</a>` : ""}<a class="btn sm" download href="${phFile(s, s.story)}">${ico("download", "sm")}story.jpg</a></div></div>`;
   }
   if (phTab === "all") return `<figure class="ph-all"><img src="${phFile(s, "strip.jpg")}" alt=""><figcaption class="meta">${tr("ph.all")}</figcaption>
@@ -7229,16 +7254,19 @@ function renderPhotos() {
     const c = String(x.created || ""), batch = `${shortDay(c.slice(0, 10))} ${c.slice(11, 16)}`;
     const grp = batch !== lastBatch ? `<li class="grp">${esc(batch)}</li>` : "";
     lastBatch = batch;
-    const marks = `${x.storyPosted ? `<span title="${esc(tr("ph.story.posted", { d: shortDay(String(x.storyPosted.at).slice(0, 10)) }))}">${ico("send", "sm")}</span>` : ""}${x.approved ? `<span title="${esc(tr("ph.sent", { d: shortDay(String(x.approved.at).slice(0, 10)) }))}">${ico("check", "sm")}</span>` : ""}`;
+    const marks = `${x.storyQueued ? `<span title="${esc(tr("ph.booked", { d: shortDay(String(x.storyQueued.at).slice(0, 10)) + " " + String(x.storyQueued.at).slice(11, 16) }))}">${ico("cal", "sm")}</span>` : ""}${x.storyPosted ? `<span title="${esc(tr("ph.story.posted", { d: shortDay(String(x.storyPosted.at).slice(0, 10)) }))}${x.storyResult ? " · " + esc(tr("ph.res.line", { v: x.storyResult.views ?? "–", r: x.storyResult.reach ?? "–", p: x.storyResult.profile_visits ?? "–" })) : ""}">${ico("send", "sm")}</span>` : ""}${x.approved ? `<span title="${esc(tr("ph.sent", { d: shortDay(String(x.approved.at).slice(0, 10)) }))}">${ico("check", "sm")}</span>` : ""}`;
     return `${grp}<li><button class="${x.id === s.id ? "on" : ""}" data-phsel="${esc(x.id)}" title="${esc(`${lang === "ja" ? x.styleJa : x.styleEn} · ${lang === "ja" ? x.themeJa : x.themeEn}`)}">
       <img src="${phFile(x, x.slides[0])}" alt="" loading="lazy"><span><b>${esc(lang === "ja" ? x.styleJa : x.styleEn)}</b><span class="meta">${esc(lang === "ja" ? x.themeJa : x.themeEn)} · ${esc(tr("ph.slides", { n: x.panels }))}</span></span>${marks ? `<span class="marks">${marks}</span>` : ""}</button></li>`;
   }).join("")}</ul>`;
   const tabs = `<div class="ph-tabs" role="tablist">${PH_TABS.map((t) => `<button role="tab" aria-selected="${t === phTab}" class="${t === phTab ? "on" : ""}" data-phtab="${t}">${tr(`ph.tab.${t}`)}</button>`).join("")}</div>`;
   const sj = phView.storyJob && isActive(phView.storyJob) ? phView.storyJob : null;
+  const when = (iso) => `${shortDay(String(iso).slice(0, 10))} ${String(iso).slice(11, 16)}`;
   const storyBtn = s.storyPosted
-    ? `<p class="meta ok">${ico("send", "sm")} ${esc(tr("ph.story.posted", { d: shortDay(String(s.storyPosted.at).slice(0, 10)) + " " + String(s.storyPosted.at).slice(11, 16) }))}${s.storyPosted.url ? ` · <a href="${escUrl(s.storyPosted.url)}" target="_blank" rel="noopener">${tr("ph.story.view")}</a>` : ""}</p>`
+    ? `<p class="meta ok">${ico("send", "sm")} ${esc(tr("ph.story.posted", { d: when(s.storyPosted.at) }))}${s.storyPosted.url ? ` · <a href="${escUrl(s.storyPosted.url)}" target="_blank" rel="noopener">${tr("ph.story.view")}</a>` : ""}</p>`
     : sj ? `<button class="primary" disabled>${ico("clock", "sm")}${esc(tr("ph.story.posting"))} ${esc(sj.label || "")}</button>`
-    : `<button class="primary" data-phstory="${esc(s.id)}">${ico("send", "sm")}${tr("ph.story.post")}</button>`;
+    : s.storyQueued ? `<p class="meta ok">${ico("cal", "sm")} ${esc(tr("ph.booked", { d: when(s.storyQueued.at) }))}</p><button class="sm" data-phunbook="${esc(s.id)}">${tr("ph.unbook")}</button>`
+    : `${s.storyFailed ? `<p class="meta bad" title="${esc(s.storyFailed.why)}">${ico("alert", "sm")} ${esc(tr("ph.failed", { m: s.storyFailed.why.slice(0, 80) }))}</p>` : ""}<button class="primary" data-phsched="${esc(s.id)}" title="${esc(tr("ph.sched.tip"))}">${ico("cal", "sm")}${tr("ph.sched")}</button>
+       <button data-phstory="${esc(s.id)}" title="${esc(tr("ph.story.post"))}">${ico("send", "sm")}${tr("ph.now")}</button>`;
   const ready = s.approved ? `<p class="meta ok">${ico("check", "sm")} ${esc(tr("ph.sent", { d: shortDay(String(s.approved.at).slice(0, 10)) }))} <span class="mono" title="${esc(s.approved.folder)}">${esc(String(s.approved.folder).split(/[\\/]/).pop())}</span></p>`
     : `<button data-phok="${esc(s.id)}" title="${esc(tr("ph.sendtip"))}">${ico("folder", "sm")}${tr("ph.send")}</button>`;
   const del = `<button class="icon-only" data-phdel="${esc(s.id)}" title="${esc(tr("ph.delete"))}" aria-label="${esc(tr("ph.delete"))}">${ico("trash", "sm")}</button>`;
@@ -7250,7 +7278,7 @@ const PH_STYLES = [["pano", "Seamless panorama", "つながるパノラマ"], ["
 const PH_THEMES = [["autumn", "Autumn", "秋"], ["stay", "Tents", "テント泊"], ["views", "Views", "景色"], ["work", "Work", "山で働く"], ["food", "Food", "ごはん"], ["night", "Night", "夜"], ["winter", "Winter", "冬"]];
 const subTabsHtml = () => "";  // renderHome adds the section's tabs itself (subTabs)
 document.addEventListener("click", async (e) => {
-  const t = e.target.closest("[data-phsel],[data-phtab],[data-phmake],[data-phcopy],[data-phdel],[data-phok],[data-phstory]");
+  const t = e.target.closest("[data-phsel],[data-phtab],[data-phmake],[data-phcopy],[data-phdel],[data-phok],[data-phstory],[data-phsched],[data-phunbook]");
   if (!t || page !== "photos") return;
   if (t.dataset.phsel) { phSel = t.dataset.phsel; renderHome(true); return; }
   if (t.dataset.phtab) { phTab = t.dataset.phtab; renderHome(true); return; }
@@ -7261,6 +7289,25 @@ document.addEventListener("click", async (e) => {
     try { const r = await api("/api/stills/approve", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: t.dataset.phok }) });
       toast(`${ico("check", "sm")} ${esc(tr("ph.sentto", { n: r.files }))}`, 6000); await loadPhotos(); }
     catch (err) { t.disabled = false; toast(`${ico("alert", "sm")} ${esc(err.message)}`, 8000); }
+    return;
+  }
+  if (t.dataset.phsched || t.dataset.phunbook) {
+    const id = t.dataset.phsched || t.dataset.phunbook, path = t.dataset.phsched ? "/api/stills/schedule" : "/api/stills/unschedule";
+    t.disabled = true;
+    const send = async (force) => {
+      const r = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, ...(force ? { force: true } : {}) }) });
+      return { status: r.status, body: await r.json().catch(() => ({})) };
+    };
+    try {
+      let r = await send(false);
+      // a slide with a face: the person decides (a Story goes out to everyone)
+      if (r.status === 409 && r.body.code === "faces" && confirm(tr("ph.faces", { m: r.body.error }))) r = await send(true);
+      if (r.status !== 200) { if (!(r.status === 409 && r.body.code === "faces")) toast(`${ico("alert", "sm")} ${esc(r.body.error || r.status)}`, 9000); }
+      else toast(`${ico("cal", "sm")} ${esc(t.dataset.phsched ? tr("ph.bookedto", { d: `${shortDay(r.body.at.slice(0, 10))} ${r.body.at.slice(11, 16)}` }) : tr("ph.unbooked"))}`, 7000);
+    } catch (err) { toast(`${ico("alert", "sm")} ${esc(err.message)}`, 9000); }
+    t.disabled = false;
+    await loadPhotos();
+    if (typeof pollPosts === "function") pollPosts();
     return;
   }
   if (t.dataset.phstory) {

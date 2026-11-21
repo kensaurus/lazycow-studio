@@ -2128,6 +2128,30 @@ paths:
       responses:
         "200": { description: "The job; its result is {posted: true, at, url, id}" }
         "409": { description: "A Story is already being sent" }
+  /api/stills/schedule:
+    post:
+      tags: [Reels]
+      operationId: scheduleStillsStory
+      summary: Book a photo post as an Instagram Story; the studio sends it at its time (one a day, at the next free lunchtime unless `at` is given). A slide with a face is refused unless force is true.
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [id], properties: { id: { type: string }, at: { type: string, description: "ISO time with offset" }, force: { type: boolean } } }
+      responses:
+        "200": { description: "{queued: true, id, at, set}" }
+        "400": { description: "{error, code: refused}: already posted or booked, not connected, or a time too soon" }
+        "409": { description: "{error, code: faces}: a slide shows someone's face" }
+  /api/stills/unschedule:
+    post:
+      tags: [Reels]
+      operationId: unscheduleStillsStory
+      summary: Take a booked photo Story back before it goes.
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [id], properties: { id: { type: string } } }
+      responses:
+        "200": { description: "{unbooked: n, set}" }
   /api/stills/delete:
     post:
       tags: [Reels]
