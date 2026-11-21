@@ -116,11 +116,15 @@ def test_local_and_free_uses_your_own_server_and_pays_for_nothing(wenv, monkeypa
 
 
 def test_cheapest_prefers_a_service_you_have_a_key_for(wenv):
+    ai._upsert_env("TOGETHER_API_KEY", None)  # Together's Qwen3 TTS ($0.02 / 1000 characters) is the cheapest voice: start without it
     pid, mid = workflow._cheapest("voice", {})
-    assert ai.key_for(pid), "fal's key is in the test .env; Replicate's cheaper voice has no key here"
+    assert ai.key_for(pid) and pid != "together", "fal's key is in the test .env; Replicate's cheaper voice has no key here"
     with ai.ENV_FILE.open("a", encoding="utf-8") as f:
         f.write("REPLICATE_API_TOKEN=r8_0123456789abcdefABCDEF0123456789abcdef\n")
     assert workflow._cheapest("voice", {}) == ("replicate", "minimax/speech-2.8-turbo")
+    with ai.ENV_FILE.open("a", encoding="utf-8") as f:
+        f.write("TOGETHER_API_KEY=tg_0123456789abcdefABCDEF0123456789abcdef\n")
+    assert workflow._cheapest("voice", {}) == ("together", "Qwen/Qwen3-TTS-12Hz-1.7B"), "a key for the cheaper one makes it the pick"
     assert workflow._cheapest("music", {})[1] != "ai-music-api/generate", "a model marked risky is never picked by itself"
 
 

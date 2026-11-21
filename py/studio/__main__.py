@@ -145,7 +145,10 @@ def main() -> None:
     yt = sub.add_parser("youtube", help="connect the channel, upload or schedule a Short, list the channel")
     yt.add_argument("action", choices=["status", "auth-url", "exchange", "upload", "list", "meta", "playlists", "sort",
                                        "app", "set-app", "forget-app", "disconnect", "accounts", "upload-vlog", "share-app", "unshare-app",
-                                       "link-series", "series-comments"])
+                                       "link-series", "series-comments", "move", "retitle"])
+    yt.add_argument("--id", type=int, default=None, help="move: the posting-log row of the scheduled Short")
+    yt.add_argument("--video", default=None, help="retitle: the YouTube video id")
+    yt.add_argument("--title", default=None, help="retitle: the new title (checked against the copy rules)")
     yt.add_argument("--account", default=None, help="which of the project's YouTube accounts: main, a2, ...; auth-url also takes new")
     yt.add_argument("--part", type=int, default=None, help="upload-vlog: the long video's part number")
     yt.add_argument("--playlist-title", default=None, help="link-series: the series playlist's name (default: <trip> · the series)")
@@ -189,6 +192,15 @@ def main() -> None:
     pub.add_argument("--due", action="store_true")
     pub.add_argument("--stories", action="store_true", help="queue an Instagram Story beside every booked YouTube reel")
     pub.add_argument("--replace", type=int, default=None, help="swap this booking for the reel's current render")
+    pub.add_argument("--unbook", type=int, default=None, help="take this Facebook booking back, nothing in its place (row kept as dropped)")
+
+    stl = sub.add_parser("stills", help="photo posts: carousels and a Story from the footage's photos, in the looks of shared/post-templates.json")
+    stl.add_argument("action", choices=["make", "list", "delete", "approve"])
+    stl.add_argument("id", nargs="?", default=None, help="delete: the set's id")
+    stl.add_argument("--n", type=int, default=10)
+    stl.add_argument("--style", default=None)
+    stl.add_argument("--theme", default=None)
+    stl.add_argument("--seed", type=int, default=None)
 
     extra = sub.add_parser("extras")
     extra.add_argument("name", choices=["mask", "parallax", "takeout", "upscale", "beats", "gap"])
@@ -203,6 +215,19 @@ def main() -> None:
         print(json.dumps(ingest(SOURCE, do_hash=not args.no_hash, do_proxy=args.proxy, only=args.only, limit=args.limit)))
     elif args.cmd == "shots":
         print(json.dumps({"shots": log_matching(args.like, embed=args.embed, limit=args.limit)}))
+    elif args.cmd == "stills":
+        from studio import stills
+
+        if args.action == "make":
+            stills.make(args.n, style=args.style, theme=args.theme, seed=args.seed)  # prints STAGE/PROGRESS and RESULT itself
+        elif args.action == "list":
+            print("RESULT " + json.dumps({"sets": stills.list_sets(), "templates": {
+                "styles": [[s["id"], s["en"], s["ja"]] for s in stills.styles()],
+                "themes": [[t["id"], t["title"], t["titleJa"]] for t in stills.themes()]}}, ensure_ascii=False))
+        elif args.action == "approve":
+            print("RESULT " + json.dumps(stills.approve(args.id or ""), ensure_ascii=False))
+        else:
+            print("RESULT " + json.dumps({"deleted": stills.delete(args.id or "")}))
     elif args.cmd == "tag":
         print(json.dumps(tag_shots(limit=args.limit, like=args.like)))
     elif args.cmd == "luts":
@@ -440,6 +465,10 @@ def main() -> None:
             out = youtube.playlists()
         elif args.action == "sort":
             out = youtube.sort_into_playlists(dry_run=args.dry_run)
+        elif args.action == "move":  # a scheduled Short to another time: YouTube first, then its posting-log row
+            out = youtube.move(int(args.id or 0), args.at or "")
+        elif args.action == "retitle":
+            out = youtube.retitle(args.video or "", args.title or "")
         else:
             out = youtube.list_videos()
         print("RESULT " + json.dumps(out, ensure_ascii=False))
@@ -521,6 +550,8 @@ def main() -> None:
         elif args.replace:
             print(f"STAGE 1/2 replacing booking {args.replace}", flush=True)
             out = publish.replace(args.replace)
+        elif args.unbook:
+            out = publish.unbook(args.unbook)
         else:
             if not (args.slug and args.network):
                 raise SystemExit("publish SLUG NETWORK [--at TIME] [--id POST_ID], or publish --due")

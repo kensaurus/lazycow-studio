@@ -154,7 +154,7 @@ const PROXIES = join(DATA, "proxies", "lib");
 // The drafts folder too: a project other than the ranch keeps them in DATA/drafts (py/studio/reels.py DRAFTS), and the
 // post panel's video there answered 403, a black player (the ranch's drafts sit under MEDIA).
 const ALLOWED = [RENDERS, join(DATA, "review"), join(DATA, "library"), join(DATA, "keyframes"), join(DATA, "thumbs"), join(DATA, "audio"), PROXIES, join(ROOT, "public", "mezz"), MEDIA,
-  pick("STUDIO_DRAFTS", join(DATA, "drafts")), join(DATA, "versions")]
+  pick("STUDIO_DRAFTS", join(DATA, "drafts")), join(DATA, "versions"), join(DATA, "stills")]
   .map(pathKey);  // folded where the file system ignores case (server/trust.mjs)
 const HOUSE = ["view", "fire", "field", "winter"];
 const TYPES = { ".mp4": "video/mp4", ".mov": "video/quicktime", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".m4a": "audio/mp4",
@@ -788,6 +788,15 @@ async function autoReady() {
   const [conns, yt] = await Promise.all([ask({ cmd: "connections", port: PORT }).catch(() => ({})), ask({ cmd: "yt_status" }).catch(() => ({}))]);
   return Object.fromEntries(AUTO_NETS.map((n) => [n, CHROME_NETS.includes(n) ? extensionConnected() : n === "youtube" ? !!yt.connected : !!conns[n]?.connected]));
 }
+/* What the planner ranks and skips by (BL-055): each reel's score (/api/perf/scores) and the networks Results › Reach
+   marks stalled. Either can be missing (no numbers yet, a slow read): the plan then runs as it did. */
+async function planSignals(st) {
+  const [sc, reach] = await Promise.all([
+    st.rankByScore === false ? null : ask({ cmd: "perf_read", action: "scores" }).catch(() => null),
+    st.skipStalled === false ? null : perfCached("reach", {}).catch(() => null)]);
+  const scores = Object.fromEntries(Object.entries(sc?.scores || {}).map(([k, v]) => [k.replace(/^story-/, ""), v?.score]).filter(([, v]) => Number.isFinite(v)));
+  return { scores, stalled: (reach?.networks || []).filter((n) => n.stalled).map((n) => n.network) };
+}
 /* The next days' bookings from the approved reels (server/autoplan.mjs). confirm: false = what it would book. */
 let planning = null;
 async function autoPlan({ confirm = true, why = "timer" } = {}) {
@@ -795,17 +804,19 @@ async function autoPlan({ confirm = true, why = "timer" } = {}) {
   const run = (async () => {
     const st = (await liveSettings()).plan;
     const tz = AUDIENCE_TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const [rows, posts, ready] = await Promise.all([reviewRows(), ask({ cmd: "posts" }), autoReady()]);
+    const [rows, posts, ready, sig] = await Promise.all([reviewRows(), ask({ cmd: "posts" }), autoReady(), planSignals(st)]);
     const spec = channelsView();
     const chosen = (st.networks.length ? st.networks : AUTO_NETS).filter((n) => AUTO_NETS.includes(n));
     const approved = new Set(rows.filter((r) => r.status === "approved").map((r) => r.slug.replace(/^story-/, "")));
     const busy = (slug) => ["queued", "running"].includes(jobs.get(slug)?.status);
     let ms = manifests().filter((m) => approved.has(m.slug) && !HOUSE.includes(m.slug) && !busy(m.slug));
-    const reels = ms.map((m) => ({ slug: m.slug, headline: headlineOf(m, m.channels?.[0]), networks: chosen.filter((n) => fitsNetwork(m, n, spec)) }));
+    const reels = ms.map((m) => ({ slug: m.slug, headline: headlineOf(m, m.channels?.[0]), networks: chosen.filter((n) => fitsNetwork(m, n, spec)),
+      score: sig.scores[m.slug], seconds: m.durationSec }));
     const plan = planAhead({ reels, networks: chosen.filter((n) => ready[n]), posts, timeZone: tz, aheadDays: st.aheadDays,
-      tiktokAheadDays: st.tiktokAheadDays, youtubeLeft: Math.max(0, YT_PER_DAY - autoReplaceState().yt) });
+      tiktokAheadDays: st.tiktokAheadDays, youtubeLeft: Math.max(0, YT_PER_DAY - autoReplaceState().yt), stalled: sig.stalled, themeDays: st.themeDays ?? 3 });
     const waiting = chosen.filter((n) => !ready[n]);
     if (!confirm) return { dryRun: true, ...plan, waiting, approved: reels.length };
+    for (const s of plan.skipped.filter((x) => x.stalled)) console.log(`[auto-plan] ${s.network} ${s.why}`);
     const batch = { signin: new Set() };
     let booked = 0;
     for (const p of plan.plan) {
@@ -2594,6 +2605,42 @@ const server = createServer(async (req, res) => {
       if (!Number.isInteger(n) || n < 1 || n > VLOG_MAX || !["master", "thumb", "srt"].includes(kind)) return send(res, 400, "n and kind", "text/plain");
       return sendFile(req, res, join(RENDERS, "vlogs", `vlog-${n}`, { thumb: "thumbnail.jpg", srt: "subtitles.srt", master: "master.mp4" }[kind]));
     }
+    /* ---------- photo posts (py/studio/stills.py): carousels and a Story drawn from the footage's photos, with captions
+       per network. Made and kept here for review; nothing here posts. ---------- */
+    if (req.method === "GET" && url.pathname === "/api/stills") {
+      try {
+        const r = await pyResult(["stills", "list"], null, 60_000);
+        const job = jobs.get("stills");
+        return send(res, 200, { ...r, job: job ? jobView(job) : null });
+      } catch (e) { return send(res, e.status || 500, { error: e.message }); }
+    }
+    if (req.method === "POST" && url.pathname === "/api/stills/make") {
+      const b = await body(req);
+      const cur = jobs.get("stills");
+      if (cur && cur.status === "running") return send(res, 409, { error: "Photo posts are being made; wait for them to finish." });
+      const args = ["stills", "make", "--n", String(Number.isInteger(b.n) ? Math.min(Math.max(b.n, 1), 20) : 10)];
+      if (typeof b.style === "string" && /^[a-z]{2,20}$/.test(b.style)) args.push("--style", b.style);
+      if (typeof b.theme === "string" && /^[a-z]{2,20}$/.test(b.theme)) args.push("--theme", b.theme);
+      if (Number.isInteger(b.seed) && b.seed > 0) args.push("--seed", String(b.seed));
+      return send(res, 200, jobView(startTask("stills", "stills", args)));
+    }
+    if (req.method === "GET" && url.pathname === "/api/stills/file") {
+      const id = url.searchParams.get("id") || "", f = url.searchParams.get("f") || "";
+      if (!/^[a-z0-9][a-z0-9-]{2,80}$/.test(id) || !/^(slide-\d{2}|strip|story)\.jpg$/.test(f)) return send(res, 400, "id and f", "text/plain");
+      return sendFile(req, res, join(DATA, "stills", id, f));
+    }
+    if (req.method === "POST" && url.pathname === "/api/stills/approve") {
+      const b = await body(req);
+      if (!/^[a-z0-9][a-z0-9-]{2,80}$/.test(String(b.id || ""))) return send(res, 400, { error: "id: a photo post's id" });
+      try { return send(res, 200, await pyResult(["stills", "approve", b.id], null, 60_000)); }
+      catch (e) { return send(res, e.status || 500, { error: e.message }); }
+    }
+    if (req.method === "POST" && url.pathname === "/api/stills/delete") {
+      const b = await body(req);
+      if (!/^[a-z0-9][a-z0-9-]{2,80}$/.test(String(b.id || ""))) return send(res, 400, { error: "id: a photo post's id" });
+      try { return send(res, 200, await pyResult(["stills", "delete", b.id], null, 30_000)); }
+      catch (e) { return send(res, e.status || 500, { error: e.message }); }
+    }
     if (req.method === "GET" && url.pathname === "/api/workspaces") {
       return send(res, 200, workspacesView());
     }
@@ -3079,6 +3126,17 @@ const server = createServer(async (req, res) => {
         const b = await body(req);
         if (b.all !== true && (typeof b.provider !== "string" || !AI_PROVIDER_RX.test(b.provider))) return send(res, 400, { error: "provider: a provider id from /api/ai/providers, or all: true.", code: "bad_input" });
         const out = await ai("health-reset", b.all === true ? { all: true } : { provider: b.provider });
+        tickProblems().catch(() => {});
+        return send(res, 200, out);
+      } catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
+    /* POST /api/ai/health/mark {provider}: "It's out of credit", said by hand for a key that cannot read its balance
+       (fal without billing access); marks it out like a failed paid call (py/studio/fallback.py mark_out). */
+    if (req.method === "POST" && url.pathname === "/api/ai/health/mark") {
+      try {
+        const b = await body(req);
+        if (typeof b.provider !== "string" || !AI_PROVIDER_RX.test(b.provider)) return send(res, 400, { error: "provider: a provider id from /api/ai/providers.", code: "bad_input" });
+        const out = await ai("health-mark", { provider: b.provider });
         tickProblems().catch(() => {});
         return send(res, 200, out);
       } catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }

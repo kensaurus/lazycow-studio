@@ -312,6 +312,14 @@ list). Answers with the health view plus `saved` and `warnings` (e.g. a backup w
 
 `{provider}` or `{all: true}`: forget the mark ("Try X again"). Answers with the health view.
 
+### POST /api/ai/health/mark
+
+`{provider}`: "It's out of credit", said by hand. Some keys cannot read their balance (fal without billing access), so
+the studio would only learn a service is empty when a paid step fails; this marks it out for the same 6 h. Settings ›
+AI blocks then opens with that service's jobs and a one-click switch to the first backup with a saved key (the jobs
+no saved-key service can do are named; their Change picks one, and a service without a key says "Add your key").
+Answers with the health view.
+
 Templates in `shared/workflows/` may carry `"fallback": {cap: [{provider, model}]}` (never an unofficial model); Apply
 writes those lists and Undo puts the old file back (*Pro polish* and *Low-cost cloud* do). Tests:
 `py/tests/test_fallback.py`, with error fixtures in `py/tests/fixtures/providers/errors/` (modelled on each provider's

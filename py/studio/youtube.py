@@ -11,7 +11,7 @@ OVERVIEW: OAuth for an installed app (PKCE, loopback redirect to the studio), a 
 DEPENDENCIES: Python stdlib (urllib, ctypes on Windows), certifi, studio.config, studio.posting, studio.reels
 USAGE: python -m studio youtube status | auth-url | exchange --code C --state S |
        upload SLUG [--at 2026-11-08T19:00] [--privacy private|unlisted|public] [--force] | list |
-       playlists | sort [--dry-run]
+       playlists | sort [--dry-run] | move --id POST_ID --at TIME | retitle --video ID --title TEXT
        server/review.mjs calls these for the Post panel.
 TECHNICAL DETAILS: Google OAuth 2.0 for installed apps (code + PKCE S256, redirect
        http://127.0.0.1:4317/oauth/youtube). Scopes: youtube.upload, youtube.readonly.
@@ -40,7 +40,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from studio.config import DATA, ROOT
-from studio.posting import posts, record
+from studio.posting import aware, booked, posts, record, settle, with_offset
 
 REDIRECT = "http://127.0.0.1:4317/oauth/youtube"  # the default; a Desktop client accepts any loopback port (redirect_uri())
 # yt-analytics.readonly: watch time, % viewed, shares and subscribers per Short for studio.perf (a token from
@@ -575,7 +575,10 @@ def metadata(slug: str) -> dict:
     if credit:
         parts.append(credit)
     if tags:
-        parts.append(" ".join(tags))
+        from studio.config import RANCH
+        from studio.reels import yt_tags
+
+        parts.append(" ".join(yt_tags(tags) if RANCH else tags))  # BL-057: searchable first, #tsumagoicamp last
     words = [t.lstrip("#") for t in tags] + ["嬬恋牧場Work&Camp", "嬬恋", "群馬"]
     return {
         "title": title[:100],
@@ -612,6 +615,115 @@ def delete_video(video_id: str) -> None:
     if code in (200, 204, 404):
         return
     raise RuntimeError(_google_error(code, body))
+
+
+# videos.update replaces the whole part it is sent (developers.google.com/youtube/v3/docs/videos/update): these are the
+# writable fields that go back as YouTube holds them, so changing one field never clears another.
+STATUS_FIELDS = ("privacyStatus", "publishAt", "selfDeclaredMadeForKids", "embeddable", "license", "publicStatsViewable", "containsSyntheticMedia")
+SNIPPET_FIELDS = ("title", "description", "tags", "categoryId", "defaultLanguage", "defaultAudioLanguage")
+
+
+def _one(video_id: str, part: str) -> dict:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{6,20}", str(video_id or "")):
+        raise RuntimeError("no YouTube video id")
+    items = _get("videos", part=part, id=video_id).get("items", [])
+    if not items:
+        raise RuntimeError(f"YouTube has no video {video_id} on this channel")
+    return items[0]
+
+
+def _moment(rfc: str | None) -> datetime | None:
+    return datetime.fromisoformat(rfc.replace("Z", "+00:00")) if rfc else None
+
+
+def reschedule(video_id: str, at: str) -> dict:
+    """Another publish time for a Short still waiting to go out (private, with publishAt): videos.update part=status,
+    50 units. Refused for a video that is out, or a time under 15 minutes ahead."""
+    st = _one(video_id, "status").get("status") or {}
+    if st.get("privacyStatus") != "private" or not st.get("publishAt"):
+        raise RuntimeError(f"{video_id} is {st.get('privacyStatus') or 'unknown'} with no publish time: only a Short still waiting to go out moves")
+    new = {k: st[k] for k in STATUS_FIELDS if k in st}
+    new["publishAt"] = _rfc3339(at)
+    got = (_put("videos", {"id": video_id, "status": new}, part="status").get("status") or {})
+    if _moment(got.get("publishAt")) != _moment(new["publishAt"]):
+        raise RuntimeError(f"YouTube kept {got.get('publishAt')} for {video_id}, not {new['publishAt']}")
+    return {"id": video_id, "publishAt": got["publishAt"], "was": st["publishAt"]}
+
+
+TITLE_LINE = re.compile(r"^TITLE:.*$", re.M)
+TITLE_NETS = ("youtube-shorts", "youtube")
+
+
+def local_title(slug: str, title: str) -> list[str]:
+    """The reel's own copies of its YouTube title, set to `title`, so a re-upload (publish.replace, the automatic swap)
+    or a new package never brings an old title back: the project's yt_title (reels.package writes post.txt from it),
+    the TITLE line of its YouTube post.txt in the drafts folder (metadata() reads it) and in each ready copy, and the
+    render manifest's copy of that post text (the Post panel). Returns the files changed."""
+    from studio.config import READY
+    from studio.projects import load, save
+    from studio.reels import DRAFTS
+
+    changed: list[str] = []
+    swap = lambda text: TITLE_LINE.sub(lambda _: f"TITLE: {title}", text, count=1)  # noqa: E731
+    project = load(slug)
+    if project is not None and project.get("yt_title") != title:
+        project["yt_title"] = title
+        changed.append(str(save(project)))
+    for folder in [DRAFTS / slug, *sorted(READY.glob(f"*_{slug}"))]:
+        for net in TITLE_NETS:
+            p = folder / net / "post.txt"
+            if p.is_file():
+                text = p.read_text(encoding="utf-8")
+                if swap(text) != text:
+                    p.write_text(swap(text), encoding="utf-8")
+                    changed.append(str(p))
+    manifest = DATA / "renders" / f"story-{slug}" / "manifest.json"
+    if manifest.is_file():
+        m = json.loads(manifest.read_text(encoding="utf-8"))
+        hit = False
+        for ch in m.get("channels") or []:
+            if ch.get("name") in TITLE_NETS and swap(ch.get("post") or "") != (ch.get("post") or ""):
+                ch["post"], hit = swap(ch["post"]), True
+        if hit:
+            manifest.write_text(json.dumps(m, ensure_ascii=False, indent=2), encoding="utf-8")
+            changed.append(str(manifest))
+    return changed
+
+
+def retitle(video_id: str, title: str) -> dict:
+    """A new title for one of the channel's videos: videos.update part=snippet, 50 units. Description, tags, category
+    and languages go back unchanged. The title passes the project's copy rules (studio.guard) first. A video the studio
+    uploaded (its posting-log row names the reel) then gets the same title in the reel's own files (local_title)."""
+    from studio.guard import assert_copy
+
+    title = " ".join(str(title or "").split())
+    if not title or len(title) > 100 or "<" in title or ">" in title:
+        raise RuntimeError("a YouTube title is 1-100 characters, without < or >")
+    assert_copy(title)
+    sn = _one(video_id, "snippet").get("snippet") or {}
+    new = {k: sn[k] for k in SNIPPET_FIELDS if k in sn}
+    new["title"] = title
+    got = (_put("videos", {"id": video_id, "snippet": new}, part="snippet").get("snippet") or {})
+    if got.get("title") != title:
+        raise RuntimeError(f"YouTube kept the title {got.get('title')!r} for {video_id}")
+    slug = next((p["slug"] for p in posts() if p["network"] == "youtube" and p["remote_id"] == video_id), None)
+    return {"id": video_id, "title": title, "was": sn.get("title"), "slug": slug, "local": local_title(slug, title) if slug else []}
+
+
+def move(post_id: int, at: str) -> dict:
+    """Move a Short booked on YouTube to another time: YouTube first (reschedule), then the same posting-log row (still
+    scheduled; the time stored with its offset, posting.booked), so the log never holds a time YouTube does not."""
+    row = next((p for p in posts() if int(p["id"]) == int(post_id)), None)
+    if not row or row["network"] != "youtube" or row["status"] != "scheduled":
+        raise RuntimeError(f"booking {post_id} is not a Short scheduled on YouTube")
+    was = aware(row["at"])
+    if not was or was.timestamp() < time.time() + 15 * 60:
+        raise RuntimeError(f"booking {post_id} goes out at {row['at']}: too close to move")
+    out = reschedule(row["remote_id"] or "", at)
+    stored = with_offset(_moment(out["publishAt"]).astimezone(datetime.fromisoformat(with_offset(at)).tzinfo).isoformat(timespec="minutes"))
+    booked(post_id, at=stored)
+    settle(post_id, "scheduled", note=f"private until {stored} (moved from {row['at']})")
+    return {**out, "postId": post_id, "slug": row["slug"], "at": stored, "from": row["at"]}
 
 
 def upload(slug: str, at: str | None = None, privacy: str = "private", force: bool = False) -> dict:

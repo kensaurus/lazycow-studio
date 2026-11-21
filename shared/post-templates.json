@@ -1,0 +1,685 @@
+{
+  "_": "Photo posts (carousels and Stories made from stills): the looks (styles) and the subjects (themes) the studio draws from. Read by py/studio/stills.py (picks photos, writes the words, slices the panels), src/Post.tsx (draws each look) and server/editor.html (Photo posts page). A style's panels is how many 1080x1350 slides it makes; photos is how many pictures it needs. Neutral words for any brand (the ranch workspace uses shared/post-templates-ranch.json instead, kept private). A theme's query is searched in the footage library (CLIP), its words go on the slides and into the captions; every word passes the brand's copy rules (studio.brand.copy_rules) before a set is kept. No prices on the pictures.",
+  "styles": [
+    {
+      "id": "pano",
+      "en": "Seamless panorama",
+      "ja": "つながるパノラマ",
+      "panels": 5,
+      "photos": 4,
+      "what": "One wide picture cut into five slides: photos edge to edge, a colour panel in the middle and a thin title running across the joins, so people swipe to read it."
+    },
+    {
+      "id": "polaroid",
+      "en": "Polaroid collage",
+      "ja": "ポラロイド",
+      "panels": 4,
+      "photos": 9,
+      "what": "Instant prints scattered over a soft blurred photo, some lying across two slides."
+    },
+    {
+      "id": "film",
+      "en": "Film strip",
+      "ja": "フィルム",
+      "panels": 4,
+      "photos": 8,
+      "what": "A roll of 35 mm film with sprocket holes, frame numbers and an orange date stamp."
+    },
+    {
+      "id": "magazine",
+      "en": "Magazine",
+      "ja": "マガジン",
+      "panels": 5,
+      "photos": 5,
+      "what": "A cover with a masthead, then magazine pages with a photo and a short story."
+    },
+    {
+      "id": "dump",
+      "en": "Photo dump",
+      "ja": "フォトダンプ",
+      "panels": 5,
+      "photos": 11,
+      "what": "A relaxed photo dump: a different grid on every slide, thin white gaps and handwritten notes."
+    },
+    {
+      "id": "scrapbook",
+      "en": "Scrapbook",
+      "ja": "スクラップブック",
+      "panels": 4,
+      "photos": 7,
+      "what": "A paper journal: taped prints, handwritten notes, doodles and a stamp."
+    },
+    {
+      "id": "gallery",
+      "en": "Gallery",
+      "ja": "ギャラリー",
+      "panels": 5,
+      "photos": 5,
+      "what": "Quiet and minimal: one photo a slide on white, numbered like an exhibition."
+    },
+    {
+      "id": "tategaki",
+      "en": "Vertical poem",
+      "ja": "縦書き",
+      "panels": 4,
+      "photos": 4,
+      "what": "Full photos with a short poem set vertically in Mincho and a red seal."
+    },
+    {
+      "id": "guide",
+      "en": "Save-worthy guide",
+      "ja": "保存したくなるガイド",
+      "panels": 6,
+      "photos": 5,
+      "what": "A numbered guide people save: a cover hook, one tip a slide, a last slide that asks them to save it."
+    },
+    {
+      "id": "newspaper",
+      "en": "Newspaper",
+      "ja": "新聞",
+      "panels": 4,
+      "photos": 5,
+      "what": "A front page from the mountain: masthead, headline, black and white photos and columns."
+    },
+    {
+      "id": "bento",
+      "en": "Bento grid",
+      "ja": "ベントー",
+      "panels": 5,
+      "photos": 10,
+      "what": "Rounded tiles of photos and facts in a different arrangement on every slide, coloured from the photos themselves."
+    },
+    {
+      "id": "shapes",
+      "en": "Cut-out shapes",
+      "ja": "かたち切り抜き",
+      "panels": 5,
+      "photos": 7,
+      "what": "Photos cut into arches, circles, pills and blobs on bold colour, with a giant word running behind them across the slides."
+    },
+    {
+      "id": "brutal",
+      "en": "Neo-brutal",
+      "ja": "ネオブルータル",
+      "panels": 5,
+      "photos": 6,
+      "what": "Thick black frames, hard offset shadows, oversized condensed type, highlighter marks and figure labels."
+    },
+    {
+      "id": "riso",
+      "en": "Riso zine",
+      "ja": "リソ印刷ジン",
+      "panels": 4,
+      "photos": 8,
+      "what": "Two fluorescent inks, halftone dots, slightly misprinted layers and a cut-letter title, like a printed zine."
+    },
+    {
+      "id": "typeclip",
+      "en": "Photo in the letters",
+      "ja": "文字の中に写真",
+      "panels": 5,
+      "photos": 6,
+      "what": "One giant word across every slide with the photos showing through the letters."
+    },
+    {
+      "id": "ticket",
+      "en": "Travel ephemera",
+      "ja": "旅のチケット",
+      "panels": 4,
+      "photos": 6,
+      "what": "A boarding pass to the place, perforated photo stamps, a luggage tag and a postmark laid out on a desk."
+    },
+    {
+      "id": "contact",
+      "en": "Contact sheet",
+      "ja": "コンタクトシート",
+      "panels": 3,
+      "photos": 18,
+      "what": "A photographer's contact sheet: frame numbers, red grease-pencil circles on the picks, a loupe."
+    },
+    {
+      "id": "aura",
+      "en": "Aura blur",
+      "ja": "オーラ",
+      "panels": 5,
+      "photos": 5,
+      "what": "Each slide floats a sharp photo on a glowing blur of its own colours, with soft liquid type."
+    },
+    {
+      "id": "maximal",
+      "en": "Maximal collage",
+      "ja": "マキシマル",
+      "panels": 4,
+      "photos": 10,
+      "what": "Controlled chaos: cut-out photos at every scale, clashing colour blocks, starburst badges and scribbles."
+    },
+    {
+      "id": "numbers",
+      "en": "In numbers",
+      "ja": "数字で見る",
+      "panels": 6,
+      "photos": 6,
+      "what": "One big true number a slide on bold colour, with a cut-out photo. Only drawn when the workspace has true facts to print."
+    },
+    {
+      "id": "phone",
+      "en": "Phone widgets",
+      "ja": "スマホ画面",
+      "panels": 4,
+      "photos": 6,
+      "what": "Photos as home-screen widgets, chat bubbles and notification banners over a soft photo."
+    },
+    {
+      "id": "pixel",
+      "en": "Pixel game",
+      "ja": "ドット絵ゲーム",
+      "panels": 4,
+      "photos": 4,
+      "what": "A retro game: pixelated photos, a dialogue box, warmth meters and a save point at the end."
+    }
+  ],
+  "themes": [
+    {
+      "id": "autumn",
+      "query": "autumn leaves orange red trees mountains",
+      "season": "autumn",
+      "title": "Autumn days",
+      "titleJa": "秋の日",
+      "sub": "The world in warm tones",
+      "kicker": "季節のたより",
+      "palette": {
+        "bg": "#8a2a14",
+        "ink": "#2b1d14",
+        "accent": "#e07b39",
+        "paper": "#f4ece0"
+      },
+      "notes": [
+        "shades of amber,",
+        "rust, and gold.",
+        "before the cold comes in.",
+        "the trees turn warm",
+        "one more cup outside"
+      ],
+      "notesJa": [
+        "琥珀色の景色",
+        "寒くなる前に",
+        "木々が色づくころ",
+        "外でもう一杯"
+      ],
+      "poem": [
+        "寒くなる前の",
+        "ほんの短い",
+        "琥珀色の季節"
+      ],
+      "items": [
+        {
+          "head": "朝の空気を吸う",
+          "line": "冷たくて、気持ちいい。"
+        },
+        {
+          "head": "色づいた木を見上げる",
+          "line": "見ごろは、あっという間。"
+        },
+        {
+          "head": "あたたかい飲みものを",
+          "line": "外で飲むと、もっとおいしい。"
+        },
+        {
+          "head": "夕方は早めに",
+          "line": "日が落ちるのが早くなりました。"
+        }
+      ],
+      "hookJa": "寒くなる前の、ほんの短い秋。",
+      "hookEn": "The short warm season before the cold.",
+      "hooks": [
+        [
+          "色づいた景色を、窓から。",
+          "Autumn, seen from the window."
+        ],
+        [
+          "琥珀色の午後に、ひと休み。",
+          "A pause on an amber afternoon."
+        ],
+        [
+          "見ごろは、あっという間。",
+          "The colours don't wait."
+        ]
+      ],
+      "tags": [
+        "#紅葉",
+        "#秋",
+        "#autumn"
+      ]
+    },
+    {
+      "id": "stay",
+      "query": "tent cabin room bed stay place to sleep",
+      "season": null,
+      "title": "A place to stay",
+      "titleJa": "泊まる場所",
+      "sub": "Sleep somewhere new",
+      "kicker": "ここに泊まる",
+      "palette": {
+        "bg": "#c9a27a",
+        "ink": "#2e2a24",
+        "accent": "#b5651d",
+        "paper": "#f6f1e7"
+      },
+      "notes": [
+        "home for the night",
+        "open the door, the view comes in",
+        "slow mornings only",
+        "wind, then quiet"
+      ],
+      "notesJa": [
+        "今夜の家",
+        "扉を開けると景色",
+        "ゆっくりの朝",
+        "風の音のあと、静けさ"
+      ],
+      "poem": [
+        "扉を開ければ",
+        "景色がそこに",
+        "朝はゆっくりと"
+      ],
+      "items": [
+        {
+          "head": "着いたら荷物を置くだけ",
+          "line": "準備はできています。"
+        },
+        {
+          "head": "朝はゆっくり",
+          "line": "時計を見ない朝を。"
+        },
+        {
+          "head": "夜は静かに",
+          "line": "聞こえるのは風だけ。"
+        },
+        {
+          "head": "また来たくなる",
+          "line": "次の予定も、ここで。"
+        }
+      ],
+      "hookJa": "着いたら、もう準備ができている。",
+      "hookEn": "Arrive, and everything is ready.",
+      "hooks": [
+        [
+          "荷物を置いたら、もう休み。",
+          "Drop your bags, and you're off."
+        ],
+        [
+          "時計を見ない朝を。",
+          "A morning without a clock."
+        ],
+        [
+          "今夜の家は、ここ。",
+          "Home for tonight."
+        ]
+      ],
+      "tags": [
+        "#旅行",
+        "#週末旅",
+        "#travel"
+      ]
+    },
+    {
+      "id": "views",
+      "query": "mountain view clouds sky landscape panorama",
+      "season": null,
+      "title": "The view",
+      "titleJa": "この景色",
+      "sub": "Worth the trip",
+      "kicker": "景色のはなし",
+      "palette": {
+        "bg": "#3e5566",
+        "ink": "#1f2a33",
+        "accent": "#9fc3d8",
+        "paper": "#eef2f4"
+      },
+      "notes": [
+        "clouds rolling in",
+        "the view, again",
+        "the view from the desk",
+        "nothing to do but look"
+      ],
+      "notesJa": [
+        "雲が流れていく",
+        "今日もこの景色",
+        "机からの景色",
+        "眺めるだけの時間"
+      ],
+      "poem": [
+        "雲の向こうに",
+        "山が見える",
+        "今日も変わらず"
+      ],
+      "items": [
+        {
+          "head": "晴れた朝に",
+          "line": "遠くまで見渡せます。"
+        },
+        {
+          "head": "雲が流れる昼",
+          "line": "空の形が変わり続ける。"
+        },
+        {
+          "head": "夕方は空が燃える",
+          "line": "日が落ちるまで外で。"
+        },
+        {
+          "head": "夜は星を数える",
+          "line": "灯りを消して見上げる。"
+        }
+      ],
+      "hookJa": "眺めるだけで、一日が終わる。",
+      "hookEn": "A day that ends with just looking.",
+      "hooks": [
+        [
+          "今日も、この景色から。",
+          "Starting the day with this view."
+        ],
+        [
+          "窓の外が、いちばんのごちそう。",
+          "The best thing here is outside the window."
+        ],
+        [
+          "遠くまで、よく見える日。",
+          "A day you can see for miles."
+        ]
+      ],
+      "tags": [
+        "#絶景",
+        "#景色",
+        "#view"
+      ]
+    },
+    {
+      "id": "work",
+      "query": "bright room with big windows and a view, laptop on a table",
+      "season": null,
+      "title": "Work from anywhere",
+      "titleJa": "どこでも働く",
+      "sub": "A desk with a view",
+      "kicker": "働く場所",
+      "palette": {
+        "bg": "#2f4f3f",
+        "ink": "#1d2a22",
+        "accent": "#c8a96a",
+        "paper": "#f2efe6"
+      },
+      "notes": [
+        "meeting at 10, outside at 10:30",
+        "a desk with a view",
+        "one more email, then outside",
+        "the office, today"
+      ],
+      "notesJa": [
+        "10時に会議、10時半に外へ",
+        "景色つきの机",
+        "メール一通、それから外へ",
+        "今日のオフィス"
+      ],
+      "poem": [
+        "画面の向こうに",
+        "景色がある",
+        "それだけで違う"
+      ],
+      "items": [
+        {
+          "head": "いつもの仕事を",
+          "line": "場所だけ変えてみる。"
+        },
+        {
+          "head": "休憩は外の空気",
+          "line": "一歩出れば景色。"
+        },
+        {
+          "head": "集中したあとは",
+          "line": "ゆっくり散歩。"
+        },
+        {
+          "head": "夜は早めに閉じる",
+          "line": "明日もここで。"
+        }
+      ],
+      "hookJa": "いつもの仕事を、景色のいい場所で。",
+      "hookEn": "Your usual work, somewhere with a view.",
+      "hooks": [
+        [
+          "会議のあとは、外の空気。",
+          "After the call, fresh air."
+        ],
+        [
+          "景色つきの机で、今日も。",
+          "A desk with a view, again today."
+        ],
+        [
+          "場所を変えると、仕事も変わる。",
+          "A new place, a different day of work."
+        ]
+      ],
+      "tags": [
+        "#ワーケーション",
+        "#リモートワーク",
+        "#workation"
+      ]
+    },
+    {
+      "id": "food",
+      "query": "pizza food grill outdoor cooking meal",
+      "season": null,
+      "title": "Fire, flour, and friends",
+      "titleJa": "外のごはん",
+      "sub": "Everything tastes better outside",
+      "kicker": "外で食べる",
+      "palette": {
+        "bg": "#a8431f",
+        "ink": "#2a1a12",
+        "accent": "#f2b134",
+        "paper": "#f7efe3"
+      },
+      "notes": [
+        "straight from the fire",
+        "one more slice",
+        "dinner with a view",
+        "cold air, hot food"
+      ],
+      "notesJa": [
+        "焼きたて",
+        "もう一切れ",
+        "景色つきの夕ごはん",
+        "冷たい空気と熱いごはん"
+      ],
+      "poem": [
+        "冷たい空気に",
+        "焼きたての",
+        "湯気がのぼる"
+      ],
+      "items": [
+        {
+          "head": "焼きたてを外で",
+          "line": "火から出してすぐ。"
+        },
+        {
+          "head": "グリルで夕ごはん",
+          "line": "冷える夜は火のそばで。"
+        },
+        {
+          "head": "朝はコーヒーから",
+          "line": "景色を見ながらゆっくり。"
+        },
+        {
+          "head": "みんなでシェア",
+          "line": "大きく焼いて、みんなで。"
+        }
+      ],
+      "hookJa": "外で食べると、なんでもおいしい。",
+      "hookEn": "Everything tastes better outside.",
+      "hooks": [
+        [
+          "焼きたてを、外の空気で。",
+          "Fresh from the fire, eaten outside."
+        ],
+        [
+          "冷える夜ほど、ごはんがおいしい。",
+          "The colder the night, the better the food."
+        ],
+        [
+          "火のそばで、みんなで分ける。",
+          "Shared around the fire."
+        ]
+      ],
+      "tags": [
+        "#外ごはん",
+        "#おうちごはん",
+        "#food"
+      ]
+    },
+    {
+      "id": "night",
+      "query": "campfire night fire dark stars evening",
+      "season": null,
+      "tod": [
+        "night",
+        "dusk"
+      ],
+      "title": "After dark",
+      "titleJa": "夜のはなし",
+      "sub": "Fire, quiet, and cold air",
+      "kicker": "夜を過ごす",
+      "palette": {
+        "bg": "#14171f",
+        "ink": "#14171f",
+        "accent": "#f2994a",
+        "paper": "#efe9df"
+      },
+      "notes": [
+        "the fire does the talking",
+        "cold hands, warm face",
+        "lights off, sky on",
+        "one more log"
+      ],
+      "notesJa": [
+        "火がしゃべる夜",
+        "手は冷たく、顔は温かい",
+        "灯りを消すと空",
+        "もう一本、薪を"
+      ],
+      "poem": [
+        "灯りを消して",
+        "火の音だけ",
+        "夜が深くなる"
+      ],
+      "items": [
+        {
+          "head": "火を眺める",
+          "line": "炎を眺めるだけの時間。"
+        },
+        {
+          "head": "灯りを消してみる",
+          "line": "夜は思ったより暗い。"
+        },
+        {
+          "head": "あたたかい飲みもの",
+          "line": "手のひらから温まる。"
+        },
+        {
+          "head": "朝まで静か",
+          "line": "聞こえるのは風だけ。"
+        }
+      ],
+      "hookJa": "灯りを消すと、夜が深い。",
+      "hookEn": "Turn the lights off. The night gets deep.",
+      "hooks": [
+        [
+          "火の音だけが聞こえる夜。",
+          "Nights with only the sound of the fire."
+        ],
+        [
+          "灯りを消して、空を見上げる。",
+          "Lights off, eyes up."
+        ],
+        [
+          "寒い夜ほど、火がごちそう。",
+          "The colder the night, the better the fire."
+        ]
+      ],
+      "tags": [
+        "#焚き火",
+        "#夜",
+        "#campfire"
+      ]
+    },
+    {
+      "id": "winter",
+      "query": "snow winter frost white mountain cold",
+      "season": "winter",
+      "title": "First snow",
+      "titleJa": "初雪のころ",
+      "sub": "Everything goes quiet",
+      "kicker": "冬のたより",
+      "palette": {
+        "bg": "#5b7083",
+        "ink": "#1c2530",
+        "accent": "#bfe3ff",
+        "paper": "#f1f4f7"
+      },
+      "notes": [
+        "the first white morning",
+        "quiet, then crunch",
+        "warm inside, white outside",
+        "winter is here"
+      ],
+      "notesJa": [
+        "はじめての白い朝",
+        "静けさと、雪の音",
+        "中はぬくぬく、外は真っ白",
+        "冬が来た"
+      ],
+      "poem": [
+        "白い朝に",
+        "音が消えて",
+        "景色が眠る"
+      ],
+      "items": [
+        {
+          "head": "冬の朝の空気",
+          "line": "息が白い、空が青い。"
+        },
+        {
+          "head": "中であたたまる",
+          "line": "外は真っ白、中はぬくぬく。"
+        },
+        {
+          "head": "雪の音を聞く",
+          "line": "静けさのあとの足音。"
+        },
+        {
+          "head": "雪道の準備を",
+          "line": "冬は冬用タイヤでお越しください。"
+        }
+      ],
+      "hookJa": "外は真っ白、中はぬくぬく。",
+      "hookEn": "White outside, warm inside.",
+      "hooks": [
+        [
+          "はじめての白い朝。",
+          "The first white morning."
+        ],
+        [
+          "息が白い朝、空が青い。",
+          "White breath, blue sky."
+        ],
+        [
+          "雪の日は、静かな日。",
+          "Snow days are quiet days."
+        ]
+      ],
+      "tags": [
+        "#冬",
+        "#雪景色",
+        "#winter"
+      ]
+    }
+  ]
+}

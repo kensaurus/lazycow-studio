@@ -242,19 +242,19 @@ def test_without_backups_the_error_says_so_and_nothing_is_spent(penv):
 
 def test_voice_is_off_by_default_and_the_owner_can_turn_it_on(penv):
     assert fallback.settings()["caps"]["voice"] is False and fallback.settings()["caps"]["music"] is True
-    b = Backups({"minimax": ok("minimax"), "elevenlabs": ok("elevenlabs")})
+    b = Backups({"together": ok("together"), "minimax": ok("minimax"), "elevenlabs": ok("elevenlabs")})
     with pytest.raises(AiError):
         ai.charge("fal", "fal-ai/minimax/speech-02-hd", "voice", "reel-a", 0.1, fails("out_of_credit"), cap="voice", backup=b)
     assert b.asked == [] and fallback.state("fal")["kind"] == "out_of_credit", "no switch, but the others still learn fal is out"
     fallback.reset({"all": True})
     fallback.save({"capability": "voice", "auto": True})
     got, _ = ai.charge("fal", "fal-ai/minimax/speech-02-hd", "voice", "reel-a", 0.1, fails("out_of_credit"), cap="voice", backup=b)
-    assert got == {"provider": "minimax"}, "ElevenLabs' own voices need one picked first, so the cheapest ready one stands in"
+    assert got == {"provider": "together"}, "ElevenLabs' own voices need one picked first, so the cheapest ready one (Together's Qwen3 TTS) stands in"
     fallback.reset({"all": True})
     fallback.save({"on": False})
     with pytest.raises(AiError):
         ai.charge(*MUSIC, "music", "reel-a", 0.2, fails("out_of_credit"), cap="music", backup=b)
-    assert b.asked == ["minimax"], "the master switch off: nothing switches"
+    assert b.asked == ["together"], "the master switch off: nothing switches"
 
 
 # ---------- the page: health and the Needs-you problems ----------
@@ -274,6 +274,21 @@ def test_the_health_view_says_what_runs_where_and_which_blocks_have_no_backup(pe
     assert "voice" not in p["noBackup"]
     fal = next(x for x in v["providers"] if x["id"] == "fal")
     assert fal["state"] == "out_of_credit" and fal["until"] and "music" in fal["caps"]
+
+
+def test_out_of_credit_said_by_hand_marks_the_service_out_until_try_again(penv):
+    """fal's key cannot read its balance, so the owner says it is empty: every block on fal shows it at once, the mark
+    lasts as a failed call's would (6 h), and "Try again" clears it. A made-up provider is refused."""
+    v = fallback.mark_out({"provider": "fal"})
+    fal = next(x for x in v["providers"] if x["id"] == "fal")
+    assert fal["state"] == "out_of_credit" and fal["until"] - time.time() == pytest.approx(fallback.COOLDOWN["out_of_credit"], abs=60)
+    p = next(x for x in v["problems"] if x["provider"] == "fal")
+    assert "music" in p["caps"] and "upscale" in p["caps"]
+    with pytest.raises(AiError):
+        fallback.mark_out({"provider": "nobody"})
+    with pytest.raises(AiError):
+        fallback.mark_out({"provider": "own"})
+    assert next(x for x in fallback.reset({"provider": "fal"})["providers"] if x["id"] == "fal")["state"] == "ok"
 
 
 def test_the_cli_routes_answer(penv, capsys):

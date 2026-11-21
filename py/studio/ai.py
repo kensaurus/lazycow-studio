@@ -27,7 +27,7 @@ DEPENDENCIES: Python stdlib, ffmpeg (studio build), cv2 (photo resize), studio.c
           Price chain: the provider's price API (fal, OpenRouter), else the registry's list price (warned after 90 days),
           else a price you entered (`save-price`), else the call is refused (code no_price): the limits need a number.
 USAGE: python -m studio.ai <status|estimate|run|review|last-review|check-key|save-key|save-caps|credits|save-llm|
-       llm-presets|providers|select|save-price|voices|health|health-reset|fallback|workflow|workflow-apply|workflow-undo|spend-month>
+       llm-presets|providers|select|save-price|voices|health|health-reset|health-mark|fallback|workflow|workflow-apply|workflow-undo|spend-month>
        (health, health-reset and fallback are studio.fallback's: the switch to a backup service when one runs out;
        the last four are studio.workflow's: the Workflow page, its templates, Undo, and this month's spend)
        (request JSON on stdin) prints one line: RESULT {"ok": true, "data": {...}}
@@ -2370,6 +2370,7 @@ ACTIONS = {"status": status, "estimate": estimate, "run": run, "review": review,
            # When a service runs out (studio.fallback): each service's health, the backup lists and the problems they
            # cause; "Try X again"; the switches, backup lists and the max price rise.
            "health": lambda req: fallback.view(req), "health-reset": lambda req: fallback.reset(req), "fallback": lambda req: fallback.save(req),
+           "health-mark": lambda req: fallback.mark_out(req),
            # The Workflow page (studio.workflow): the pipeline's blocks, templates with a preview, apply with a backup,
            # undo, and this month's spend by capability and provider. Imported when asked (it imports this module).
            "workflow": lambda req: _workflow().view(req), "workflow-apply": lambda req: _workflow().apply(req),

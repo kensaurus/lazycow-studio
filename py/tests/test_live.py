@@ -91,6 +91,16 @@ def test_settings_are_checked_and_off_switches_work(fresh, monkeypatch):
     assert live.check_api(NOW).get("off") and live.tidy().get("off")
 
 
+def test_the_planner_settings_for_variety_stalled_networks_and_scores(fresh):
+    """BL-055: the theme rule for every network, skipping stalled networks and ranking by score are settings (on by
+    default; server/review.mjs autoPlan reads them)."""
+    plan = live.settings()["plan"]
+    assert plan["themeDays"] == 3 and plan["skipStalled"] is True and plan["rankByScore"] is True
+    live.save_settings({"plan": {"themeDays": 0, "skipStalled": False}})
+    assert live.settings()["plan"]["themeDays"] == 0 and live.settings()["plan"]["skipStalled"] is False
+    with pytest.raises(ValueError):
+        live.save_settings({"plan": {"themeDays": 30}})
+
 def test_a_reading_of_numbers_confirms_the_post(fresh):
     from studio import perf
 

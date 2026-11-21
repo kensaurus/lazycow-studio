@@ -635,6 +635,31 @@ def test_openrouter_speech_is_one_request_under_the_chat_provider(penv, monkeypa
     assert fake.calls[0]["body"] == {"model": "elevenlabs/eleven-v3", "input": "こんにちは", "voice": "sarah", "response_format": "mp3"}
 
 
+def test_together_speech_reads_japanese_in_its_native_voice(penv, monkeypatch):
+    """Together's /v1/audio/speech (docs.together.ai/docs/text-to-speech, read 2026-11-21): Qwen3 TTS with language ja and
+    ono_anna, its native Japanese voice; one request under the chat provider, priced per 1000 characters."""
+    from tests.test_ai import TG
+
+    fake = use(monkeypatch, [("POST", "api.together.ai/v1/audio/speech", [(200, b"ID3tg", {"Content-Type": "audio/mpeg"})])])
+    sel = ai.select({"capability": "voice", "provider": "together", "model": "Qwen/Qwen3-TTS-12Hz-1.7B"})
+    assert sel["block"]["voice"] == "ono_anna" and not [w for w in sel["warnings"] if "key" in w], "the voice comes with the model; the key is saved"
+    gen = ai._generate({"tool": "voice", "provider": "together", "model": "Qwen/Qwen3-TTS-12Hz-1.7B"}, {"text": "こんにちは", "voice": "ono_anna"})
+    assert gen["bytes"] == b"ID3tg" and fake.calls[0]["headers"]["authorization"] == f"Bearer {TG}"
+    assert fake.calls[0]["body"] == {"model": "Qwen/Qwen3-TTS-12Hz-1.7B", "input": "こんにちは", "voice": "ono_anna", "language": "ja",
+                                     "response_format": "mp3", "stream": False}
+    assert ai.list_price("together", "Qwen/Qwen3-TTS-12Hz-1.7B")["unit_price"] == 0.02
+
+
+def test_a_job_can_be_pointed_at_stability_before_its_key_is_saved(penv, monkeypatch):
+    """Switching off fal before the Stability key is pasted: the choice is kept and says the key is missing (never a key
+    invented); the key page in the registry is the one Stability's docs name."""
+    ai._upsert_env("STABILITY_API_KEY", None)
+    sel = ai.select({"capability": "music", "provider": "stability", "model": "stable-audio-2.5"})
+    assert sel["block"]["provider"] == "stability" and any("No Stability AI key yet" in w for w in sel["warnings"])
+    p = registry.provider("stability")
+    assert p["keyHint"].startswith("platform.stability.ai/dashboard/api-keys") and p["dashboard"] == "https://platform.stability.ai/dashboard/billing"
+
+
 def test_higgsfield_uploads_to_a_presigned_url_without_the_key_and_a_moderated_request_costs_nothing(penv, monkeypatch):
     rid, hm = "d7e6c0f3-6699-4f6c-bb45-2ad7fd9158ff", "kling-video/v2.5-turbo/standard/image-to-video"
     fake = use(monkeypatch, [("POST", "api.higgsfield.ai/files/generate-upload-url", [(200, fx("higgsfield/upload_url.json"))]),

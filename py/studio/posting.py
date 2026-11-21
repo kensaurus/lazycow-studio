@@ -9,7 +9,8 @@ OVERVIEW: One `posts` table in the catalog. YouTube rows are written by studio.y
 DEPENDENCIES: studio.db
 USAGE: python -m studio posts list | plan SLUG NETWORK --at 2026-11-08T19:00 |
        done ID --url URL | drop ID | ics ID
-NOTES: Times are local ISO strings (this PC's time zone). Only planned rows can be
+NOTES: Times are stored with their offset (with_offset: a bare time is this PC's, kept in STUDIO_TZ); readers
+       still take an older bare one as this PC's time (aware). Only planned rows can be
        dropped; a posted or scheduled row stays as the record of what went out.
 """
 from __future__ import annotations
@@ -25,7 +26,7 @@ CREATE TABLE IF NOT EXISTS posts (
   id INTEGER PRIMARY KEY,
   slug TEXT NOT NULL,
   network TEXT NOT NULL,
-  status TEXT NOT NULL,          -- planned | scheduled | queued | posted | missing | failed | replaced | skipped
+  status TEXT NOT NULL,          -- planned | scheduled | queued | posted | missing | failed | replaced | dropped | skipped
   at TEXT,                       -- planned or scheduled time (local ISO), or when it went out
   remote_id TEXT,
   url TEXT,
@@ -43,18 +44,53 @@ def _ready(con) -> None:
         con.execute("ALTER TABLE posts ADD COLUMN seen_at TEXT")
 
 
+def audience_tz():
+    """The audience's time zone (STUDIO_TZ, the same setting as server/review.mjs AUDIENCE_TZ), or None when unset.
+    Without Python's time-zone database (Windows without tzdata) a zone that never moves its clocks still works."""
+    import os
+
+    name = os.environ.get("STUDIO_TZ", "").strip()
+    if not name:
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+
+        return ZoneInfo(name)
+    except Exception:  # noqa: BLE001 - no tz database here, or not a zone name
+        from studio.vlog import zone_hours
+
+        h = zone_hours(name)
+        return timezone(timedelta(hours=h)) if h is not None else None
+
+
 def with_offset(at: str | None) -> str | None:
-    """A time with its UTC offset. A bare "2026-11-10T18:00" is this computer's local time (the page reads it so too);
-    stored with the offset, every reader agrees whatever the computer's or the audience's time zone."""
+    """A time with its UTC offset. A bare "2026-11-10T18:00" is this computer's local time (the page reads it so too)
+    and is stored in the audience's zone (STUDIO_TZ, e.g. 19:00+09:00 when this PC is at +08:00), the same moment;
+    a time that has its offset keeps it. BL-060: a bare time stored as it came is read differently once the PC
+    changes zone (YouTube autumn-1108-3, "2026-11-27T18:00", written 10 Nov at +08:00)."""
     if not at:
         return at
-    from datetime import datetime
-
     try:
         t = datetime.fromisoformat(at.replace("Z", "+00:00"))
     except ValueError:
         return at
-    return (t if t.tzinfo else t.astimezone()).isoformat(timespec="minutes")
+    if t.tzinfo is None:
+        t = t.astimezone()
+        aud = audience_tz()
+        if aud is not None:
+            t = t.astimezone(aud)
+    return t.isoformat(timespec="minutes")
+
+
+def aware(at: str | None) -> datetime | None:
+    """A stored time as a moment, for readers: an offset is kept; a bare (older) one is this PC's local time; junk is None."""
+    if not at:
+        return None
+    try:
+        t = datetime.fromisoformat(str(at).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return t if t.tzinfo else t.astimezone()
 
 
 def record(slug: str, network: str, status: str, at: str | None = None, remote_id: str | None = None, url: str | None = None, note: str = "") -> int:
@@ -107,7 +143,7 @@ def done(post_id: int, url: str = "", at: str | None = None) -> None:
         if not row:
             raise KeyError(post_id)
         con.execute("UPDATE posts SET status = 'posted', url = COALESCE(NULLIF(?, ''), url), at = ? WHERE id = ?",
-                    (url, _went_out_at(row["status"], row["at"], at), post_id))
+                    (url, with_offset(_went_out_at(row["status"], row["at"], at)), post_id))
 
 
 def link(post_id: int, url: str) -> None:
@@ -134,7 +170,7 @@ def booked(post_id: int, url: str = "", at: str | None = None) -> None:
         if row["status"] == "posted":
             raise ValueError("this one already went out")
         con.execute("UPDATE posts SET status = 'scheduled', url = COALESCE(NULLIF(?, ''), url), at = ? WHERE id = ?",
-                    (url, _check_time(at) if at else row["at"], post_id))
+                    (url, with_offset(_check_time(at) if at else row["at"]), post_id))
 
 
 def move(post_id: int, at: str) -> str:
@@ -212,9 +248,10 @@ def due(now: datetime | None = None) -> list[dict]:
 
 
 def settle(post_id: int, status: str, url: str = "", remote_id: str = "", note: str = "") -> None:
-    """What happened to a post the studio sent: posted, scheduled (the network holds it) or failed (note says why)."""
-    if status not in ("posted", "scheduled", "failed", "replaced", "missing"):
-        raise ValueError("status: posted, scheduled, failed, replaced or missing")
+    """What happened to a post the studio sent: posted, scheduled (the network holds it) or failed (note says why).
+    "dropped": a booking taken back on the network with no replacement (publish.unbook); the row stays as history."""
+    if status not in ("posted", "scheduled", "failed", "replaced", "missing", "dropped"):
+        raise ValueError("status: posted, scheduled, failed, replaced, missing or dropped")
     with connect() as con:
         _ready(con)
         con.execute("UPDATE posts SET status = ?, url = COALESCE(NULLIF(?, ''), url), remote_id = COALESCE(NULLIF(?, ''), remote_id), note = ? WHERE id = ?",

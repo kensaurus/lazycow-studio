@@ -372,9 +372,15 @@ METRIC_WORDS["result"] = "result for its network"
 
 
 def summary(network: str | None = None, data: dict | None = None) -> dict:
-    """What worked and what did not, by feature, in plain sentences with their uncertainty."""
+    """What worked and what did not, by feature, in plain sentences with their uncertainty. One network's summary is
+    fitted on that network's posts alone; the summary over all networks also carries each network that shows its posts
+    (median above 0) fitted on its own, under byNetwork."""
     data = data or comparable()
     units = data["units"]
+    if network:
+        # BL-059 (PDCA 21 Nov): YouTube is 92 % of views, yet its effects were fitted together with networks whose typical
+        # post got nothing (median 0), where 5 views is "6x the median"; a network is now read from its own posts.
+        units = [u for u in units if u["network"] == network]
     measured = len(units)
     ready = measured >= MIN_POSTS
     base = {"ready": ready, "measured": measured, "needed": MIN_POSTS, "tooNew": data["tooNew"], "network": network,
@@ -416,7 +422,17 @@ def summary(network: str | None = None, data: dict | None = None) -> dict:
     if not worked and not didnt:
         head += " Nothing stands out yet: every choice is still within the noise."
     sentences = [head] + [r["sentence"] for r in worked] + [r["sentence"] for r in didnt]
-    return {**base, "headline": head, "worked": worked, "didnt": didnt, "features": feats, "sentences": sentences}
+    out = {**base, "headline": head, "worked": worked, "didnt": didnt, "features": feats, "sentences": sentences}
+    if network is None:
+        zero = [n for n, i in data["networks"].items() if not i.get("silent") and i.get("median") == 0]
+        if zero:
+            out["zeroMedian"] = zero
+            out["method"] += (f" The typical post on {', '.join(NET_NAMES.get(n, n) for n in zero)} got nothing (median 0), so a "
+                              "few views there read as a big multiple: each network that shows its posts is also fitted on its "
+                              "own (byNetwork).")
+        out["byNetwork"] = {n: {k: v for k, v in summary(n, data).items() if k in ("ready", "measured", "headline", "worked", "didnt", "sentences")}
+                            for n, i in data["networks"].items() if not i.get("silent") and (i.get("median") or 0) > 0}
+    return out
 
 
 # ---------- what to try next ----------

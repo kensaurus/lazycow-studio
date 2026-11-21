@@ -468,14 +468,63 @@ def _bed(reel: dict, seconds: float) -> dict | None:
     return {"src": f"mezz/{reel['slug']}/bed.m4a", "volume": bed.get("volume", 0.5), "from": str(src)}
 
 
-def _fit(text: str, limit: int) -> str:
-    """Cut whole lines off the first part (never the link on the last line) until the text fits."""
-    if len(text) <= limit:
+def x_length(text: str) -> int:
+    """X's weighted length (twitter-text v3, the count X checks against 280): every URL is 23; a character in
+    U+0000-U+10FF, U+2000-U+200D, U+2010-U+201F or U+2032-U+2037 is 1; anything else (Japanese, Chinese, emoji) is 2.
+    BL-072: a len() check let a 200-character Japanese post through as 200 when X counts it as about 400."""
+    n = 0
+    for part in re.split(r"(https?://\S+)", text):
+        if re.match(r"https?://", part):
+            n += 23
+            continue
+        for ch in part:
+            o = ord(ch)
+            n += 1 if o <= 0x10FF or 0x2000 <= o <= 0x200D or 0x2010 <= o <= 0x201F or 0x2032 <= o <= 0x2037 else 2
+    return n
+
+
+def _fit(text: str, limit: int, measure=len) -> str:
+    """Cut the first part short (never the link on the last line) until the text fits `limit` as `measure` counts it
+    (len for Bluesky's characters, x_length for X)."""
+    if measure(text) <= limit:
         return text
     *body, tail = text.split("\n")
     head = "\n".join(body)
-    room = limit - len(tail) - 2
-    return (head[: max(0, room)].rstrip() + "…\n" + tail) if room > 0 else tail[:limit]
+    while head and measure(head.rstrip() + "…\n" + tail) > limit:
+        head = head[:-1]
+    if head.strip():
+        return head.rstrip() + "…\n" + tail
+    while tail and measure(tail) > limit:
+        tail = tail[:-1]
+    return tail
+
+
+# Hashtags people search on YouTube for a place like this (BL-057, PDCA 21 Nov): YouTube shows the first three above
+# the title, so they come first; the brand tag (#tsumagoicamp, which nobody searches) goes last. A reel's own topic
+# tags that people search come before the general ones that fill up to three.
+YT_SEARCH_TAGS = ("#キャンプ", "#車中泊", "#群馬キャンプ", "#ソロキャンプ", "#冬キャンプ", "#夜キャンプ", "#キャンプ飯", "#キャンプ場",
+                  "#焚き火", "#紅葉", "#絶景", "#雪", "#ワーケーション", "#リモートワーク", "#ドローン", "#浅間山", "#フリーサイト", "#デイキャンプ")
+YT_FILL_TAGS = ("#キャンプ", "#群馬キャンプ", "#車中泊")
+# One question for the comments (0 comments on all 29 Shorts by 21 Nov) and the way to the 24-hour live, which
+# brought 4.9 subscribers per 1,000 views against the Shorts' 0.5.
+YT_QUESTION = "ここに泊まるなら、まず何をしたいですか？コメントで教えてください。"
+
+
+def yt_tags(tags: list[str], brand_tags: list[str] | tuple = ("#tsumagoicamp",)) -> list[str]:
+    """The reel's hashtags in the order YouTube should see them: three searchable ones first (its own searchable topic
+    tags, then YT_FILL_TAGS), its other tags, the brand tag(s) last. Nothing is dropped from the reel's own tags."""
+    brand_set = set(brand_tags)
+    own = [t for t in dict.fromkeys(tags or []) if t not in brand_set]
+    first = [t for t in own if t in YT_SEARCH_TAGS]
+    first += [t for t in YT_FILL_TAGS if t not in first and t not in own][: max(0, 3 - len(first))]
+    rest = [t for t in own if t not in first]
+    return first + rest + [t for t in dict.fromkeys(tags or []) if t in brand_set]
+
+
+def _live_line() -> str:
+    """'24時間ライブ配信中：<channel>/live' for the ranch's channel (its handle, as on the end card); '' elsewhere."""
+    handle = _brand_handle() if RANCH else ""
+    return f"24時間ライブ配信中：https://www.youtube.com/{handle}/live" if handle.startswith("@") else ""
 
 
 # Words people type into TikTok search for a place like this (TikTok reads the caption for search).
@@ -531,7 +580,9 @@ def _own_post_text(reel: dict, channel: str) -> str:
     if channel == "pinterest":
         return lines(f"TITLE: {reel.get('yt_title') or x}", f"DESCRIPTION:\n{words}", *([f"LINK: {link}"] if link else []))
     if channel in ("bluesky", "x"):
-        return _fit("\n".join(p for p in (x, link) if p), 300 if channel == "bluesky" else 280) + "\n"
+        if channel == "bluesky":
+            return _fit("\n".join(p for p in (x, link) if p), 300) + "\n"
+        return _fit("\n".join(p for p in (x, link) if p), 280, x_length) + "\n"  # X: CJK 2, a URL 23 (BL-072)
     if channel in ("youtube-shorts", "youtube"):
         return lines(f"TITLE: {reel.get('yt_title') or x}", f"DESCRIPTION:\n{ja}", link, " ".join(tags[:3]))
     if channel == "linkedin":
@@ -583,7 +634,8 @@ def _post_text(reel: dict, channel: str) -> str:
         # Google Business Profile post: short, the 予約 button carries the link.
         return f"{post['ja']}\n\n{post['price_ja']}\n\nボタン：予約 → {link}\n"
     if channel == "x":
-        return f"{SHORT[reel['slug']]['x']}\n{link}\n#嬬恋 #tsumagoicamp\n"
+        tagline = "#嬬恋 #tsumagoicamp"  # X counts CJK as 2 and a URL as 23 (x_length, BL-072), 280 in all
+        return _fit(f"{SHORT[reel['slug']]['x']}\n{link}", 280 - x_length(tagline) - 1, x_length) + "\n" + tagline + "\n"
     if channel == "xiaohongshu":
         zh_title = SHORT[reel["slug"]]["zh"].split("\n")[0]  # rednote titles hold 20 characters
         return (
@@ -598,7 +650,12 @@ def _post_text(reel: dict, channel: str) -> str:
         return f"{post['ja']}\n\n{post['en']}\n\n{post['price_ja']}\nご予約は「嬬恋牧場」で検索、またはページのリンクから。\n\n{' '.join(reel['tags'][:5])}\n"
     if channel == "youtube-shorts":
         # YouTube shows the first three hashtags above the title; over 60 voids them all (playbook "youtube-shorts").
-        return f"TITLE: {reel['yt_title']}\n\nDESCRIPTION:\n{post['ja']}\n\n{post['price_ja']}\n{link}\n\n{' '.join(reel['tags'][:3])}\n"
+        # BL-057: searchable tags first and #tsumagoicamp last; a question for the comments and the way to the 24 h live.
+        ordered = yt_tags(reel["tags"])
+        shown = [t for t in ordered[:3] if t != "#tsumagoicamp"] + [t for t in ordered if t == "#tsumagoicamp"]
+        ask = "\n".join(p for p in (YT_QUESTION, _live_line()) if p)
+        return (f"TITLE: {reel['yt_title']}\n\nDESCRIPTION:\n{post['ja']}\n\n{ask}\n\n{post['price_ja']}\n{link}\n\n"
+                f"{' '.join(shown)}\n")
     if channel == "linkedin":
         return f"{post['linkedin']}\n\n{SITE}events?utm_source=linkedin&utm_medium=social\n\n#嬬恋 #オフサイト\n"
     if channel == "kensaurus":

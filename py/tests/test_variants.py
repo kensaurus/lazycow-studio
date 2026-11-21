@@ -137,3 +137,44 @@ def test_a_long_xiaohongshu_title_is_flagged():
     assert "20字以内" in _post_text(long, "xiaohongshu")
     short = {**REEL, "posts": {**REEL["posts"], "zh": "海拔1444米的营地\n正文"}}
     assert "20字以内" not in _post_text(short, "xiaohongshu")
+
+
+def test_youtube_description_leads_with_searchable_tags_asks_a_question_and_points_to_the_live():
+    """BL-057 (PDCA 21 Nov): #tsumagoicamp, which nobody searches, was the first of the three tags YouTube shows above
+    the title; 0 comments on 29 Shorts; the 24 h live converts ten times better than the Shorts."""
+    from studio.reels import YT_QUESTION, yt_tags
+
+    reel = {**REEL, "tags": ["#tsumagoicamp", "#嬬恋", "#浅間山", "#フリーサイト"]}
+    yt = _post_text(reel, "youtube-shorts")
+    tags = yt.rstrip("\n").split("\n")[-1].split()
+    assert tags[-1] == "#tsumagoicamp" and "#tsumagoicamp" not in tags[:3]
+    assert tags[:3] == ["#浅間山", "#フリーサイト", "#キャンプ"]  # the reel's own searchable topics, then a general one
+    assert yt.index("#") > yt.index("DESCRIPTION:")
+    desc = yt.split("DESCRIPTION:", 1)[1]
+    assert YT_QUESTION in desc and "？" in YT_QUESTION
+    assert "https://www.youtube.com/@tsumagoicamp/live" in desc
+    # Every tag the reel had is kept (the full line YouTube's metadata appends), the brand last.
+    assert yt_tags(reel["tags"]) == ["#浅間山", "#フリーサイト", "#キャンプ", "#嬬恋", "#tsumagoicamp"]
+    assert yt_tags(["#tsumagoicamp", "#嬬恋", "#光回線"])[:3] == ["#キャンプ", "#群馬キャンプ", "#車中泊"]
+
+
+def test_x_length_counts_cjk_as_two_and_a_url_as_23():
+    from studio.reels import x_length
+
+    assert x_length("abc") == 3
+    assert x_length("嬬恋") == 4
+    assert x_length("見て https://tsumagoi.kensaur.us/reserve?utm_source=x&utm_medium=social") == 4 + 1 + 23
+    assert x_length("“quote” — ok…") == 13 - 1 + 2  # curly quotes and the em dash are 1; the ellipsis is 2
+
+
+def test_x_posts_fit_280_as_x_counts_them():
+    """BL-072: _fit used len() against 280; 200 Japanese characters are 400 to X and the post is refused."""
+    from studio.reels import x_length
+
+    long_text = {**REEL, "posts": {**REEL["posts"], "x": "区画がないからこそ、好きな場所に張れる。" * 12}}
+    x = _post_text(long_text, "x")
+    assert x_length(x.rstrip("\n")) <= 280, x_length(x)
+    assert "utm_source=x" in x and x.rstrip("\n").endswith("#嬬恋 #tsumagoicamp")
+    assert "…" in x
+    short = _post_text(REEL, "x")
+    assert "日本語の文。" in short and "…" not in short  # a post that fits is left whole

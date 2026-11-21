@@ -10,6 +10,7 @@ import { Composition } from "remotion";
 import spec from "../shared/spec.json";
 import { Story, storyFrames, type StoryProps } from "./Story";
 import { Vlog, VlogThumb, vlogFrames, type ThumbProps, type VlogProps } from "./Vlog";
+import { Post, emptyPost } from "./Post";
 
 const emptyStory: StoryProps = { shots9x16: [], shots16x9: [], beats: [], handle: "@tsumagoicamp", bed: null };
 
@@ -25,6 +26,9 @@ export const RemotionRoot: React.FC = () => (
       durationInFrames={spec.fps} defaultProps={emptyVlog} calculateMetadata={({ props }) => ({ durationInFrames: vlogFrames(props, spec.fps) })} />
     {/* Its thumbnail, in the same typefaces (a still). */}
     <Composition id="Vlog-Thumb" component={VlogThumb} fps={spec.fps} width={1280} height={720} durationInFrames={1} defaultProps={emptyThumb} />
+    {/* Photo posts (py/studio/stills.py): every slide side by side as one still, cut into 1080 px slides afterwards. */}
+    <Composition id="Post" component={Post} fps={spec.fps} width={emptyPost.w * emptyPost.panels} height={emptyPost.h} durationInFrames={1} defaultProps={emptyPost}
+      calculateMetadata={({ props }) => ({ width: props.w * props.panels, height: props.h })} />
     {aspects.map((aspect) => {
       const size = spec.formats[aspect];
       return (

@@ -323,6 +323,25 @@ The V2 row on the timeline holds cutaways (a detail shot for about a second) and
 - **Headline behind the subject** (AI tab). The opening shot's subject is cut out from its own picture, so the headline sits behind it. It costs about $0.03 a reel. It works with no look or the ember look, after one render.
 - **Whip and zoom looks** use a real camera motion blur on their cuts, with no extra render time.
 
+### Photo posts: carousels from your photos
+
+**Reels › Photo posts › Make 10, all different** draws ten carousels (and a Story that shares each) from your photos, in
+ten of 22 looks: seamless panorama, polaroids, film strip, magazine, photo dump, scrapbook, gallery, vertical poem, a
+numbered guide, newspaper, bento grid, cut-out shapes, neo-brutal, risograph zine, photo in the letters, travel tickets,
+contact sheet, aura, maximal collage, "in numbers", phone widgets and a pixel game. It takes about a minute and a half.
+Pick one look or one subject to make three of just that.
+
+- **Which photos:** found by meaning for the subject (autumn, places to stay, views, work, food, night, winter), with no
+  faces, no near-duplicates and no cluttered shelves. A subject your photos don't show is skipped, so a safari trip gets
+  no "First snow". The best bright photo is the cover. Small people far away can still slip in: look before you post.
+- **Check it the way people will see it:** the Instagram post (swipe it), the profile grid (only the middle 3:4 of slide 1
+  shows), the Story, Facebook, Threads, X and Bluesky, each with its own caption and a length counted the network's way.
+- **Post it:** **Approve and send to Drive** copies the slides in order, the Story and one caption file per network to the
+  ready folder. Post them in the Instagram app and add music there (carousels with music can show in Reels). The studio
+  does not post photo posts by itself yet.
+- Words come from your brand: your name, handle and hashtags. The ranch workspace has its own subjects and true facts;
+  any other project gets neutral words and never made-up numbers.
+
 ### A long video from a trip
 
 For a trip, not a reel: 16:9 parts of about 5 to 10 minutes, made from the trip's own clips and photos.

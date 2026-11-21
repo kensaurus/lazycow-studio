@@ -79,14 +79,17 @@ export function aiHealthProblems(health) {
       : usedJa.length ? `${name}${whatJa}。代わりに${usedJa.join("、")}作りました` : `${name}${whatJa}。${backups.join("、") || "予備のサービス"}が代わりに動きます`;
     const until = credit && p.until ? new Date(p.until * 1000) : null;
     const hm = (L) => until.toLocaleTimeString(L, { hour: "2-digit", minute: "2-digit" });
-    const detail = `${capList(p.caps, false)} ${p.caps?.length === 1 ? "uses" : "use"} ${name}. ${red ? `Until it is back, ${capList(p.noBackup, false)} will not run: add a backup on Settings › Workflow${(p.noBackup || []).includes("voice") ? " (Voice-over switches only when you turn it on, because another service changes the voice)" : ""}.` : "Every block that uses it goes straight to its backup."} ${credit ? `${name} is asked first again ${until ? `after ${hm("en-GB")}` : "later"}, or now with Try again.` : "Paste a fresh key on Settings › Keys & AI; the studio asks it again once the key changes."}`;
-    const detailJa = `${capList(p.caps, true)}は${name}を使っています。${red ? `戻るまで${capList(p.noBackup, true)}は動きません。設定 › ワークフローで予備のサービスを追加してください${(p.noBackup || []).includes("voice") ? "（ナレーションは声が変わるので、自分でオンにしたときだけ切り替わります）" : ""}。` : "使っているブロックはすべて、そのまま予備のサービスで動きます。"}${credit ? `${until ? `${hm("ja-JP")}以降は` : "しばらくしたら"}また${name}を先に使います。「もう一度試す」ですぐ戻すこともできます。` : "設定 › キーとAIで新しいキーを貼ってください。キーが変わると、また使います。"}`;
+    const detail = `${capList(p.caps, false)} ${p.caps?.length === 1 ? "uses" : "use"} ${name}. ${red ? `Until it is back, ${capList(p.noBackup, false)} will not run: choose another service for them, give one a key, or turn them off on Settings › AI blocks${(p.noBackup || []).includes("voice") ? " (Voice-over switches only when you turn it on, because another service changes the voice)" : ""}.` : "Every block that uses it goes straight to its backup."} ${credit ? `${name} is asked first again ${until ? `after ${hm("en-GB")}` : "later"}, or now with Try again.` : "Paste a fresh key on Settings › Keys & AI; the studio asks it again once the key changes."}`;
+    const detailJa = `${capList(p.caps, true)}は${name}を使っています。${red ? `戻るまで${capList(p.noBackup, true)}は動きません。設定 › AIブロックで、ほかのサービスを選ぶ、キーを入れる、またはオフにしてください${(p.noBackup || []).includes("voice") ? "（ナレーションは声が変わるので、自分でオンにしたときだけ切り替わります）" : ""}。` : "使っているブロックはすべて、そのまま予備のサービスで動きます。"}${credit ? `${until ? `${hm("ja-JP")}以降は` : "しばらくしたら"}また${name}を先に使います。「もう一度試す」ですぐ戻すこともできます。` : "設定 › キーとAIで新しいキーを貼ってください。キーが変わると、また使います。"}`;
+    // Red: some blocks have no other service, so "try again" leads nowhere. Send the person to AI blocks, where each
+    // held-up block can be switched, given a key or turned off (21 Nov: fal ran dry and the strip only offered a retry).
     out.push({
       id: `ai:${p.provider}`, level: red ? "red" : "amber", title, detail,
-      fix: { label: `Try ${name} again`, href: "#/keys/blocks", action: { ai: "retry", provider: p.provider } },
+      fix: red ? { label: "Choose another service", href: "#/keys/blocks" }
+        : { label: `Try ${name} again`, href: "#/keys/blocks", action: { ai: "retry", provider: p.provider } },
       ...(p.billing ? { also: { label: credit ? "Top up" : `Open ${name}`, href: p.billing } } : {}),
       dismissable: false,
-      ja: { title: titleJa, detail: detailJa, fix: `${name}をもう一度試す`, ...(p.billing ? { also: credit ? "チャージする" : `${name}を開く` } : {}) },
+      ja: { title: titleJa, detail: detailJa, fix: red ? "ほかのサービスを選ぶ" : `${name}をもう一度試す`, ...(p.billing ? { also: credit ? "チャージする" : `${name}を開く` } : {}) },
     });
   }
   return out;

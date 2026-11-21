@@ -35,7 +35,7 @@ def test_marking_posted_keeps_the_time_it_really_went_out():
     pid = posting.plan("test-reel", "tiktok", (datetime.now() + timedelta(days=1)).isoformat(timespec="minutes"))
     posting.booked(pid, "https://www.tiktok.com/@x/video/1", past)
     posting.done(pid, "https://www.tiktok.com/@x/video/1")
-    assert next(p for p in posting.posts() if p["id"] == pid)["at"] == past
+    assert posting.aware(next(p for p in posting.posts() if p["id"] == pid)["at"]) == posting.aware(past)  # same moment, now with its offset
 
     pid2 = posting.plan("test-reel", "x", (datetime.now() + timedelta(days=1)).isoformat(timespec="minutes"))
     posting.done(pid2, "https://x.com/a/status/1", "2026-11-08T20:00+09:00")
@@ -44,7 +44,7 @@ def test_marking_posted_keeps_the_time_it_really_went_out():
     pid3 = posting.plan("test-reel", "threads", (datetime.now() + timedelta(days=1)).isoformat(timespec="minutes"))
     before = datetime.now().replace(second=0, microsecond=0)
     posting.done(pid3, "https://www.threads.com/@x/post/1")
-    assert datetime.fromisoformat(next(p for p in posting.posts() if p["id"] == pid3)["at"]) >= before
+    assert posting.aware(next(p for p in posting.posts() if p["id"] == pid3)["at"]) >= before.astimezone()
 
 
 def test_only_known_networks_can_be_planned_and_plans_can_be_dropped():
@@ -100,7 +100,8 @@ def test_youtube_refuses_a_reel_nobody_approved(monkeypatch):
 def test_post_times_are_stored_with_their_offset():
     # A bare time is this computer's local time; a time with an offset keeps it; junk is left for the caller to reject.
     bare = "2026-11-10T18:00"
-    assert posting.with_offset(bare) == datetime.fromisoformat(bare).astimezone().isoformat(timespec="minutes")
+    stored = datetime.fromisoformat(posting.with_offset(bare))
+    assert stored == datetime.fromisoformat(bare).astimezone() and stored.tzinfo is not None
     assert posting.with_offset("2026-11-10T19:00+09:00") == "2026-11-10T19:00+09:00"
     assert posting.with_offset("2026-11-10T10:00Z") == "2026-11-10T10:00+00:00"
     assert posting.with_offset(None) is None and posting.with_offset("soon") == "soon"
@@ -122,3 +123,34 @@ def test_a_studio_held_post_moves_but_one_a_day_and_network_bookings_stay():
         posting.move(c, (base + timedelta(days=4)).isoformat(timespec="minutes"))
     for pid in (a, b):
         posting.drop(pid)
+
+
+def test_a_bare_time_is_stored_in_the_audiences_zone_and_every_writer_keeps_an_offset(monkeypatch):
+    """BL-060: one YouTube booking was stored with no offset ("2026-11-27T18:00", written on a PC at +08:00 for 19:00
+    in Japan). Writers store the audience's zone (STUDIO_TZ); readers take an old bare time as this PC's time."""
+    monkeypatch.setenv("STUDIO_TZ", "Asia/Tokyo")
+    bare = "2026-11-27T18:00"
+    stored = posting.with_offset(bare)
+    assert stored.endswith("+09:00") and datetime.fromisoformat(stored) == datetime.fromisoformat(bare).astimezone()
+    assert posting.with_offset("2026-11-27T18:00+08:00") == "2026-11-27T18:00+08:00"  # an offset is kept as given
+    monkeypatch.setenv("STUDIO_TZ", "")
+    assert posting.with_offset(bare) == datetime.fromisoformat(bare).astimezone().isoformat(timespec="minutes")
+    assert posting.aware(bare) == datetime.fromisoformat(bare).astimezone() and posting.aware("x") is None
+    monkeypatch.setenv("STUDIO_TZ", "Asia/Tokyo")
+    later = (datetime.now() + timedelta(days=2)).replace(second=0, microsecond=0).isoformat(timespec="minutes")
+    pid = posting.plan("tz-reel", "tiktok", later)
+    posting.booked(pid, "", later)
+    row = next(p for p in posting.posts() if p["id"] == pid)
+    assert row["at"].endswith("+09:00")
+    pid2 = posting.plan("tz-reel", "x", later)
+    posting.done(pid2, "")
+    assert datetime.fromisoformat(next(p for p in posting.posts() if p["id"] == pid2)["at"]).tzinfo is not None
+
+
+def test_a_booking_taken_back_is_kept_as_dropped_history():
+    pid = posting.record("drop-hist", "facebook", "scheduled", "2026-12-24T12:00+09:00", "555", "")
+    posting.settle(pid, "dropped", note="taken off Facebook")
+    row = next(p for p in posting.posts() if p["id"] == pid)
+    assert row["status"] == "dropped" and row["remote_id"] == "555" and row["at"] == "2026-12-24T12:00+09:00"
+    with pytest.raises(ValueError):
+        posting.settle(pid, "gone")

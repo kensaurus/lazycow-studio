@@ -9,7 +9,10 @@
     "together vision on video": "Together's video understanding runs only on a dedicated endpoint (docs.together.ai/docs/inference/vision/inputs); its serverless vision model answers the picture questions (still frames) only.",
     "stability image-to-video": "Stability's API lists image, 3D and audio services only, no video (docs.stability.ai/llms.txt, read 2026-11-18).",
     "luma price": "Luma bills Ray 3.2 in credits (100 per 5 s at 720p) and the dollar value of a credit depends on the account's plan (docs.agents.lumalabs.ai/guides/pricing): no list price, so enter yours in Settings › AI before it runs.",
-    "openrouter tts voices": "OpenRouter's speech models take only their preset voices (e.g. ElevenLabs v3: sarah, alice …; MiniMax Speech 2.8 lists English voices only), so only ElevenLabs v3 is registered there for Japanese lines."
+    "openrouter tts voices": "OpenRouter's speech models take only their preset voices (e.g. ElevenLabs v3: sarah, alice …; MiniMax Speech 2.8 lists English voices only), so only ElevenLabs v3 is registered there for Japanese lines.",
+    "stability sharpen and cut-out": "Stability's Upscale (Fast, Conservative, Creative) and Remove Background take one image, not a clip (docs.stability.ai/llms.txt and /pricing, read 2026-11-21); a frame-by-frame pass would cost 2-5 credits a frame, and the cut-out must be a moving matte. Not registered for upscale or bg-cut.",
+    "openrouter video upscale (FLUX Video Upscale)": "Listed in openrouter.ai/api/v1/videos/models (read 2026-11-21, $0.035 per megapixel-second precise), but neither its page nor the /videos API reference says how the source clip is sent (input_references video_url is documented for Seedance 2 only). Not added until that is documented; it would be the first non-fal sharpen on a saved key.",
+    "slow motion and cut-out on OpenRouter, Together or Stability": "None of the three lists frame interpolation or a video matte (openrouter.ai/api/v1/videos/models, docs.together.ai/docs/serverless-models, docs.stability.ai/pricing, read 2026-11-21): slow motion stays with fal or Replicate, the cut-out with fal or Replicate (Bria)."
   },
   "staleDays": 90,
   "capabilities": {
@@ -190,8 +193,9 @@
       "dashboard": "https://api.together.ai/settings/billing",
       "docs": ["https://docs.together.ai/reference/chat-completions-1", "https://docs.together.ai/docs/inference/vision/overview",
                "https://docs.together.ai/reference/create-videos", "https://docs.together.ai/docs/inference/videos/reference-and-keyframes",
-               "https://docs.together.ai/docs/serverless-models", "https://www.together.ai/models/wan-27-i2v"],
-      "asOf": "2026-11-18",
+               "https://docs.together.ai/docs/serverless-models", "https://www.together.ai/models/wan-27-i2v",
+               "https://docs.together.ai/docs/text-to-speech", "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"],
+      "asOf": "2026-11-21",
       "base": "https://api.together.xyz/v1",
       "auth": {"header": "Authorization", "scheme": "Bearer "},
       "chat": {"jsonMode": false},
@@ -219,6 +223,14 @@
           "files": {"input_image": "image"},
           "input": {"model": "{model}", "prompt": "{prompt}", "negative_prompt": "{negative_prompt}", "resolution": "720P", "ratio": "9:16", "seconds": "{seconds:str}",
                     "media": {"frame_images": [{"input_image": "{input_image}", "frame": "first"}]}}
+        },
+        "Qwen/Qwen3-TTS-12Hz-1.7B": {
+          "capability": "voice", "protocol": "sync_http", "label": "Qwen3 TTS (on Together; native Japanese voice Ono Anna)", "licence": "apache-2.0",
+          "note": "Together's speech API (docs.together.ai/docs/text-to-speech, read 2026-11-21) lists Japanese (ja) for Qwen3 TTS and ono_anna as its native Japanese voice; the weights are Apache-2.0 (Hugging Face).",
+          "voiceDefault": "ono_anna", "maxChars": 5000,
+          "price": {"usd": 0.02, "unit": "1000 characters", "source": "docs.together.ai/docs/serverless-models ($20 per M characters)", "asOf": "2026-11-21"},
+          "path": "https://api.together.ai/v1/audio/speech", "accept": "audio/mpeg",
+          "input": {"model": "{model}", "input": "{text}", "voice": "{voice}", "language": "ja", "response_format": "mp3", "stream": false}
         }
       }
     },
@@ -279,10 +291,11 @@
       "name": "Stability AI",
       "protocol": "sync_http",
       "keyEnv": "STABILITY_API_KEY",
-      "keyHint": "platform.stability.ai/account/keys",
-      "dashboard": "https://platform.stability.ai/account/credits",
-      "docs": ["https://docs.stability.ai/api-reference/stable-audio-2/text-to-audio", "https://docs.stability.ai/pricing"],
-      "asOf": "2026-11-17",
+      "keyHint": "platform.stability.ai/dashboard/api-keys",
+      "dashboard": "https://platform.stability.ai/dashboard/billing",
+      "docs": ["https://docs.stability.ai/api-reference/stable-audio-2/text-to-audio", "https://docs.stability.ai/pricing",
+               "https://docs.stability.ai/api-reference/index", "https://docs.stability.ai/api-reference/user/account-balance", "https://docs.stability.ai/faq"],
+      "asOf": "2026-11-21",
       "base": "https://api.stability.ai",
       "auth": {"header": "Authorization", "scheme": "Bearer "},
       "check": {"method": "GET", "url": "/v1/user/account"},

@@ -167,6 +167,7 @@ Both are optional. By default everything the studio makes goes in `./data` besid
 | **Version** | A better cut of a reel that is already booked, made beside the live one | **Posting › Versions › Use the new version** or **Keep the live one** |
 | **Swap** | The studio replaces an older booking with the newest approved render, at the same time slot | **Swap them by themselves** on the Posting page |
 | **Long video** | A 5 to 15 minute (10 by default), 16:9 YouTube video from a trip, in parts with chapters | **Reels › Long videos** |
+| **Photo post** | A carousel (and a Story to share it) made from your photos in one of 22 looks, previewed per network with its captions | **Reels › Photo posts** |
 | **Chrome link** | The studio fills in the X, TikTok, Google Maps, LINE and LinkedIn schedulers in your own signed-in Chrome | **Settings › Keys & AI › Chrome link** ([how](docs/helper.md)) |
 | **MCP** | A way for an AI agent (Claude Code, Claude Desktop, Cursor) to use the studio. It cannot approve. | `claude mcp add lazycow -- npx -y lazycow mcp` ([how](docs/mcp.md)) |
 
