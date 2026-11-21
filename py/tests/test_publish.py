@@ -225,3 +225,72 @@ def test_stories_follow_the_youtube_schedule_once_and_drop_when_it_moves(monkeyp
     out = publish.stories_from_schedule()
     assert out["dropped"] == 1 and not [p for p in mine() if p["status"] == "queued"]
     assert past
+
+
+def test_a_story_beside_a_bare_youtube_time_is_kept_not_dropped_and_queued_again(monkeypatch):
+    """BL-060: YouTube autumn-1108-3 is stored bare ("2026-11-27T18:00"); its story was stored with an offset, so the
+    text never matched: every run took the story back and queued it again. Matched by the moment, it stays."""
+    from studio.db import connect
+
+    story = Fake(can_schedule=False)
+    story.status = lambda: {"connected": True, "account": "@x", "error": None}
+    monkeypatch.setattr(publish, "_registry", lambda: {"instagram-story": story})
+    bare = (datetime.now() + timedelta(days=3)).replace(second=0, microsecond=0).isoformat(timespec="minutes")
+    yt = posting.record("st-bare", "youtube", "scheduled", bare)
+    with connect() as con:  # a row written before every writer kept the offset
+        con.execute("UPDATE posts SET at = ? WHERE id = ?", (bare, yt))
+    first = publish.stories_from_schedule()
+    again = publish.stories_from_schedule()
+    mine = [p for p in posting.posts() if p["network"] == "instagram-story" and p["slug"] == "st-bare"]
+    assert first["queued"] == 1 and again["queued"] == 0 and again["dropped"] == 0
+    assert len(mine) == 1 and posting.aware(mine[0]["at"]) == posting.aware(bare)
+
+
+def test_replace_books_youtube_with_the_offset(net, monkeypatch):
+    from studio import youtube
+
+    got = []
+    monkeypatch.setattr(youtube, "delete_video", lambda vid: None)
+    monkeypatch.setattr(youtube, "upload", lambda slug, at=None, force=False: got.append(at) or {"id": "n", "url": "u"})
+    at = _future()
+    publish.replace(posting.record("pub-off", "youtube", "scheduled", at, "abcDEF12399", ""))
+    assert got and datetime.fromisoformat(got[0]).tzinfo is not None
+    assert datetime.fromisoformat(got[0]) == datetime.fromisoformat(at)
+
+
+def test_unbook_takes_a_facebook_booking_back_and_keeps_the_row_as_dropped(net, monkeypatch):
+    from studio.connectors import facebook
+
+    gone = []
+    monkeypatch.setattr(facebook, "delete", lambda rid: gone.append(rid))
+    pid = posting.record("pub-unbook", "facebook", "scheduled", _future(), "1234567891", "https://facebook.com/reel/1")
+    out = publish.unbook(pid)
+    row = _row(pid)
+    assert gone == ["1234567891"] and out["status"] == "dropped"
+    assert row["status"] == "dropped" and row["remote_id"] == "1234567891" and "taken off Facebook" in row["note"]
+
+
+def test_unbook_refused_by_facebook_leaves_the_booking_scheduled(net, monkeypatch):
+    from studio.connectors import facebook
+
+    def refuse(rid):
+        raise RuntimeError("Facebook 400: nope")
+    monkeypatch.setattr(facebook, "delete", refuse)
+    pid = posting.record("pub-unbook2", "facebook", "scheduled", _future(), "1234567892", "")
+    with pytest.raises(RuntimeError, match="nope"):
+        publish.unbook(pid)
+    assert _row(pid)["status"] == "scheduled"
+
+
+def test_unbook_takes_only_a_facebook_booking_still_ahead(net, monkeypatch):
+    from studio.connectors import facebook
+
+    monkeypatch.setattr(facebook, "delete", lambda rid: pytest.fail("nothing is deleted"))
+    yt = posting.record("pub-unbook3", "youtube", "scheduled", _future(), "abcDEF12346", "")
+    soon = posting.record("pub-unbook4", "facebook", "scheduled", _future(hours=0.05), "1234567893", "")
+    out = posting.record("pub-unbook5", "facebook", "posted", _future(hours=-2), "1234567894", "")
+    with pytest.raises(ValueError, match="taken back on youtube itself"):
+        publish.unbook(yt)
+    for pid in (soon, out):
+        with pytest.raises(ValueError, match="only a scheduled booking"):
+            publish.unbook(pid)

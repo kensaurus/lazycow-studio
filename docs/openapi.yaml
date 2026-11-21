@@ -2068,6 +2068,65 @@ paths:
       responses:
         "200": { description: The file. }
         "404": { description: Not built yet. }
+  /api/stills:
+    get:
+      tags: [Reels]
+      operationId: listStills
+      summary: Photo posts made so far (carousels and their Story), newest first, with the running make job if any.
+      description: Each set is the meta.json of <data>/stills/<id>/ — look (style), subject (theme), slides, the Story, the photos used (asset ids, no paths outside the studio) and the caption for each network (instagram, facebook, threads, x, bluesky). Nothing here posts.
+      responses:
+        "200": { description: "{sets: [...], job: {...} | null}" }
+  /api/stills/make:
+    post:
+      tags: [Reels]
+      operationId: makeStills
+      summary: Make photo posts in the background (python -m studio stills make); the job shows on the work board.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                n: { type: integer, minimum: 1, maximum: 20, default: 10, description: How many sets; each look once before any repeats. }
+                style: { type: string, description: "One look only: pano, polaroid, film, magazine, dump, scrapbook, gallery, tategaki, guide, newspaper." }
+                theme: { type: string, description: "One subject only: autumn, stay, views, work, food, night, winter." }
+                seed: { type: integer, description: The same seed picks the same photos and draws the same way. }
+      responses:
+        "200": { description: The job. }
+        "409": { description: Photo posts are already being made. }
+  /api/stills/file:
+    get:
+      tags: [Reels]
+      operationId: stillsFile
+      summary: One file of a photo post — a 1080x1350 slide, the whole strip, or the 1080x1920 Story.
+      parameters:
+        - { name: id, in: query, required: true, schema: { type: string } }
+        - { name: f, in: query, required: true, schema: { type: string, pattern: "^(slide-\\d{2}|strip|story)\\.jpg$" } }
+      responses:
+        "200": { description: The JPEG. }
+        "404": { description: No such set or file. }
+  /api/stills/approve:
+    post:
+      tags: [Reels]
+      operationId: approveStills
+      summary: Send a photo post to the ready folder (the ranch's Drive) for posting by hand — slides in order, the Story, a caption file per network.
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [id], properties: { id: { type: string } } }
+      responses:
+        "200": { description: "{approved: true, folder, files}" }
+  /api/stills/delete:
+    post:
+      tags: [Reels]
+      operationId: deleteStills
+      summary: Delete one photo post (its folder under <data>/stills).
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [id], properties: { id: { type: string } } }
+      responses:
+        "200": { description: "{deleted: true | false}" }
   /api/autopost:
     get:
       tags: [Posting]
@@ -3550,6 +3609,23 @@ paths:
               properties:
                 provider: { type: string }
                 all: { type: boolean }
+      responses:
+        "200": { description: The health view, as GET /api/ai/health. }
+        default: { $ref: "#/components/responses/CodedError" }
+  /api/ai/health/mark:
+    post:
+      tags: [AI]
+      operationId: markAiOutOfCredit
+      summary: '"It''s out of credit", said by hand: marks one service out (6 h, as a failed paid call) when its key cannot read the balance (fal without billing access). Every block that uses it then offers its switch; "Try X again" clears it.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider]
+              properties:
+                provider: { type: string }
       responses:
         "200": { description: The health view, as GET /api/ai/health. }
         default: { $ref: "#/components/responses/CodedError" }

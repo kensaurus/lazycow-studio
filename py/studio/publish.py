@@ -7,9 +7,10 @@ OVERVIEW: `connections()` lists every connector with its status and the fields i
           file and post text from the reel's drafts, then either posts now, lets the network
           hold the schedule (Facebook), or queues it for the studio to send at `at` (Bluesky).
           `run_due()` sends queued posts whose time has come; the server calls it every minute.
+          `unbook(post_id)` takes a Facebook booking back with nothing in its place (row "dropped").
 DEPENDENCIES: studio.connectors (one module per network), studio.posting, studio.reels
 USAGE: python -m studio publish SLUG NETWORK [--at 2026-11-15T19:00+09:00] [--id 12]
-       python -m studio publish --due
+       python -m studio publish --due | --unbook POST_ID
 NOTES: A post the network refuses is kept as "failed" with the reason, so it shows in Posting.
        Each run prints "RESULT {json}" for the server's task runner.
 """
@@ -204,9 +205,36 @@ def replace(post_id: int) -> dict:
 
         youtube.delete_video(row.get("remote_id") or "")
         posting.settle(post_id, "replaced", note="replaced by a new render")
-        out = youtube.upload(slug, at=when.astimezone().strftime("%Y-%m-%dT%H:%M"), force=True)
+        # With its offset (BL-060): a bare local time was stored as it came (autumn-1108-3, "2026-11-27T18:00").
+        out = youtube.upload(slug, at=when.isoformat(timespec="minutes"), force=True)
         return {**out, "network": net, "slug": slug, "replaced": post_id}
     raise ValueError(f"{net} is booked in your Chrome: use Replace on the Posting page (the helper swaps it there)")
+
+
+# Networks whose bookings the studio takes back itself by API, with no new post in their place.
+UNBOOK_API = ("facebook",)
+
+
+def unbook(post_id: int, why: str = "") -> dict:
+    """Take one booking back (fewer posts on that network, 21 Nov: Facebook every other day): delete it on the network,
+    then mark the row "dropped" with when and why. The row is never deleted: it stays as history (editor.html isHistory),
+    and the slot is free again. Only a scheduled booking more than a few minutes away; if the network refuses, the row
+    stays scheduled. A planned or queued post is the studio's own and is removed with posting.drop instead."""
+    row = next((p for p in posting.posts() if int(p["id"]) == int(post_id)), None)
+    if not row:
+        raise ValueError(f"no booking {post_id}")
+    net, at = row["network"], row["at"]
+    when = _when(at)
+    if row["status"] != "scheduled" or not when or when - _now() < SOON:
+        raise ValueError(f"booking {post_id} is {row['status']} at {at}: only a scheduled booking more than a few minutes away can be taken back")
+    if net not in UNBOOK_API:
+        raise ValueError(f"{net} bookings are taken back on {net} itself, not by the studio")
+    from studio.connectors import facebook
+
+    facebook.delete(row.get("remote_id") or "")
+    note = (row.get("note") or "").strip()
+    posting.settle(post_id, "dropped", note=(note + " · " if note else "") + f"taken off {facebook.NAME} {_now():%m/%d %H:%M}" + (f": {why}" if why else ""))
+    return {"id": post_id, "status": "dropped", "network": net, "slug": row["slug"], "at": at}
 
 
 STORY_SOURCE = "youtube"  # the network whose daily bookings the stories follow (one reel a day at 19:00)
@@ -221,22 +249,24 @@ def stories_from_schedule(now: datetime | None = None) -> dict:
     if not st.get("connected"):
         return {"queued": 0, "stories": [], "why": st.get("error") or "Instagram Stories are not connected"}
     rows = posting.posts()
-    held = {(r["slug"], r["at"]) for r in rows if r["network"] == STORY_SOURCE and r["status"] in ("scheduled", "queued", "planned", "posted")}
+    # Matched by the moment, not the text (BL-060): a bare "18:00" and "18:00+08:00" are the same booking.
+    key = lambda r: (r["slug"], posting.aware(r["at"]) or r["at"])  # noqa: E731
+    held = {key(r) for r in rows if r["network"] == STORY_SOURCE and r["status"] in ("scheduled", "queued", "planned", "posted")}
     # A story still waiting whose YouTube booking was moved or replaced is taken back: it follows the schedule.
-    dropped = [r["id"] for r in rows if r["network"] == "instagram-story" and r["status"] == "queued" and (r["slug"], r["at"]) not in held]
+    dropped = [r["id"] for r in rows if r["network"] == "instagram-story" and r["status"] == "queued" and key(r) not in held]
     for pid in dropped:
         posting.retire(pid)
     rows = [r for r in rows if r["id"] not in dropped]
-    have = {(r["slug"], r["at"]) for r in rows if r["network"] == "instagram-story" and r["status"] not in ("replaced", "dropped")}
+    have = {key(r) for r in rows if r["network"] == "instagram-story" and r["status"] not in ("replaced", "dropped")}
     added = []
     for r in rows:
         when = _when(r.get("at")) if r.get("at") else None
         if r["network"] != STORY_SOURCE or r["status"] not in ("scheduled", "queued", "planned") or not when or when - now < SOON:
             continue
-        if (r["slug"], r["at"]) in have:
+        if key(r) in have:
             continue
         added.append({"id": posting.queue(r["slug"], "instagram-story", r["at"]), "slug": r["slug"], "at": r["at"]})
-        have.add((r["slug"], r["at"]))
+        have.add(key(r))
     return {"queued": len(added), "stories": added, "dropped": len(dropped)}
 
 

@@ -29,7 +29,10 @@ from studio.config import DATA
 SETTINGS_FILE = DATA / "autopost.json"
 # What runs by itself, and how. Every key can be changed on Posting › Runs by itself (POST /api/autopost).
 DEFAULTS: dict = {
-    "plan": {"on": True, "networks": [], "aheadDays": 14, "tiktokAheadDays": 9, "hour": 9},
+    # themeDays: no reel of the same theme within this many days on any network (0: Facebook's own rule only);
+    # skipStalled: a network Results › Reach marks stalled is not booked; rankByScore: best score first (BL-055).
+    "plan": {"on": True, "networks": [], "aheadDays": 14, "tiktokAheadDays": 9, "hour": 9, "themeDays": 3, "skipStalled": True,
+             "rankByScore": True},
     "verify": {"on": True, "missingAfterH": 6},
     "catchUp": {"on": True, "graceH": 2},
     "tidy": {"on": True},
@@ -84,7 +87,7 @@ def save_settings(fields: dict) -> dict:
                     vv = int(vv)
                 except (TypeError, ValueError):
                     raise ValueError(f"{k}.{kk}: a whole number") from None
-                lo, hi = {"aheadDays": (1, 60), "tiktokAheadDays": (1, 10), "hour": (0, 23), "missingAfterH": (1, 72),
+                lo, hi = {"aheadDays": (1, 60), "tiktokAheadDays": (1, 10), "hour": (0, 23), "themeDays": (0, 14), "missingAfterH": (1, 72),
                           "graceH": (0, 48), "warnDays": (1, 30)}.get(kk, (0, 10_000))
                 if not lo <= vv <= hi:
                     raise ValueError(f"{k}.{kk}: from {lo} to {hi}")

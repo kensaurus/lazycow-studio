@@ -690,3 +690,67 @@ def test_related_ticks_are_kept_and_checked(world):
     assert perf.mark_related({"id": "AbCdEfGhIjK", "done": False})["done"] is False
     with pytest.raises(perf.PerfError):
         perf.mark_related({"id": "../../etc"})
+
+
+def test_channel_totals_are_kept_once_a_day(tmp_path, monkeypatch):
+    """BL-058: channel.json is overwritten on every read, so there was no subscriber history. One row per channel per
+    JST day goes to channel-history.jsonl; a second read the same day adds nothing; an errored channel is skipped."""
+    monkeypatch.setattr(perf, "_channel_history_file", lambda: tmp_path / "channel-history.jsonl")
+    monkeypatch.setattr(perf, "_now", lambda: NOW)
+    chans = [{"account": "main", "channel": "Tsumagoi Work&Camp", "subscribers": 18, "views": 9326, "videos": 31,
+              "byKind": {"short": {"views": 9236}, "live": {"views": 1837}}},
+             {"account": "spare", "error": "sign-in refused"}]
+    added = perf.record_channel_day(chans, NOW)
+    assert [(r["date"], r["account"], r["subscribers"], r["views"], r["liveViews"], r["shortViews"], r["longViews"]) for r in added] == [
+        ("2026-11-20", "main", 18, 9326, 1837, 9236, None)]
+    assert perf.record_channel_day([{**chans[0], "subscribers": 19}], NOW + timedelta(hours=5)) == []  # same JST day
+    nxt = perf.record_channel_day([{**chans[0], "subscribers": 20}], NOW + timedelta(days=1))
+    assert [r["subscribers"] for r in nxt] == [20]
+    (tmp_path / "channel-history.jsonl").open("a", encoding="utf-8").write("not json\n")
+    hist = perf.channel_history()
+    assert [(r["date"], r["subscribers"]) for r in hist] == [("2026-11-20", 18), ("2026-11-21", 20)]
+
+
+def test_the_channel_answer_carries_the_history(tmp_path, monkeypatch):
+    import time as _time
+
+    from studio.config import DATA
+
+    monkeypatch.setattr(perf, "_channel_history_file", lambda: tmp_path / "channel-history.jsonl")
+    monkeypatch.setattr(perf, "_now", lambda: NOW)
+    perf.record_channel_day([{"account": "main", "subscribers": 18, "views": 9326}], NOW)
+    cache = DATA / "perf" / "channel.json"
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    before = cache.read_text(encoding="utf-8") if cache.exists() else None
+    try:
+        cache.write_text(json.dumps({"channels": [], "at": NOW.isoformat(), "_at": _time.time()}), encoding="utf-8")
+        got = perf.channel()
+        assert [r["subscribers"] for r in got["history"]] == [18]
+        assert "history" not in json.loads(cache.read_text(encoding="utf-8"))  # the cache stays the channel read only
+    finally:
+        cache.write_text(before, encoding="utf-8") if before is not None else cache.unlink()
+
+
+def test_youtube_is_read_from_its_own_posts_not_pooled_with_networks_at_zero():
+    """BL-059 (PDCA 21 Nov): YouTube is 92 % of views; its effects were fitted together with networks whose median post
+    got nothing, where a handful of views reads as 6x the median. YouTube's summary is fitted on YouTube alone."""
+    yt = synthetic(20, lift=2.0, nets=("youtube",))
+    units = list(yt["units"])
+    for i in range(20):  # X: median 0; the punch look got nothing, every other look a few views (log 6 = 1.8)
+        look = LOOK_CYCLE[i % 4]
+        v = 0 if look == "punch" else 5
+        units.append({"post_id": 100 + i, "slug": f"x{i}", "network": "x", "metric": "views", "value": v, "y": math.log(v + 1),
+                      "features": {**units[i]["features"], "look": look}})
+    data = {"units": units, "byPost": {}, "tooNew": 0,
+            "networks": {"youtube": {"metric": "views", "median": 100.0, "posts": 20, "silent": False},
+                         "x": {"metric": "views", "median": 0, "posts": 20, "silent": False}}}
+    own = learn.summary("youtube", data=data)
+    assert own["measured"] == 20 and own["ready"]
+    punch = next(r for r in own["features"]["look"] if r["level"] == "punch")
+    assert 1.4 < punch["mult"] < 2.4 and punch["pBetter"] > 0.9, punch
+    pooled = learn.summary(data=data)
+    assert pooled["measured"] == 40 and pooled["zeroMedian"] == ["x"] and "median 0" in pooled["method"]
+    pooled_punch = next(r for r in pooled["features"]["look"] if r["level"] == "punch")
+    assert pooled_punch["pBetter"] < punch["pBetter"], "pooled with X, YouTube's real lift is blurred"
+    assert set(pooled["byNetwork"]) == {"youtube"} and pooled["byNetwork"]["youtube"]["measured"] == 20
+    assert any(r["level"] == "punch" for r in pooled["byNetwork"]["youtube"]["worked"])

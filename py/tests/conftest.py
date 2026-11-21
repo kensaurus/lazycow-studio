@@ -22,6 +22,19 @@ def _ai_health_per_test(tmp_path, monkeypatch):
     monkeypatch.setattr(fallback, "health_file", lambda: tmp_path / "ai-health.json")
 
 
+@pytest.fixture(autouse=True)
+def _no_real_keys(tmp_path_factory, monkeypatch):
+    """No test sees the owner's real API keys: studio.ai reads <repo>/.env before the environment, so a saved key turned
+    a free-music test into a paid AI-music call (21 Nov, the day a Stability key was saved). Each test gets an empty
+    .env; a test that needs a key sets it with monkeypatch.setenv or writes this file."""
+    from studio import ai
+
+    env = tmp_path_factory.mktemp("keys") / ".env"  # its own folder: some tests check their tmp_path stays empty
+    monkeypatch.setattr(ai, "ENV_FILE", env)
+    for name in [n for names in ai.registry.key_envs().values() for n in names] + ["FAL_KEY", "TOGETHER_API_KEY", "OPENROUTER_API_KEY"]:
+        monkeypatch.delenv(name, raising=False)
+
+
 def pytest_collection_modifyitems(config, items):
     """A test marked `ranch` reads the owner's own Tsumagoi files (the ranch overlay: shared/reels.json, words,
     house reels). A public clone has none, so it is skipped there with the reason; in the owner's checkout every one runs."""

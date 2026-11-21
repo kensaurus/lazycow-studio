@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "lazycow",
   "display_name": "Lazycow Studio",
-  "version": "0.24.1",
+  "version": "0.25.0",
   "description": "Drive Lazycow Studio by kensaurus: make reels and trip films from your footage, plan posts, publish approved reels.",
   "long_description": "Lazycow Studio turns the photos and videos you never edited into short vertical reels and YouTube trip films, on your own computer. This extension lets Claude check the studio, make reels, watch renders, plan posts, read results and publish reels a person already approved.\n\n**Start the studio first.** The extension talks to it on this computer (127.0.0.1, port 4317 unless you changed it). It finds the port and the API token in the studio's `.env` by itself; fill in the settings only if it does not.\n\n**Approving stays with you.** There is no approve tool, and publishing refuses any reel that is not approved.\n\nThe studio: https://github.com/kensaurus/lazycow-studio (Apache-2.0).",
   "author": {

@@ -259,6 +259,17 @@ def reset(req: dict | None = None) -> dict:
     return view({})
 
 
+def mark_out(req: dict | None = None) -> dict:
+    """"It's out of credit" said by hand ({provider}): some keys cannot read their balance (fal without billing access),
+    so the studio only learns a service is empty when a paid step fails. The owner's word marks it out for the same
+    6 h as a failed call, so every block that uses it shows the switch at once. "Try X again" clears it."""
+    pid = str((req or {}).get("provider") or "")
+    if pid not in registry.providers() or pid == "own":
+        raise AiError(f"provider: one of {', '.join(p for p in registry.providers() if p != 'own')}.", "bad_input", 400)
+    mark(pid, "out_of_credit", "You said it is out of credit (its balance could not be read with this key).")
+    return view({})
+
+
 # ---------- one step, with its backups (called by ai.charge) ----------
 
 def run(cap: str, first: tuple[str, str], tool: str, slug: str | None, estimate: float, call, note: str, purpose: str | None, backup, once):

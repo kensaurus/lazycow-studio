@@ -1427,7 +1427,7 @@ def channel(req: dict | None = None) -> dict:
         try:
             got = json.loads(cache.read_text(encoding="utf-8"))
             if time.time() - float(got.get("_at", 0)) < CHANNEL_CACHE_S:
-                return got
+                return {**got, "history": channel_history()}
         except (OSError, ValueError):
             pass
     reels: dict[str, str] = {}
@@ -1502,7 +1502,58 @@ def channel(req: dict | None = None) -> dict:
     if out:
         cache.parent.mkdir(parents=True, exist_ok=True)
         cache.write_text(json.dumps(got, ensure_ascii=False), encoding="utf-8")
-    return got
+        record_channel_day(out)
+    return {**got, "history": channel_history()}
+
+
+# ---------- channel history (BL-058) ----------
+# channel.json is overwritten on every read, so subscribers and views had no history (PDCA 21 Nov). One row per
+# channel per JST day, the first read of that day, is appended to <DATA>/channel-history.jsonl and never rewritten.
+
+def _channel_history_file() -> Path:
+    from studio.config import DATA
+
+    return DATA / "channel-history.jsonl"
+
+
+def channel_history(days: int = 400) -> list[dict]:
+    """The daily rows, oldest first, the last `days` days (a bad line is skipped)."""
+    try:
+        lines = _channel_history_file().read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    rows = []
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and row.get("date"):
+            rows.append(row)
+    since = (_now().astimezone(JST).date() - timedelta(days=days)).isoformat()
+    return [r for r in rows if str(r["date"]) >= since]
+
+
+def record_channel_day(channels: list[dict], when: datetime | None = None) -> list[dict]:
+    """Append today's (JST) totals for each channel read without an error, unless that channel has a row for today.
+    Returns the rows added."""
+    when = (when or _now()).astimezone(JST)
+    day = when.date().isoformat()
+    have = {(r.get("date"), r.get("account")) for r in channel_history(days=2)}
+    rows = []
+    for c in channels:
+        if c.get("error") or (day, c.get("account")) in have:
+            continue
+        kinds = c.get("byKind") or {}
+        rows.append({"date": day, "at": when.isoformat(timespec="seconds"), "account": c.get("account"), "channel": c.get("channel"),
+                     "subscribers": c.get("subscribers"), "views": c.get("views"), "videos": c.get("videos"),
+                     **{f"{k}Views": (kinds.get(k) or {}).get("views") for k in ("short", "long", "live")}})
+    if rows:
+        f = _channel_history_file()
+        f.parent.mkdir(parents=True, exist_ok=True)
+        with f.open("a", encoding="utf-8") as fh:
+            fh.writelines(json.dumps(r, ensure_ascii=False) + "\n" for r in rows)
+    return rows
 
 
 def _channel_analytics(collector: "YouTube", vids: list[dict], since: str | None) -> str | None:

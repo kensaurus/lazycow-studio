@@ -11,7 +11,7 @@
  * USAGE: fitsNetwork(manifest, network, spec) · planAhead({reels, networks, posts, ...}) · todayIn(timeZone)
  * NOTES: Only approved reels reach here (the server filters); approving stays with a person.
  */
-import { planWeek, MAX_DAYS_AHEAD } from "./helper.mjs";
+import { planWeek, MAX_DAYS_AHEAD, THEME_DAYS_ALL } from "./helper.mjs";
 
 /* The networks the studio can book by itself, and how many days ahead each accepts (Facebook refuses reels beyond
    29 days; YouTube and Bluesky have no limit of their own, so two months keeps the queue honest). */
@@ -40,14 +40,20 @@ export function todayIn(timeZone, now = Date.now()) {
 
 /** The bookings to make: planWeek over every chosen network from today, `aheadDays` long, each network capped at
     its own limit (TikTok at `tiktokAheadDays`, a day inside its 10 so a slow upload never lands past it).
-    YouTube takes at most `youtubeLeft` new uploads (its daily upload allowance, shared with the automatic swap). */
+    YouTube takes at most `youtubeLeft` new uploads (its daily upload allowance, shared with the automatic swap).
+    stalled: networks Results › Reach marks stalled (every measured post at 0 views, days out: perf.reach), not booked
+    at all (BL-055: TikTok showed nobody anything and kept being booked). themeDays: the theme rule for every network. */
 export function planAhead({ reels = [], networks = AUTO_NETS, posts = [], timeZone = "Asia/Tokyo", now = Date.now(),
-  aheadDays = 14, tiktokAheadDays = 9, youtubeLeft = Infinity } = {}) {
+  aheadDays = 14, tiktokAheadDays = 9, youtubeLeft = Infinity, stalled = [], themeDays = THEME_DAYS_ALL } = {}) {
   const limits = { ...AUTO_LIMITS, tiktok: Math.min(AUTO_LIMITS.tiktok, tiktokAheadDays) };
-  const nets = networks.filter((n) => n in limits);
-  const r = planWeek({ reels, networks: nets, posts, start: todayIn(timeZone, now), days: aheadDays, timeZone, now, limits });
+  const quiet = new Set(stalled);
+  const nets = networks.filter((n) => n in limits && !quiet.has(n));
+  const start = todayIn(timeZone, now);
+  const r = planWeek({ reels, networks: nets, posts, start, days: aheadDays, timeZone, now, limits, themeDays });
   let yt = 0;
-  const plan = [], skipped = [...r.skipped.filter((s) => s.why !== "already past" && s.why !== "already has a post that day")];
+  const plan = [], skipped = [...networks.filter((n) => n in limits && quiet.has(n)).map((n) => ({ day: start, network: n, stalled: true,
+    why: `not booked: every post measured on ${n} in the last weeks is at 0 views (Results › Reach: stalled); the studio books it again when one is seen` })),
+  ...r.skipped.filter((s) => s.why !== "already past" && s.why !== "already has a post that day")];
   for (const p of r.plan) {
     if (p.network === "youtube" && ++yt > youtubeLeft) { skipped.push({ day: p.day, network: "youtube", why: "YouTube's uploads for today are used; the next run books it" }); continue; }
     plan.push(p);

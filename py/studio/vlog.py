@@ -2519,7 +2519,8 @@ def thumbnail(n: int) -> Path:
         props.write_text(json.dumps({"src": frame.relative_to(ROOT / "public").as_posix(), "title": words, "kicker": kicker,
                                      "look": look_of(look) or "documentary"}, ensure_ascii=False), encoding="utf-8")
         npx = shutil.which("npx") or "npx"
-        subprocess.run([npx, "remotion", "still", "src/index.ts", "Vlog-Thumb", str(dest), f"--props={props}", "--image-format=jpeg", "--jpeg-quality=92", "--timeout=120000"],
+        from studio.remotion import public_dir  # linked, not copied: public/mezz is 100+ GB (BL-062)
+        subprocess.run([npx, "remotion", "still", "src/index.ts", "Vlog-Thumb", str(dest), f"--props={props}", f"--public-dir={public_dir()}", "--image-format=jpeg", "--jpeg-quality=92", "--timeout=120000"],
                        cwd=ROOT, check=True, capture_output=True, timeout=600)
     except (subprocess.SubprocessError, OSError) as err:
         print(f"thumbnail: the designed one failed ({str(err)[:160]}); drawing the plain one", flush=True)

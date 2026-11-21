@@ -2,6 +2,61 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.25.0 (2026-11-21)
+
+Photo posts in 22 looks, auto-booking that learns from Results, and switching AI services when one runs out.
+
+### Added
+- **Photo posts (Reels › Photo posts).** Carousels and a Story made from the footage's photos, in ten looks: seamless
+  panorama (a thin title running across the joins), polaroid collage, film strip, magazine, photo dump, scrapbook,
+  gallery, vertical poem (縦書き), a save-worthy numbered guide, and a newspaper front page. "Make 10 in different looks"
+  draws one of each in about a minute and a half; a look and a subject (autumn, tents, views, work, food, night,
+  winter) can be fixed. Photos are found by meaning, with no faces, no near-duplicates (same moment or same scene), no
+  cluttered shelves, and the theme's season or time of day when there are enough. Each set is previewed the way the
+  networks show it: the Instagram post (swipe, dots), the profile grid (its 3:4 crop beside the other sets), the Story,
+  Facebook's photo grid, Threads, X and Bluesky (first 4), with each network's caption, its length counted the
+  network's way (X: Japanese characters count 2) and a copy button. "Approve and send to Drive" copies the slides in
+  order, the Story and one caption file per network into the ready folder. Nothing posts by itself. Slides are exact
+  1080×1350 JPEGs drawn by Remotion (`src/Post.tsx`, one still per set, cut by `py/studio/stills.py`); photos leave
+  with no metadata (no GPS). Every word passes the brand's copy rules. `python -m studio stills make|list|approve|delete`;
+  `GET /api/stills`, `POST /api/stills/make`, `GET /api/stills/file`, `POST /api/stills/approve`, `POST /api/stills/delete`.
+- **Twelve more photo-post looks from this year's design trends:** bento grid, cut-out shapes, neo-brutal, risograph
+  zine, photo in the letters, travel ephemera (boarding pass, stamps, postmark), contact sheet, aura blur, maximal
+  collage, "in numbers" (true facts only), phone widgets and a pixel game: 22 in all. Each set takes its colours from its
+  own photos and rolls its own layout, so "Make 10" gives ten different looks every time.
+- **Every photo post's first slide works on its own** (the feed and the profile grid show only that one): the title
+  fits on it, the best-scored bright photo is the cover, and the looks that run a title across the joins add a hook
+  to slide 1. Each set rolls one of four true hooks and its own call to action and question, so sets on one subject
+  do not open the same way.
+- **Photo posts are any brand's, not just the ranch's:** subjects, facts and the place a look prints (masthead,
+  postmark, boarding pass) come from the brand; a project's photos decide which subjects are drawn at all (a safari trip
+  gets no "First snow"), and "In numbers" is drawn only from true facts.
+
+### Changed
+- **Auto-booking learns from Results:** reels are tried best score first (not in name order), no theme repeats within
+  3 days on any network, a network every measured post of which is at 0 views is skipped with a log line, and on YouTube
+  Shorts under 18 s go last, a repeated opener within 7 days goes later and an exact title repeat within 14 days is skipped
+  (`plan.rankByScore`, `plan.themeDays`, `plan.skipStalled`).
+- **Shorts descriptions:** searchable tags first and the brand tag last, a question to answer, a link to the live.
+- **X lengths are counted the way X counts them** (Japanese 2, a link 23).
+- **Channel history:** subscribers and views are kept once a day (`channel-history.jsonl`; `history` in
+  `/api/perf/channel`), so growth can be read over time. Results' learning reads each network on its own.
+- Booked times are always stored with their time zone; an Instagram Story is matched to its booking by the moment, which
+  stopped one Story being deleted and queued again every hour.
+- Headlines instead of file names across the status bar, Activity log and swap lines; the auto-swap switch is a normal
+  setting; Activity and Posting count posts the same way; plainer Versions page; Disconnect is a button.
+
+- **Switching AI services when one runs out:** Keys & AI has a paste field and key-page link for every service a job
+  uses (Stability AI included); a service whose balance can't be read gets "It's out of credit" / "Try again"
+  (`POST /api/ai/health/mark`); AI blocks names the jobs an empty service holds up and switches them in one click;
+  the reel editor shows which service each AI touch uses. Together AI now offers a Japanese voice (Qwen3 TTS).
+
+- When an AI service runs out and some blocks have no other service, the Needs-you strip offers "Choose another
+  service" (with Top up) instead of a "Try again" that led nowhere.
+
+### Fixed
+- The long-video thumbnail render no longer tries to copy the whole `public/` folder (100+ GB) on Windows.
+
 ## 0.24.1 (2026-11-19)
 
 Self-host hardening. Desktop use without `STUDIO_API_TOKEN` is unchanged.

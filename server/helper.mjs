@@ -636,15 +636,29 @@ export function scheduleRefusal({ status, slug, network, at, posts = [], now = D
 /** Spread approved reels over the next days: one post per network per day at 19:00 in the audience's zone
     (Google Maps 12:00 on Fridays and Saturdays only), skipping days a network already has a post, never the
     same reel twice on one network, and never the same headline on one network on two days in a row.
-    reels: [{slug, headline, networks}] (approved, with files for those networks). Returns {plan, skipped}. */
+    reels: [{slug, headline, networks, score?, seconds?}] (approved, with files for those networks); the best score
+    goes first. Returns {plan, skipped}. */
 /* Per network: the fewest days between two posts (Facebook every other day), and how many days around a post no other
    post of the same theme may land (a reel's theme is the first word of its id: aerial-1108-3 is "aerial").
    16 Nov: eight near-identical Facebook reels a day apart; one was shown to people (100 plays), seven to nobody, on a
    Page with no limits. Spacing and variety are the test; the cause is not proven. */
 export const GAP = { facebook: 2 };
 export const THEME_DAYS = { facebook: 3 };
+/* BL-055 (PDCA 21 Nov): TikTok was booked eight aerial-* reels in a row (reels came in id order and only Facebook had a
+   theme rule). Every network now keeps a theme off for THEME_DAYS_ALL days around a post (a network's own THEME_DAYS
+   wins; themeDays: 0 switches the general rule off), and the reels are tried best score first (reel.score, from
+   /api/perf/scores), not in id order. */
+export const THEME_DAYS_ALL = 3;
+/* BL-056: the YouTube gate. 21 Nov, Shorts at 24 h: the four that opened with 「〜からこそ」 and ran 18 s or more got
+   924-1,095 views; every 14 s Short got 202 or fewer. A Short under minSec, or opening with the same phrase as one
+   within openerDays, goes after the others (the short one furthest back: its evidence is the strongest); the same
+   title within titleDays is never booked. */
+export const YT_GATE = { minSec: 18, openerDays: 7, titleDays: 14 };
+/** The first clause of a title, where the hook sits (as py/studio/perf.py opener): 「不便だからこそ、尾根まで。｜嬬恋牧場」 -> 不便だからこそ. */
+export const openerOf = (title) => String(title || "").split(/[｜|]/)[0].split(/[。、,，.!?！？:：]/)[0].trim();
 export const themeOf = (slug) => String(slug || "").split("-")[0];
-export function planWeek({ reels = [], networks = SCHEDULERS, posts = [], start, days = 7, timeZone = "Asia/Tokyo", now = Date.now(), limits = MAX_DAYS_AHEAD }) {
+export function planWeek({ reels = [], networks = SCHEDULERS, posts = [], start, days = 7, timeZone = "Asia/Tokyo", now = Date.now(), limits = MAX_DAYS_AHEAD,
+  themeDays = THEME_DAYS_ALL }) {
   // limits: days ahead per network; the Chrome networks by default, more (Facebook, Bluesky, YouTube) from server/autoplan.mjs.
   const nets = networks.filter((n) => n in limits);
   const first = start || addDays(dayIn(new Date(now), timeZone), 1);
@@ -683,14 +697,22 @@ export function planWeek({ reels = [], networks = SCHEDULERS, posts = [], start,
       if (GAP[net] && [...days_[net].keys()].some((d) => apart(d, day) < GAP[net])) {
         skipped.push({ day, network: net, why: `${NAMES[net] || net} posts every ${GAP[net] === 2 ? "other day" : `${GAP[net]} days`}` }); continue;
       }
-      const nearThemes = THEME_DAYS[net] ? [...slugOn[net]].filter(([d]) => apart(d, day) <= THEME_DAYS[net]).map(([, s]) => themeOf(s)) : [];
+      const themeGap = THEME_DAYS[net] ?? themeDays;
+      const nearThemes = themeGap ? [...slugOn[net]].filter(([d]) => apart(d, day) <= themeGap).map(([, s]) => themeOf(s)) : [];
       const near = [days_[net].get(addDays(day, -1)), days_[net].get(addDays(day, 1))].filter(Boolean);
+      const yt = net === "youtube";
+      const headsWithin = (n) => [...days_[net]].filter(([d]) => apart(d, day) <= n).map(([, h]) => h);
+      const ytTitles = yt ? headsWithin(YT_GATE.titleDays) : [];
+      const ytOpeners = yt ? headsWithin(YT_GATE.openerDays).map(openerOf).filter(Boolean) : [];
+      const headOf = (r) => String(r.headline || "").trim();
+      const penalty = (r) => (yt ? (Number(r.seconds) > 0 && Number(r.seconds) < YT_GATE.minSec ? 2 : 0) + (openerOf(headOf(r)) && ytOpeners.includes(openerOf(headOf(r))) ? 1 : 0) : 0);
+      const scoreOf = (r) => (Number.isFinite(r.score) ? r.score : -1);
       const pick = reels
-        .filter((r) => !off.has(r.slug) && (r.networks || []).includes(net) && !used[net].has(r.slug) && !near.includes(String(r.headline || "").trim())
-          && !nearThemes.includes(themeOf(r.slug)))
-        .map((r, k) => ({ r, k }))
-        .sort((a, b) => (count.get(a.r.slug) || 0) - (count.get(b.r.slug) || 0) || a.k - b.k)[0]?.r;
-      if (!pick) { skipped.push({ day, network: net, why: "no approved reel left that it has not had, with a different headline from the day before and after" }); continue; }
+        .filter((r) => !off.has(r.slug) && (r.networks || []).includes(net) && !used[net].has(r.slug) && !near.includes(headOf(r))
+          && !nearThemes.includes(themeOf(r.slug)) && !(yt && headOf(r) && ytTitles.includes(headOf(r))))
+        .map((r, k) => ({ r, k, p: penalty(r) }))
+        .sort((a, b) => a.p - b.p || (count.get(a.r.slug) || 0) - (count.get(b.r.slug) || 0) || scoreOf(b.r) - scoreOf(a.r) || a.k - b.k)[0]?.r;
+      if (!pick) { skipped.push({ day, network: net, why: `no approved reel left that it has not had, with a different headline from the day before and after${themeGap ? ` and a theme it did not have within ${themeGap} days` : ""}${yt ? ` and a title it did not have within ${YT_GATE.titleDays} days` : ""}` }); continue; }
       plan.push({ slug: pick.slug, network: net, at, day, headline: String(pick.headline || "").trim() });
       used[net].add(pick.slug);
       days_[net].set(day, String(pick.headline || "").trim());
