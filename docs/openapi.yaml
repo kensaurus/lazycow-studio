@@ -2334,7 +2334,7 @@ paths:
                 type: object
                 additionalProperties: true
                 properties:
-                  settings: { type: object, additionalProperties: true, description: "plan {on, networks, aheadDays, tiktokAheadDays, hour} · verify {on, missingAfterH} · catchUp {on, graceH} · tidy {on} · health {on, warnDays} · drafts {on, perDay 1-10} · learn {steer, explore 0-60 (%)}" }
+                  settings: { type: object, additionalProperties: true, description: "plan {on, networks, aheadDays, tiktokAheadDays, tiktokPerDay (1-4 TikTok posts a day), hour} · verify {on, missingAfterH} · catchUp {on, graceH} · tidy {on} · health {on, warnDays} · drafts {on, perDay 1-10} · learn {steer, explore 0-60 (%)}" }
                   runs: { type: object, additionalProperties: true, description: "plan, check and health: when each last ran (when, day) and what it did" }
                   waiting: { type: array, items: { type: object, additionalProperties: true }, description: Booked posts whose time has passed and that nobody has seen live yet (late_h). }
                   chrome: { type: boolean, description: The helper is linked to your Chrome (needed for X, TikTok, Google Maps, LINE and LinkedIn). }

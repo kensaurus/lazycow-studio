@@ -821,7 +821,7 @@ function autoHtml(part = "") {
       <button data-auto-run="preview">${ico("eye", "sm")}${tr("ab.preview")}</button>
       <button class="primary" data-auto-run="plan" ${v.planning ? "disabled" : ""}>${ico("cal", "sm")}${tr(v.planning ? "ab.running" : "ab.booknow")}</button></span></div>
     <ul class="ab-list">
-      <li>${box("plan.on", tr("ab.plan"))}<span class="ab-opts">${num("plan.hour", tr("ab.hour"), 0, 23)}${num("plan.aheadDays", tr("ab.ahead"), 1, 60)}${num("plan.tiktokAheadDays", tr("ab.tiktok"), 1, 10)}</span><span class="meta">${planLine}</span></li>
+      <li>${box("plan.on", tr("ab.plan"))}<span class="ab-opts">${num("plan.hour", tr("ab.hour"), 0, 23)}${num("plan.aheadDays", tr("ab.ahead"), 1, 60)}${num("plan.tiktokAheadDays", tr("ab.tiktok"), 1, 10)}${num("plan.tiktokPerDay", tr("ab.tiktokday"), 1, 4)}</span><span class="meta">${planLine}</span></li>
       <li class="ab-nets" role="group" aria-label="${esc(tr("ab.nets"))}">${chips}</li>
       <li>${box("verify.on", tr("ab.verify"))}<span class="ab-opts">${num("verify.missingAfterH", tr("ab.after"), 1, 72)}</span><span class="meta">${check ? tr("ab.lastcheck", { t: when(check), n: check.seen || 0 }) : tr("ab.never")}</span></li>
       <li>${box("catchUp.on", tr("ab.catch"))}<span class="ab-opts">${num("catchUp.graceH", tr("ab.grace"), 0, 48)}</span></li>

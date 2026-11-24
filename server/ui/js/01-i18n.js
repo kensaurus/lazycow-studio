@@ -4,7 +4,7 @@ const I18N = {
   en: {
     "nav.reels": "Reels", "nav.posting": "Posting", "nav.youtube": "YouTube", "nav.footage": "Footage",
     "ab.h": "Runs by itself", "ab.sumplan": "booking by itself, last run {t}", "ab.sumoff": "booking by itself is off", "ab.sumcheck": "last check {t}: {n} confirmed", "ab.plan": "Book posts from approved reels by itself", "ab.hour": "after (hour, this PC's clock)", "ab.ahead": "days ahead",
-    "ab.tiktok": "TikTok days", "ab.nets": "Networks it books", "ab.lastplan": "last run {t}: {n} booked", "ab.notbooked": "{n} not booked",
+    "ab.tiktok": "TikTok days", "ab.tiktokday": "TikTok a day", "ab.nets": "Networks it books", "ab.lastplan": "last run {t}: {n} booked", "ab.notbooked": "{n} not booked",
     "ab.openslots": "{n} days with no approved reel left", "ab.waitchrome": "waiting for your Chrome: {list}",
     "ab.verify": "Check that booked posts went out", "ab.after": "flag after (hours)", "ab.lastcheck": "last check {t}: {n} confirmed",
     "ab.catch": "After the PC was off, send late posts", "ab.grace": "up to (hours late)", "ab.tidy": "Set aside failures a newer booking replaced",
@@ -398,7 +398,7 @@ const I18N = {
   ja: {
     "nav.reels": "リール", "nav.posting": "投稿", "nav.youtube": "YouTube", "nav.footage": "素材",
     "ab.h": "自動で動くこと", "ab.sumplan": "自動で予約中（前回 {t}）", "ab.sumoff": "自動予約はオフ", "ab.sumcheck": "前回の確認 {t}：{n}件を確認", "ab.plan": "承認済みのリールから自動で予約する", "ab.hour": "実行（このPCの時刻）", "ab.ahead": "何日先まで",
-    "ab.tiktok": "TikTok（日）", "ab.nets": "予約するネットワーク", "ab.lastplan": "前回 {t}：{n}件を予約", "ab.notbooked": "{n}件は予約できず",
+    "ab.tiktok": "TikTok（日）", "ab.tiktokday": "TikTok（1日の本数）", "ab.nets": "予約するネットワーク", "ab.lastplan": "前回 {t}：{n}件を予約", "ab.notbooked": "{n}件は予約できず",
     "ab.openslots": "承認済みリールが足りない日 {n}", "ab.waitchrome": "Chromeの接続待ち：{list}",
     "ab.verify": "予約した投稿が出たか確認する", "ab.after": "何時間後に知らせるか", "ab.lastcheck": "前回の確認 {t}：{n}件を確認",
     "ab.catch": "PCが止まっていた後、遅れた投稿を送る", "ab.grace": "何時間の遅れまで", "ab.tidy": "新しい予約で置き換わった失敗を片付ける",

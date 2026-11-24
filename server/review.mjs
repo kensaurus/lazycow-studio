@@ -882,7 +882,7 @@ async function autoPlan({ confirm = true, why = "timer" } = {}) {
       score: sig.scores[m.slug], seconds: m.durationSec }));
     const plan = planAhead({ reels, networks: chosen.filter((n) => ready[n]), posts, timeZone: tz, aheadDays: st.aheadDays,
       tiktokAheadDays: st.tiktokAheadDays, youtubeLeft: Math.max(0, YT_PER_DAY - autoReplaceState().yt), stalled: sig.stalled, themeDays: st.themeDays ?? 3,
-      slots: postSlots(spec, tz) });  // channels.json hours, every 4th booking at another one (BL-102)
+      slots: postSlots(spec, tz), perDay: { tiktok: st.tiktokPerDay ?? 1 } });  // channels.json hours, every 4th booking at another one (BL-102); TikTok up to 4 a day
     const waiting = chosen.filter((n) => !ready[n]);
     if (!confirm) return { dryRun: true, ...plan, waiting, approved: reels.length };
     for (const s of plan.skipped.filter((x) => x.stalled)) console.log(`[auto-plan] ${s.network} ${s.why}`);
