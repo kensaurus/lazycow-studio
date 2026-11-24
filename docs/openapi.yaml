@@ -356,6 +356,7 @@ paths:
                         sfx: { type: integer }
                         channels: { type: integer }
                         madeBy: { type: string }
+                        made: { type: [object, "null"], additionalProperties: true, description: "by (auto | person), at, mode, why, whyJa: reels made from 24 Nov (the full record, steer {mode, why, whyJa, picks}, is on GET /api/reel)" }
                         style: { type: string }
                         look: { type: [string, "null"] }
                         checks: { type: array, items: { type: object, additionalProperties: true } }
@@ -528,7 +529,11 @@ paths:
                 faces: { type: boolean }
                 cut: { type: string, enum: [short, long], default: short }
                 vary: { type: boolean, default: true }
-                learned: { type: boolean, default: false, description: Steer the look from measured results (docs/perf-api.md). }
+                learned: { type: boolean, description: "Steer the look from measured results (docs/perf-api.md). Left out: the Use what worked setting (learn.steer, on by default; GET /api/loop). Steering starts at 15 measured posts; about 30 % of steered reels try something new." }
+                preset:
+                  type: object
+                  description: "Results › What to try next, \"Make a reel like this\": the look, text layout (style) and recipe it names replace the drawn ones; mode (learned | explore) is kept with the reel's why (made.steer)."
+                  properties: { look: { type: string }, style: { type: string }, recipe: { type: string }, mode: { type: string } }
       responses:
         "200":
           description: The reels made; each has been queued to render.
@@ -692,8 +697,11 @@ paths:
     post:
       tags: [Reels and render queue]
       operationId: rejectReel
-      summary: Reject a reel with a note (python -m studio reject).
-      description: Matched by the POST /api/<action> catch-all.
+      summary: Reject a reel with a note and an optional one-tap reason (python -m studio reject).
+      description: >-
+        Matched by the POST /api/<action> catch-all. Besides slug and note the body may carry `reason`
+        (weak-hook | wrong-clip | repeats) and `look` (the reel's look id); both are kept in the catalog's
+        rejections table for GET /api/review/reasons. Unknown values are left out.
       parameters: [{ $ref: "#/components/parameters/Origin" }]
       requestBody: { $ref: "#/components/requestBodies/ReviewSlugNote" }
       responses:
@@ -764,6 +772,10 @@ paths:
                   aiLabel: { type: boolean }
                   aiOf: { type: [string, "null"] }
                   aiLabelNote: { type: [string, "null"] }
+                  made:
+                    type: [object, "null"]
+                    additionalProperties: true
+                    description: "Who made the reel and why it looks this way (reels made from 24 Nov on; null before): by (auto = the studio by itself from new footage, person), at (ISO), steer {mode: learned | explore | random | theme, why (EN), whyJa, picks {look, style}}."
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
   /api/project:
@@ -2163,6 +2175,26 @@ paths:
             schema: { type: object, required: [id], properties: { id: { type: string } } }
       responses:
         "200": { description: "{deleted: true | false}" }
+  /api/loop:
+    get:
+      tags: [Posting]
+      operationId: getLoop
+      summary: The making side of the loop - drafts the studio makes by itself from new footage (per day, today, the last run) and whether new reels use what worked.
+      description: >-
+        Change these with POST /api/autopost {set: {drafts: {on, perDay}, learn: {steer, explore}}}. A .env
+        STUDIO_AUTO_DRAFTS or STUDIO_PERF_STEER, when set, wins over the setting (env: true).
+      responses:
+        "200":
+          description: The state.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  drafts: { type: object, additionalProperties: true, description: "on, perDay (the setting), perDayNow (what applies, 0 = off), env, today (made today), last (ISO), lastExact, lastN, lastMade (slugs), lastSteer (learned/explore/random per reel), lastWhy, total, watch {every, last, next}, quiet" }
+                  learn: { type: object, additionalProperties: true, description: "steer (use what worked), explore (% that try something new), env, paused {looks, after, days}: looks left out of learned picks after being sent back in review" }
+                  lessons: { type: object, description: "Lessons the loop acted on in the last 7 days, from <data>/lessons.jsonl (BL-112): reel (made from what worked or as a test), retired (headlines retired), testHour (posts booked at a test hour).", properties: { reel: { type: integer }, retired: { type: integer }, testHour: { type: integer } } }
   /api/autopost:
     get:
       tags: [Posting]
@@ -2177,7 +2209,7 @@ paths:
                 type: object
                 additionalProperties: true
                 properties:
-                  settings: { type: object, additionalProperties: true, description: "plan {on, networks, aheadDays, tiktokAheadDays, hour} · verify {on, missingAfterH} · catchUp {on, graceH} · tidy {on} · health {on, warnDays}" }
+                  settings: { type: object, additionalProperties: true, description: "plan {on, networks, aheadDays, tiktokAheadDays, hour} · verify {on, missingAfterH} · catchUp {on, graceH} · tidy {on} · health {on, warnDays} · drafts {on, perDay 1-10} · learn {steer, explore 0-60 (%)}" }
                   runs: { type: object, additionalProperties: true, description: "plan, check and health: when each last ran (when, day) and what it did" }
                   waiting: { type: array, items: { type: object, additionalProperties: true }, description: Booked posts whose time has passed and that nobody has seen live yet (late_h). }
                   chrome: { type: boolean, description: The helper is linked to your Chrome (needed for X, TikTok, Google Maps, LINE and LinkedIn). }
@@ -2900,13 +2932,16 @@ paths:
               type: object
               properties:
                 slugs: { type: array, items: { type: string } }
-                networks: { type: array, items: { type: string, enum: [x, tiktok, gbp, line-oa, linkedin] } }
+                networks: { type: array, items: { type: string, enum: [x, tiktok, gbp, line-oa, linkedin, pinterest] } }
                 start: { type: string, format: date }
                 days: { type: integer, minimum: 1, maximum: 14, default: 7 }
                 confirm: { type: boolean }
       responses:
         "200":
-          description: The plan; with `confirm`, each row carries its queued `job` or `refused`.
+          description: >-
+            The plan; with `confirm`, each row carries its queued `job` or `refused`. Hours come from shared/channels.json
+            `postTimesJst` (the usual hour is 19:00 when listed, else the first); about 1 booking in 4 per network goes to
+            another listed hour as a test and carries `test: "hour"`, `usual` and `why` (BL-102).
           content:
             application/json:
               schema:
@@ -2927,9 +2962,12 @@ paths:
                         at: { type: string }
                         day: { type: string }
                         headline: { type: string }
+                        test: { type: string, enum: [hour], description: "Present on a test-hour booking (1 in 4 per network)." }
+                        usual: { type: string, description: "The network's usual hour (HH:MM, audience time) a test booking is compared with." }
+                        why: { type: string, description: "Plain reason for a test booking, e.g. \"test hour: 12:00 instead of the usual 19:00\"." }
                         job: { $ref: "#/components/schemas/Job" }
                         refused: { type: string }
-                  skipped: { type: array, items: { type: object, properties: { day: { type: string }, network: { type: string }, why: { type: string } } } }
+                  skipped: { type: array, items: { type: object, properties: { day: { type: string }, network: { type: string }, why: { type: string }, stalled: { type: boolean } } } }
                   notApproved: { type: array, items: { type: string } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -3030,6 +3068,82 @@ paths:
                   sources: { type: array, items: { type: string } }
         "403": { $ref: "#/components/responses/Forbidden" }
         "500": { $ref: "#/components/responses/CodedError" }
+        "504": { $ref: "#/components/responses/CodedError" }
+  /api/engage/bluesky:
+    get:
+      tags: [Research]
+      operationId: getEngageBluesky
+      summary: Reply to these today (BL-100) - recent Japanese Bluesky posts worth a reply by hand, and accounts to follow. Read-only.
+      description: >-
+        Searches each topic once (app.bsky.feed.searchPosts, lang=ja, sort=latest, the last 48 hours) and reads the best
+        authors' profiles (app.bsky.actor.getProfiles). Keeps posts with real text, not replies, not the project's own
+        account, one per author, from accounts with 10-5,000 followers, ranked by some engagement, freshness and topics.
+        The public AppView refuses search without a session (403), so the reads go through the connected Bluesky
+        account's own server; every request is a GET and nothing is posted, liked or followed. Cached for an hour in
+        <data>/engage/bluesky.json; a failed refresh returns the last list with stale true.
+      parameters:
+        - name: fresh
+          in: query
+          schema: { type: string, enum: ["1"] }
+          description: "1 reads Bluesky again instead of the hour's cached list."
+      responses:
+        "200":
+          description: The list (py/studio/engage.py).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  posts:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                      properties:
+                        uri: { type: string }
+                        url: { type: string, description: "https://bsky.app/profile/<handle>/post/<rkey>" }
+                        handle: { type: string }
+                        name: { type: string }
+                        followers: { type: [integer, "null"] }
+                        text: { type: string, description: "Up to 140 characters." }
+                        at: { type: string, format: date-time }
+                        ageH: { type: number }
+                        likes: { type: integer }
+                        replies: { type: integer }
+                        reposts: { type: integer }
+                        topics: { type: array, items: { type: string } }
+                        score: { type: number }
+                  follow:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                      properties:
+                        handle: { type: string }
+                        name: { type: string }
+                        followers: { type: integer }
+                        posts: { type: integer }
+                        topics: { type: array, items: { type: string } }
+                        about: { type: string }
+                        url: { type: string }
+                  generatedAt: { type: string, format: date-time }
+                  via: { type: string, enum: [public, session] }
+                  account: { type: string }
+                  topics: { type: array, items: { type: string } }
+                  searched: { type: integer }
+                  seen: { type: integer }
+                  skipped: { type: object, additionalProperties: { type: integer } }
+                  requests: { type: integer }
+                  cached: { type: boolean }
+                  stale: { type: boolean }
+                  ageMin: { type: integer }
+                  note: { type: string }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/CodedError" }
+        "429": { $ref: "#/components/responses/CodedError" }
+        "500": { $ref: "#/components/responses/CodedError" }
+        "502": { $ref: "#/components/responses/CodedError" }
         "504": { $ref: "#/components/responses/CodedError" }
   /api/research/ideas:
     post:
@@ -3994,7 +4108,21 @@ paths:
       operationId: getScores
       summary: Each reel's score (0-100) with its parts (AI hook and look marks, fresh headline, fitting length); partial without an AI review.
       responses:
-        "200": { description: Scores by slug., content: { application/json: { schema: { type: object, properties: { scores: { type: object, additionalProperties: true } } } } } }
+        "200":
+          description: >-
+            Scores by slug. Each also has `rank`, the number Plan posts orders by: the score while it goes with views (Spearman
+            ≥ +0.3 over measured posts), else what the learned model expects (x a typical post × 100). `rankBy` says which (score |
+            learned), `rankWhy` / `rankWhyJa` why (BL-109).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scores: { type: object, additionalProperties: true }
+                  rankBy: { type: string, enum: [score, learned] }
+                  spearman: { type: number, nullable: true }
+                  rankWhy: { type: string }
+                  rankWhyJa: { type: string }
   /api/perf/predictions:
     get:
       tags: [Results]
@@ -4225,6 +4353,18 @@ paths:
       responses:
         "200": { description: "{ slug, at: ISO time | null, lines: [string] } (no log yet: at null, lines empty)" }
         "400": { description: "{ error: slug }" }
+  /api/review/reasons:
+    get:
+      tags: [Results]
+      operationId: getRejectReasons
+      summary: Why reels were sent back in the last days (the review queue's one-tap reasons).
+      parameters:
+        - { name: days, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 365, default: 30 } }
+      responses:
+        "200":
+          description: >-
+            { days, total, by: { weak-hook, wrong-clip, repeats, note }, looks: { <look>: n },
+            recent: [{ slug, reason, note, look, at }] } (py/studio/review_actions.py `reasons`).
   /api/log:
     get:
       tags: [Results]

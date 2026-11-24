@@ -64,6 +64,8 @@ def main() -> None:
     no = sub.add_parser("reject")
     no.add_argument("slug")
     no.add_argument("note")
+    no.add_argument("--reason", choices=["weak-hook", "wrong-clip", "repeats"], help="one-tap reason (review queue)")
+    no.add_argument("--look", help="the reel's look, kept with the reason for learning")
     yes = sub.add_parser("consent")
     yes.add_argument("slug")
     again = sub.add_parser("reroll")
@@ -262,7 +264,9 @@ def main() -> None:
     elif args.cmd == "approve":
         print(approve(args.slug))
     elif args.cmd == "reject":
-        set_note(args.slug, "rejected", args.note)
+        from studio.review_actions import reject
+
+        reject(args.slug, args.note, args.reason, args.look)
         print("rejected")
     elif args.cmd == "consent":
         consent(args.slug)

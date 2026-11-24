@@ -780,7 +780,8 @@ def story_results(rows: list[dict] | None = None) -> dict[str, dict]:
         if cur and str(cur["at"]) > str(r["fetched_at"]):
             continue
         extra = r.get("extra") or {}
-        out[r["slug"]] = {**{k: r.get(k) for k in ("views", "reach", "shares", "follows") if r.get(k) is not None},
+        out[r["slug"]] = {**{k: r.get(k) for k in ("views", "reach", "shares") if r.get(k) is not None},
+                          **({"follows": r["followers_gained"]} if r.get("followers_gained") is not None else {}),
                           **{k: extra[k] for k in ("profile_visits", "total_interactions", "navigation") if k in extra},
                           "age_h": r.get("age_h"), "at": r["fetched_at"]}
     return out

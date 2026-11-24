@@ -267,8 +267,11 @@ def report(overview_rows: list[dict] | None = None) -> dict:
         out.append({"post": pr["post_id"], "slug": pr["slug"], "network": pr["network"], "at": p.get("at"), "status": p.get("status"),
                     "predicted": {"mid": pr["mid"], "lo": pr["lo"], "hi": pr["hi"], "posts": pr["posts"], "made": pr["made_at"]},
                     "actual": round(a, 3) if a is not None else None, "inside": hit, "late": bool(pr["late"]), "score": s})
+    rho = _spearman(sc, act)
+    # What Plan posts actually orders by (the rule _rank_by uses), so the page never says "learned" while it uses the score.
+    rank_by = "learned" if _learned_model(rho, data["units"]) is not None else "score"
     return {"rows": out, "measured": counted, "inside": inside, "coverage": round(inside / counted, 2) if counted else None, "aim": 0.8,
-            "spearman": _spearman(sc, act), "minPosts": learn.MIN_POSTS,
+            "spearman": rho, "rankBy": rank_by, "minPosts": learn.MIN_POSTS,
             "summary": (f"{inside} of {counted} measured posts landed inside their predicted range (the aim is 8 in 10)." if counted
                         else "No post has numbers old enough yet; the first comparisons come about 3 days after a post goes out.")}
 
@@ -320,8 +323,15 @@ def _near_all(slugs: list[str]) -> dict[str, int]:
     return near_repeats(hooks, posts)
 
 
-def scores(overview_rows: list[dict]) -> dict:
-    """The score of every reel in the overview, with its parts."""
+# The score orders bookings only while it goes with views at least this well (Spearman over measured posts). Below it,
+# Plan posts orders by what the learned model expects for each reel instead (BL-109, 24 Nov 2026: the score's rank
+# correlation with views was -0.10, so "best score first" was close to random).
+RANK_TRUST = 0.3
+
+
+def scores(overview_rows: list[dict], report_data: dict | None = None) -> dict:
+    """The score of every reel in the overview, with its parts, and `rank`: the number Plan posts orders by (the score,
+    or the learned model's expected result when the score does not go with views). `rankBy` says which, `rankWhy` why."""
     from studio.projects import load
 
     near = _near_all([r["slug"] for r in overview_rows])
@@ -332,4 +342,47 @@ def scores(overview_rows: list[dict]) -> dict:
         except Exception:
             sec = None
         out[r["slug"]] = score({**r, "nearHook": near.get(r["slug"], 0)}, sec)
-    return {"scores": out}
+    return {"scores": out, **_rank_by(overview_rows, out, report_data)}
+
+
+def _learned_model(rho: float | None, units: list[dict]):
+    """The one rule for what Plan posts orders by: the learned model when the score goes with views below RANK_TRUST
+    and a model fits; else None (order by score). Used by _rank_by (the planner) and report() (the page's wording)."""
+    if rho is None or rho >= RANK_TRUST:
+        return None
+    try:
+        return learn.fit(units)
+    except Exception:
+        return None
+
+
+def _rank_by(rows: list[dict], out: dict, rep: dict | None = None) -> dict:
+    """Fill `rank` in each score: the score itself while it predicts views, else the learned middle value (x a typical post)."""
+    from studio.projects import load
+
+    try:
+        rep = rep if rep is not None else report(rows)
+    except Exception:
+        rep = {}
+    rho = rep.get("spearman")
+    try:
+        units = learn.comparable()["units"] if rho is not None and rho < RANK_TRUST else []
+    except Exception:
+        units = []
+    model = _learned_model(rho, units)
+    if model is None:
+        for v in out.values():
+            v["rank"] = v.get("score")
+        why = "Ordered by score." if rho is None else f"Ordered by score: it goes with views at {rho:+.2f}."
+        why_ja = "スコアの順に並べています。" if rho is None else f"スコアの順に並べています（結果との順位の相関 {rho:+.2f}）。"
+        return {"rankBy": "score", "spearman": rho, "rankWhy": why, "rankWhyJa": why_ja}
+    for slug, v in out.items():
+        try:
+            v["rank"] = round(predict(load(slug), "", model=model)["mid"] * 100, 1)
+        except Exception:
+            v["rank"] = None
+    return {"rankBy": "learned", "spearman": rho,
+            "rankWhy": (f"Ordered by what the learned model expects: the score went with views at only {rho:+.2f} "
+                        f"(it orders bookings from {RANK_TRUST:+.1f})."),
+            "rankWhyJa": (f"学習モデルが見込む結果の順に並べています。スコアと結果の順位の相関が {rho:+.2f} と弱いためです"
+                          f"（{RANK_TRUST:+.1f} を超えたらスコアに戻します）。")}

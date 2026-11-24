@@ -2,8 +2,9 @@
  * FILE: server/problems.mjs
  * PURPOSE: What went wrong, kept until it is fixed. The bell's notes pass by (a page that was closed never sees them);
  *          a problem stays in <STUDIO_HOME>/problems.json and in the page's Problems list until its cause is gone.
- * OVERVIEW: findProblems() looks at the studio's data as it is now (bookings, approvals, long videos) and returns what
- *           is wrong; it is pure and tested. A store merges those with one-off events (a version that could not be
+ * OVERVIEW: findProblems() looks at the studio's data as it is now (bookings, approvals, long videos, sign-ins) and
+ *           returns what is wrong; it is pure and tested. readErrors() reads the numbers collector's own files for the
+ *           last sign-in error of each network (no new request), for the "signed out" check. A store merges those with one-off events (a version that could not be
  *           used, a project switch), keeps first/last seen, drops a checked problem once its cause is gone, and lets a
  *           person dismiss what may be dismissed.
  * LEVELS: red = broken: something will not happen (a post, a render) until it is fixed, or is about to; amber = it
@@ -12,14 +13,15 @@
  * Found 13 Nov: a reel left unapproved by a failed "Use the new version", 13 long videos that repeated days, and a
  * project switch, all of which the studio never showed.
  */
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 const RANK = { red: 0, amber: 1, info: 2 };
 const SENT = new Set(["scheduled", "queued", "planned"]);
 const MISSED = new Set(["failed", "missed", "missing"]);  // "missing": booked, but not seen live hours later (py/studio/live.py)
+const HOLDS = new Set(["scheduled", "queued", "posted"]);  // a booking made again after a miss that still stands (or went out)
 const NET = { youtube: "YouTube", facebook: "Facebook", bluesky: "Bluesky", x: "X", tiktok: "TikTok", linkedin: "LinkedIn",
-  gbp: "Google Maps", "line-oa": "LINE", pinterest: "Pinterest", threads: "Threads", instagram: "Instagram" };
+  gbp: "Google Maps", "line-oa": "LINE", pinterest: "Pinterest", threads: "Threads", instagram: "Instagram", "instagram-story": "Instagram Stories" };
 const netName = (n) => NET[n] || n;
 // Where a person checks a post with their own eyes, per network (the post's own link wins when the studio has one).
 const LOOK = { gbp: "https://business.google.com/locations", x: "https://x.com/compose/post/unsent/scheduled",
@@ -95,10 +97,57 @@ export function aiHealthProblems(health) {
   return out;
 }
 
-export function findProblems({ posts = [], reviews = [], parts = [], connections = {}, perf = null, aiHealth = null, now = Date.now() } = {}) {
+/**
+ * Networks that show nobody the posts, by the planner's own rule (perf.reach `stalled`: 3+ measured posts, 2+ days out,
+ * all at nothing, on the account in use now). One source, so Needs you and Plan posts never disagree (24 Nov: Needs you
+ * said TikTok was unseen while planning kept booking it, and the 0s were on an account deleted that day).
+ */
+export function reachProblems(reach, { paused = true } = {}) {
   const out = [];
-  // 1. Booked, but the reel is not approved: the studio posts and swaps only approved reels.
-  const ahead = posts.filter((p) => SENT.has(p.status) && Date.parse(p.at) > now && !/^vlog-/.test(p.slug || ""));
+  for (const v of reach?.networks || []) {
+    if (!v?.stalled) continue;
+    const n = v.network, name = netName(n), m = Number(v.measured) || 0;
+    const metric = v.hasViews === false ? "likes, reposts or replies" : "views", metricJa = v.hasViews === false ? "いいね・リポスト・返信" : "再生";
+    const fresh = v.accountSince ? ` on the account in use since ${when(v.accountSince)}` : "", freshJa = v.accountSince ? `（${whenJa(v.accountSince)}からのアカウント）` : "";
+    out.push({
+      id: `reach:${n}`, level: "amber", group: "numbers",
+      title: paused ? `${name} is not showing your posts: booking it is paused` : `${name} is not showing your posts`,
+      detail: `All ${m} ${name} posts measured${fresh} have 0 ${metric}, the oldest ${Math.round((Number(v.oldestH) || 0) / 24)} days out. A new account, a restricted account or a missing profile often does this; so can a number the studio cannot read. ${paused ? `Plan posts books no new ${name} posts until one is seen (posts already booked stay). ` : ""}Check the account on ${name} and compare its own numbers.`,
+      fix: { label: "See reach on Results", href: "#/results" }, ...(REACH[n] ? { also: REACH[n] } : {}), dismissable: true,
+      ja: { title: paused ? `${name}が投稿を表示していません：予約を止めています` : `${name}が投稿を表示していません`,
+        detail: `計測した${name}の投稿${m}件${freshJa}は、どれも${metricJa}が0です（いちばん古いものは${Math.round((Number(v.oldestH) || 0) / 24)}日前）。新しいアカウント、制限されたアカウント、プロフィールが未設定のときによく起きます。スタジオが数字を読めていない場合もあります。${paused ? `1件でも見られるまで、自動の予約は${name}に新しい投稿を入れません（予約済みはそのまま）。` : ""}${name}でアカウントを確かめ、そちらの数字と比べてください。`,
+        fix: "結果で届き方を見る", ...(REACH_JA[n] ? { also: REACH_JA[n] } : {}) },
+    });
+  }
+  return out;
+}
+
+/* Jobs that read numbers (views, likes): when one stops, nothing you made is affected and nothing fails to post;
+   the numbers wait for the next read. Their own group ("Numbers") and fix, not "Making stopped" with a render fix
+   (24 Nov: "Reading view numbers did not finish" said "Open the reel and press Save & render again"). */
+export const isNumbersJob = (slug = "") => /^(helper-perf|perf)(-|$)/.test(String(slug));
+/** The problem for a numbers job that ended in an error: amber (only numbers are late), see the log, check the Chrome link. */
+export function numbersJobProblem(slug, { detail = "", detailJa = "" } = {}) {
+  const chrome = slug === "helper-perf";
+  return {
+    id: `job:${slug}`, level: "amber", group: "numbers",
+    title: chrome ? "Reading view numbers in your Chrome did not finish" : "Reading the numbers did not finish",
+    detail: `${detail ? `${detail} ` : ""}Nothing you made or booked is affected: the numbers are read again next hour.${chrome ? " They are read in your Chrome, so keep it open with the helper linked (Settings › Accounts)." : ""}`.trim(),
+    fix: { label: "See the log", href: "#/log/activity" },
+    ...(chrome ? { also: { label: "Check the Chrome link", href: "#/accounts" } } : {}),
+    dismissable: true,
+    ja: { title: chrome ? "Chromeでの再生数の読み取りが終わりませんでした" : "数字の読み取りが終わりませんでした",
+      detail: `${detailJa || detail ? `${detailJa || detail} ` : ""}作ったものや予約には影響ありません。数字は次の1時間でまた読みます。${chrome ? "読み取りはChromeで行うので、ヘルパーをつないだまま開いておいてください（設定 › アカウント）。" : ""}`.trim(),
+      fix: "ログを見る", ...(chrome ? { also: "Chromeとのつながりを確かめる" } : {}) },
+  };
+}
+
+export function findProblems({ posts = [], reviews = [], parts = [], connections = {}, perf = null, reach = null, aiHealth = null, readErrors = {}, now = Date.now() } = {}) {
+  const out = [];
+  // 1. Booked, but the reel is not approved: the studio posts and swaps only approved reels. Photo-post Stories are not
+  //    reels and have no review: their gate is the face check at booking (py/studio/stills.py, BL-095), and they go out
+  //    without an approval (24 Nov: every booked photo set showed as "booked but not approved").
+  const ahead = posts.filter((p) => SENT.has(p.status) && Date.parse(p.at) > now && !/^vlog-/.test(p.slug || "") && p.network !== "photo-story");
   const bySlug = new Map();
   for (const p of ahead) (bySlug.get(p.slug) || bySlug.set(p.slug, []).get(p.slug)).push(p);
   for (const [slug, list] of bySlug) {
@@ -116,10 +165,12 @@ export function findProblems({ posts = [], reviews = [], parts = [], connections
         fix: "リールを開く" },
     });
   }
-  // 2. Posts that did not go out in the last two weeks.
+  // 2. Posts that did not go out in the last two weeks, unless the same reel was booked again on the same network and
+  //    that booking stands or went out (24 Nov: focus-1108-3 stayed red on Bluesky after it was booked again as row 343).
   for (const p of posts) {
     const t = Date.parse(p.at);
     if (!MISSED.has(p.status) || !(t > now - 14 * DAY) || t > now) continue;
+    if (posts.some((o) => o !== p && o.slug === p.slug && o.network === p.network && HOLDS.has(o.status) && Date.parse(o.at) >= t)) continue;
     const missing = p.status === "missing", look = /^https?:\/\//.test(p.url || "") ? p.url : LOOK[p.network];
     out.push({
       id: `missed:${p.id ?? `${p.slug}:${p.network}:${p.at}`}`, level: "red",
@@ -182,8 +233,10 @@ export function findProblems({ posts = [], reviews = [], parts = [], connections
     });
   }
   // 5. A network where the posts measured so far reached nobody: worth a look on the network itself (a new or
-  //    restricted account, or a number the studio cannot read).
-  for (const [n, v] of Object.entries(perf?.networks || {})) {
+  //    restricted account, or a number the studio cannot read). With `reach` (py/studio/perf.py reach(): the rule the
+  //    planner skips a network by, counting only the account in use now) this says exactly what Plan posts does.
+  if (reach?.networks) out.push(...reachProblems(reach, { paused: reach.paused !== false }));
+  else for (const [n, v] of Object.entries(perf?.networks || {})) {
     // A median of 0 is not "nobody": the summary's `silent` says whether every measured post got nothing (17 Nov: one
     // Facebook reel at 100 views, six at 0-1, and this said all seven had 0 views).
     if (!(Number(v?.posts) >= 2) || Number(v?.median) !== 0 || v?.silent === false) continue;
@@ -201,21 +254,101 @@ export function findProblems({ posts = [], reviews = [], parts = [], connections
   // 6. An AI service that ran out of credit or refused its key (py/studio/fallback.py): which blocks switched, which
   //    have no backup (owner, 18 Nov: "if I run out of fal.ai auto switch to others for all workflow in the block").
   out.push(...aiHealthProblems(aiHealth));
+  // 7. A connected account whose sign-in stopped working: nothing new goes out there and no numbers are read.
+  //    24 Nov: YouTube's refresh token died (invalid_grant: the Google app was in Testing mode, 7-day sign-ins) and
+  //    Results said so, but this list said nothing.
+  out.push(...signedOut(connections, readErrors, posts, now).filter((x) => !out.some((o) => o.id === x.id)));
   return sort(out);
+}
+
+const AUTH_RX = /invalid_grant|expired|revoked/i;
+/**
+ * Networks whose sign-in no longer works: a connection that holds an account but says it is not connected and why
+ * (connections: Facebook, Bluesky, Instagram Stories), or the numbers collector's last error there being a sign-in
+ * error (readErrors, from readErrors(): YouTube's token refresh). Red, not dismissable: fixed by connecting again.
+ */
+export function signedOut(connections = {}, readErrors = {}, posts = [], now = Date.now()) {
+  const dead = new Map();
+  for (const [n, c] of Object.entries(connections || {})) if (c && !c.connected && c.account && c.error) dead.set(n, { error: String(c.error), at: null });
+  for (const [n, e] of Object.entries(readErrors || {})) {
+    if (e?.error && !dead.has(n) && (e.code === "auth" || AUTH_RX.test(e.error))) dead.set(n, { error: String(e.error), at: e.at || null });
+  }
+  if (dead.has("facebook")) dead.delete("instagram-story");  // Stories use the Facebook sign-in: one fix, one problem
+  const out = [];
+  for (const [n, e] of dead) {
+    const yt = n === "youtube", name = netName(n), grant = /invalid_grant/i.test(e.error);
+    const nets = n === "facebook" ? ["facebook", "instagram-story"] : [n];
+    const ahead = posts.filter((p) => nets.includes(p.network) && Date.parse(p.at) > now);
+    const onNet = ahead.filter((p) => p.status === "scheduled").length;  // already handed to the network's own scheduler
+    const waiting = ahead.filter((p) => p.status === "queued").length;   // the studio sends these itself, at their time
+    const err = e.error.replace(/\s+/g, " ").slice(0, 200);
+    const thing = yt ? "Short" : "post", s = (k) => (k === 1 ? "" : "s");
+    const detail = `The studio's ${name} sign-in stopped working${e.at ? ` (${when(e.at)})` : ""}: ${err}. `
+      + (onNet ? `${onNet} ${thing}${s(onNet)} already booked on ${name} itself still ${onNet === 1 ? "publishes" : "publish"} at ${onNet === 1 ? "its" : "their"} time. `
+        : yt ? "Shorts already booked on YouTube itself still publish at their time. " : "")
+      + `${waiting ? `${waiting} booked ${thing}${s(waiting)} waiting to ${yt ? "upload" : "go out"} will not, ` : `Nothing new ${yt ? "uploads" : "goes out"}, `}and no numbers are read, until you connect ${name} again on Settings › Accounts.`
+      + (n === "facebook" ? " Instagram Stories use the same sign-in, so they stop too." : "")
+      + (grant && yt ? " The usual cause: the Google app is still in Testing mode, where Google ends every sign-in after 7 days. To stop it happening again, open Google Cloud › Google Auth Platform › Audience and press Publish app, then press Connect YouTube again." : "");
+    const detailJa = `スタジオの${name}へのサインインが使えなくなりました${e.at ? `（${whenJa(e.at)}）` : ""}：${err}。`
+      + (onNet ? `${name}側で予約済みの${onNet}件は、予定どおり公開されます。` : yt ? "YouTube側で予約済みのショートは、予定どおり公開されます。" : "")
+      + `${waiting ? `${yt ? "アップロード" : "投稿"}を待っている予約${waiting}件は出ず、` : `新しい${yt ? "アップロード" : "投稿"}は出ず、`}数字も読めません。設定 › アカウントで${name}にもう一度接続してください。`
+      + (n === "facebook" ? "Instagramストーリーズも同じサインインを使うので止まります。" : "")
+      + (grant && yt ? "よくある原因：Googleアプリが「テスト」モードのままだと、サインインは7日で切れます。Google Cloud › Google Auth Platform › 対象 で「アプリを公開」を押してから、もう一度「YouTubeに接続」を押すと、切れなくなります。" : "");
+    out.push({
+      id: `signin:${n}`, level: "red",
+      title: `${name} is signed out: nothing new ${yt ? "uploads" : "goes out"} and no numbers are read`,
+      detail, fix: { label: yt ? "Connect YouTube again" : `Sign in to ${name} again`, href: "#/accounts" },
+      ...(grant && yt ? { also: { label: "Open Google Auth Platform", href: "https://console.cloud.google.com/auth/audience" } } : {}),
+      dismissable: false,
+      ja: { title: `${name}のサインインが切れています：新しい${yt ? "アップロード" : "投稿"}は出ず、数字も読めません`, detail: detailJa,
+        fix: yt ? "YouTubeにもう一度接続" : `${name}にもう一度サインイン`, ...(grant && yt ? { also: "Google Auth Platformを開く" } : {}) },
+    });
+  }
+  return out;
+}
+
+/* Which token file under <data>/secrets holds each network's sign-in (py/studio/youtube.py, connectors/*.py). */
+const TOKEN = { youtube: "youtube_token.bin", facebook: "facebook.bin", "instagram-story": "facebook.bin", bluesky: "bluesky.bin" };
+/**
+ * The last error each network's numbers read hit, from the collector's own files (py/studio/perf.py): perf/state.json
+ * `problems` (kept until a read of that network works) and perf/channel.json (the YouTube channel read, per account).
+ * No new request. An error is dropped when the network's token file is gone (disconnected on purpose) or newer than
+ * the error (connected again since), and YouTube's when a later channel read worked. Returns { network: { error, code, at } }.
+ */
+export function readErrors(dataDir) {
+  const json = (f) => { try { return JSON.parse(readFileSync(join(dataDir, "perf", f), "utf8")); } catch { return null; } };
+  const out = { ...(json("state.json")?.problems || {}) };
+  const ch = json("channel.json");
+  if (ch?.at && Array.isArray(ch.channels) && ch.channels.length && !(Date.parse(out.youtube?.at) > Date.parse(ch.at))) {
+    const bad = ch.channels.find((c) => c?.error);
+    if (bad) out.youtube = { error: String(bad.error), code: AUTH_RX.test(String(bad.error)) ? "auth" : null, at: ch.at, account: bad.account };
+    else delete out.youtube;
+  }
+  for (const [n, e] of Object.entries(out)) {
+    if (!TOKEN[n]) continue;
+    const file = n === "youtube" && e?.account && e.account !== "main" ? `youtube_token-${e.account}.bin` : TOKEN[n];
+    let mtime;
+    try { mtime = statSync(join(dataDir, "secrets", file)).mtimeMs; } catch { delete out[n]; continue; }
+    if (mtime > Date.parse(e?.at || "")) delete out[n];
+  }
+  return out;
 }
 
 export function sort(items) {
   return [...items].sort((a, b) => (RANK[a.level] ?? 3) - (RANK[b.level] ?? 3) || String(a.title).localeCompare(String(b.title)));
 }
 
-/** The kept list: checks replaced every run, events kept until they expire or are dismissed. */
-export function createStore(file, { now = () => Date.now() } = {}) {
+/** The kept list: checks replaced every run, events kept until they expire or are dismissed.
+    saveTo: keep the list in another file, starting from `file` (a look-only studio on the same data must not rewrite
+    the running studio's list: STUDIO_QUIET, 24 Nov). */
+export function createStore(file, { now = () => Date.now(), saveTo = null } = {}) {
   let state = { items: {} };
+  const own = saveTo || file;
   try { state = JSON.parse(readFileSync(file, "utf8")); if (!state.items) state = { items: {} }; } catch { /* first run */ }
   const save = () => {
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(`${file}.tmp`, JSON.stringify(state, null, 1));
-    renameSync(`${file}.tmp`, file);
+    mkdirSync(dirname(own), { recursive: true });
+    writeFileSync(`${own}.tmp`, JSON.stringify(state, null, 1));
+    renameSync(`${own}.tmp`, own);
   };
   const stamp = () => new Date(now()).toISOString();
   return {

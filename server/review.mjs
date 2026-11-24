@@ -12,6 +12,7 @@
  *           timer that catalogs and tags new files on every folder while nothing renders.
  *           Research (/api/research*, docs/research-api.md): Firecrawl-backed ideas, a website check
  *           against the approved facts, a page read, local events and a link check, read-only.
+ *           Reply to these today (/api/engage/bluesky, py/studio/engage.py): Bluesky posts worth a reply by hand, read-only.
  *           AI assist (/api/ai*, docs/ai-api.md): a video reviewer and fal.ai tools (slow motion, sharpen, music,
  *           Japanese voice, living photo), each priced first and run inside per-reel, total and daily caps.
  *           Performance (/api/perf*, docs/perf-api.md): per-post numbers (YouTube, Facebook, Bluesky read hourly;
@@ -37,12 +38,12 @@ import { setLinkWanted, autoReconnect, beginConnect, browserState, cancelConnect
 import { buildId, folderBytes, freeDiskBytes, judgeSystem, LIMITS, medianSeconds, etaSeconds, probeEncoders, resolveTool, systemFacts } from "./health.mjs";
 import { openDrop, closeDrop, dropState, DROP_TYPES, saveUpload } from "./dropbox.mjs";
 import { bookedBeforeNewWords, classify, pickNext, noteStart, noteResult, YT_PER_DAY } from "./swap.mjs";
-import { AUTO_NETS, CHROME_NETS, fitsNetwork, planAhead, todayIn } from "./autoplan.mjs";
+import { AUTO_NETS, CHROME_NETS, fitsNetwork, planAhead, postSlots, todayIn, withAccount } from "./autoplan.mjs";
 import { setStartup, startupState } from "../scripts/autostart.mjs";
 import qrcode from "qrcode-generator";
 import { defaultProjectsDir, isRanch, ranchOverlay } from "../shared/ranch.mjs";
-import { createStore as problemStore, findProblems } from "./problems.mjs";
-import { approvalRefusal, authFailLine, authLimiter, clientIp, insideRoots, isSlug, overHttps, pathKey, proxyPeer, strayPath, NET_RX, parseRange, readJson, refusal, serverMode, SLUG_RX, tokenAttempt, tokenCookie, tokenOk, trustRules } from "./trust.mjs";
+import { createStore as problemStore, findProblems, isNumbersJob, numbersJobProblem, readErrors } from "./problems.mjs";
+import { approvalRefusal, authFailLine, authLimiter, clientIp, insideRoots, isSlug, overHttps, pathKey, proxyPeer, strayPath, NET_RX, parseRange, readJson, refusal, rejectOptions, serverMode, SLUG_RX, tokenAttempt, tokenCookie, tokenOk, trustRules } from "./trust.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SELF = fileURLToPath(import.meta.url);
@@ -477,10 +478,11 @@ function channelsView() {
 }
 function setNetwork(id, { on, account }) {
   const own = join(DATA, "networks.json");
-  const o = existsSync(own) ? JSON.parse(readFileSync(own, "utf8")) : {};
+  let o = existsSync(own) ? JSON.parse(readFileSync(own, "utf8")) : {};
   o.on = (o.on || []).filter((x) => x !== id); o.off = (o.off || []).filter((x) => x !== id); o.accounts = o.accounts || {};
   if (on === true) o.on.push(id); else if (on === false) o.off.push(id);
-  if (typeof account === "string") { if (account.trim()) o.accounts[id] = cleanName(account); else delete o.accounts[id]; }
+  // a new account name (an account replaced) starts its "since": reach and Plan posts judge only its own posts
+  if (typeof account === "string") o = withAccount(o, id, account.trim() ? cleanName(account) : "");
   mkdirSync(DATA, { recursive: true });
   writeFileSync(own, JSON.stringify(o, null, 2));
 }
@@ -557,6 +559,36 @@ function research(action, input = {}) {
   const clear = () => researchRuns.delete(key);
   run.then(clear, clear);
   return run;
+}
+/* Reply to these today (BL-100, py/studio/engage.py): recent Japanese Bluesky posts in the project's topics worth a reply by
+   hand, and accounts worth following. Read-only (GETs to Bluesky; nothing is posted, liked or followed); cached an hour in
+   <data>/engage. One run at a time: a second ask while one runs shares it. */
+let engageRun = null;
+function engage(action, input = {}) {
+  if (engageRun) return engageRun;
+  engageRun = new Promise((ok, fail) => {
+    const child = spawn(PY, ["-m", "studio.engage", action], { cwd: ROOT, env: ENV, windowsHide: true });
+    let out = "", err = "", late = false;
+    const timer = setTimeout(() => { late = true; killTree(child); }, 90_000);
+    child.stdout.on("data", (c) => { out += c; });
+    child.stderr.on("data", (c) => { err += c; });
+    child.stdin.on("error", () => {});
+    child.on("error", (e) => { clearTimeout(timer); fail(Object.assign(new Error(`The reply list could not start Python: ${e.message}`), { status: 500 })); });
+    child.on("exit", (code) => {
+      clearTimeout(timer);
+      if (late) return fail(Object.assign(new Error("Reading Bluesky took longer than 90 seconds and was stopped. Try again."), { status: 504, code: "timeout" }));
+      const line = out.split(/\r?\n/).reverse().find((l) => l.startsWith("RESULT "));
+      let r = null;
+      try { r = line ? JSON.parse(line.slice(7)) : null; } catch { r = null; }
+      if (!r) return fail(Object.assign(new Error(lastError(err) || `engage ${action} failed (exit ${code})`), { status: 500 }));
+      if (!r.ok) return fail(Object.assign(new Error(r.error), { status: r.status || 500, code: r.code || "error" }));
+      ok(r.data);
+    });
+    child.stdin.end(JSON.stringify(input));
+  });
+  const clear = () => { engageRun = null; };
+  engageRun.then(clear, clear);
+  return engageRun;
 }
 /* The approved words (py/studio/wording.py): the bank, a fresh draw for a reel, lines the owner adds, AI suggestions
    a person must approve. One short Python process per call; its last stdout line is the JSON answer. */
@@ -753,6 +785,20 @@ function noteRun(what, data) {
 }
 const settleJob = async (j, ms) => { const t0 = Date.now(); while (j && ["queued", "running"].includes(j.status) && Date.now() - t0 < ms) await new Promise((r) => setTimeout(r, 2000)); return j; };
 const jobError = (j) => (j?.lines || []).slice(-1)[0] || j?.label || j?.status || "did not finish";
+/* Lessons the loop acted on in the last 7 days (<data>/lessons.jsonl, studio.learn.note_lesson; BL-112): {reel, retired, testHour}. */
+function lessonsWeek() {
+  const out = { reel: 0, retired: 0, testHour: 0 };
+  try {
+    const since = Date.now() - 7 * 864e5;
+    for (const line of readFileSync(join(DATA, "lessons.jsonl"), "utf8").split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      let r; try { r = JSON.parse(line); } catch { continue; }
+      if (Date.parse(r.at) < since) continue;
+      if (r.kind === "reel") out.reel++; else if (r.kind === "retired") out.retired++; else if (r.kind === "test-hour") out.testHour++;
+    }
+  } catch { /* no lessons yet */ }
+  return out;
+}
 const liveSettings = () => ask({ cmd: "live", action: "settings" });
 /* A check that calls YouTube or Facebook runs as its own process, so the studio's helper is never held up by a network. */
 async function liveTask(action, ms = 5 * 60e3) {
@@ -772,7 +818,10 @@ function runChecks({ health = false } = {}) {
       replaced: out.tidy?.replaced?.length || 0, error: out.check?.error || out.tidy?.error || null });
     for (const id of [...(out.check?.missing || []), ...(out.check?.failed || [])]) writeEvent("note", { text: `Post ${id} did not go out as booked: see Posting › Needs a look.` });
     const last = autoRuns().health;
-    if (st.health.on && (health || !last || last.day !== localDay())) {
+    // Once a day, or every hour while something is red: 24 Nov a YouTube "sign-in refused" from the morning stayed in
+    // the Needs-you bar all day after YouTube was connected again.
+    const stillBad = (last?.items || []).some((i) => i.level === "bad");
+    if (st.health.on && (health || !last || last.day !== localDay() || stillBad)) {
       const h = await liveTask("health", 2 * 60e3);
       noteRun("health", { items: h.items || [], error: h.error || null });
     }
@@ -794,7 +843,11 @@ async function planSignals(st) {
   const [sc, reach] = await Promise.all([
     st.rankByScore === false ? null : ask({ cmd: "perf_read", action: "scores" }).catch(() => null),
     st.skipStalled === false ? null : perfCached("reach", {}).catch(() => null)]);
-  const scores = Object.fromEntries(Object.entries(sc?.scores || {}).map(([k, v]) => [k.replace(/^story-/, ""), v?.score]).filter(([, v]) => Number.isFinite(v)));
+  // `rank`: the score while it goes with views, else the learned model's expected result (predict.py RANK_TRUST, BL-109).
+  // Never mix the two scales: under learned ranking a reel with no learned value is left unranked (it sorts last),
+  // not given its 0-100 score.
+  const learned = sc?.rankBy === "learned";
+  const scores = Object.fromEntries(Object.entries(sc?.scores || {}).map(([k, v]) => [k.replace(/^story-/, ""), learned ? v?.rank : v?.rank ?? v?.score]).filter(([, v]) => Number.isFinite(v)));
   return { scores, stalled: (reach?.networks || []).filter((n) => n.stalled).map((n) => n.network) };
 }
 /* The next days' bookings from the approved reels (server/autoplan.mjs). confirm: false = what it would book. */
@@ -813,7 +866,8 @@ async function autoPlan({ confirm = true, why = "timer" } = {}) {
     const reels = ms.map((m) => ({ slug: m.slug, headline: headlineOf(m, m.channels?.[0]), networks: chosen.filter((n) => fitsNetwork(m, n, spec)),
       score: sig.scores[m.slug], seconds: m.durationSec }));
     const plan = planAhead({ reels, networks: chosen.filter((n) => ready[n]), posts, timeZone: tz, aheadDays: st.aheadDays,
-      tiktokAheadDays: st.tiktokAheadDays, youtubeLeft: Math.max(0, YT_PER_DAY - autoReplaceState().yt), stalled: sig.stalled, themeDays: st.themeDays ?? 3 });
+      tiktokAheadDays: st.tiktokAheadDays, youtubeLeft: Math.max(0, YT_PER_DAY - autoReplaceState().yt), stalled: sig.stalled, themeDays: st.themeDays ?? 3,
+      slots: postSlots(spec, tz) });  // channels.json hours, every 4th booking at another one (BL-102)
     const waiting = chosen.filter((n) => !ready[n]);
     if (!confirm) return { dryRun: true, ...plan, waiting, approved: reels.length };
     for (const s of plan.skipped.filter((x) => x.stalled)) console.log(`[auto-plan] ${s.network} ${s.why}`);
@@ -847,6 +901,8 @@ async function autoPlan({ confirm = true, why = "timer" } = {}) {
           if (j?.status !== "done") { p.refused = jobError(j); continue; }
         }
         booked++;
+        // A booking at a test hour is a lesson being tested (BL-112): one line in <data>/lessons.jsonl, as studio.learn.note_lesson.
+        if (p.test) try { appendFileSync(join(DATA, "lessons.jsonl"), JSON.stringify({ at: new Date().toISOString(), kind: "test-hour", slug: p.slug, network: p.network, when: p.at, usual: p.usual || null }) + "\n"); } catch { /* a log line never stops a booking */ }
       } catch (e) { p.refused = String(e.message || e).split(/\r?\n/)[0]; }
     }
     const refused = plan.plan.filter((p) => p.refused).map((p) => ({ slug: p.slug, network: p.network, at: p.at, why: String(p.refused).slice(0, 200) }));
@@ -1039,6 +1095,9 @@ function startAi(input, render) {
   return job;
 }
 /** The AI notes in a reel's project file and whether any needs the platform's AI label (read-only). */
+function madeOf(slug) {
+  try { const p = JSON.parse(readFileSync(join(PROJECTS_DIR, `${slug}.json`), "utf8")); return p.made && typeof p.made === "object" ? p.made : null; } catch { return null; }
+}
 function aiNotes(slug) {
   try {
     const p = JSON.parse(readFileSync(join(PROJECTS_DIR, `${slug}.json`), "utf8"));
@@ -1277,24 +1336,35 @@ function startWatch(why) {
 }
 /* Drafts from new footage, by themselves: when the watcher or a Google Photos import brings in new clips, the
    studio proposes a few reels from the last days' footage (different looks, the learned choices) and renders
-   them. At most STUDIO_AUTO_DRAFTS a day (default 2; 0 turns it off). They wait in Reels for a person to approve:
-   nothing is posted from here. The day's count lives in STUDIO_HOME/auto-drafts.json. */
-const AUTO_DRAFTS = Number.isFinite(+pick("STUDIO_AUTO_DRAFTS", "2")) ? Math.max(0, Math.min(10, +pick("STUDIO_AUTO_DRAFTS", "2"))) : 2;
+   them. At most drafts.perDay a day (Settings › Workflow › Runs by itself: making reels; studio.live "drafts", default
+   on, 2), or STUDIO_AUTO_DRAFTS when .env sets it (0 turns it off). They wait in Reels for a person to approve: nothing
+   is posted from here. Whether they use what worked is the learn.steer setting (studio.learn.steer_on). The day's
+   count and the last run live in STUDIO_HOME/auto-drafts.json (GET /api/loop shows them). */
+const AUTO_DRAFTS_ENV = (() => { const v = pick("STUDIO_AUTO_DRAFTS", ""); return v !== "" && Number.isFinite(+v) ? Math.max(0, Math.min(10, +v)) : null; })();
+const AUTO_DRAFTS_FILE = join(HOME_DIR, "auto-drafts.json");
+async function draftsPerDay() {
+  if (AUTO_DRAFTS_ENV != null) return AUTO_DRAFTS_ENV;
+  try { const d = (await liveSettings()).drafts || {}; return d.on === false ? 0 : Math.max(1, Math.min(10, Number(d.perDay) || 2)); } catch { return 2; }
+}
+function draftsState() { try { return JSON.parse(readFileSync(AUTO_DRAFTS_FILE, "utf8")) || {}; } catch { return {}; } }
 async function autoDrafts(why) {
-  if (!AUTO_DRAFTS) return;
-  const file = join(HOME_DIR, "auto-drafts.json"), today = new Date().toISOString().slice(0, 10);
+  const perDay = await draftsPerDay();
+  if (!perDay) return;
+  const file = AUTO_DRAFTS_FILE, today = new Date().toISOString().slice(0, 10);
   let state = { day: today, n: 0, themeAt: 0 };
   try { const s0 = JSON.parse(readFileSync(file, "utf8")); state = { ...state, ...s0, ...(s0.day !== today ? { day: today, n: 0 } : {}) }; } catch { /* first time */ }
-  const room = AUTO_DRAFTS - state.n;
+  const room = perDay - state.n;
   if (room <= 0) return;
   try { diskGuard(); } catch { return; }
   const themes = await ask({ cmd: "themes" }).then((t) => (Array.isArray(t) ? t : Object.keys(t || {})).map((x) => (typeof x === "string" ? x : x.key)).filter(Boolean)).catch(() => []);
   if (!themes.length) return;
   const pickThemes = Array.from({ length: Math.min(room, themes.length) }, (_, i) => themes[(state.themeAt + i) % themes.length]);
   const since = new Date(Date.now() - 4 * 86400e3).toISOString().slice(0, 10);  // the new footage, not the whole library
-  const made = await ask({ cmd: "autopilot", themes: pickThemes, since, faces: true, cut: "short", vary: true, learned: true }).catch((e) => { console.error(`[auto-drafts] ${e.message || e}`); return []; });
+  // learned left out: the learn.steer setting decides (studio.learn.steer_on); by "auto" marks each reel made: {by: "auto"}.
+  const made = await ask({ cmd: "autopilot", themes: pickThemes, since, faces: true, cut: "short", vary: true, by: "auto" }).catch((e) => { console.error(`[auto-drafts] ${e.message || e}`); return []; });
   made.forEach((m) => startRender(m.slug));
-  state = { day: today, n: state.n + made.length, themeAt: (state.themeAt + pickThemes.length) % themes.length };
+  state = { ...state, day: today, n: state.n + made.length, themeAt: (state.themeAt + pickThemes.length) % themes.length,
+    last: new Date().toISOString(), lastWhy: why, lastMade: made.map((m) => m.slug), lastSteer: made.map((m) => m.steer || null), total: (state.total || 0) + made.length };
   try { writeFileSync(file, JSON.stringify(state)); } catch { /* best effort */ }
   if (made.length) writeEvent("note", { text: `${made.length} new draft reel${made.length > 1 ? "s" : ""} from ${why}: ${made.map((m) => m.slug).join(", ")}. Review them in Reels.` });
   console.log(`[auto-drafts] ${why}: ${made.map((m) => m.slug).join(", ") || "none"}`);
@@ -1697,7 +1767,8 @@ function loadHistory() {
 }
 const history = loadHistory();
 /* The Problems list: problems.json beside the project's data, checked every 5 minutes and after each job. */
-const PROBLEMS = problemStore(join(DATA, "problems.json"));
+// A look-only studio (STUDIO_QUIET) starts from the running studio's list but keeps its own copy, never rewriting it.
+const PROBLEMS = problemStore(join(DATA, "problems.json"), QUIET ? { saveTo: join(DATA, "tmp", `problems-${PORT}.json`) } : {});
 const PROBLEM_KINDS = { build: "make", remix: "remix", versions: "re-cut", vlog: "long video", vlogup: "upload", publish: "post", upload: "upload" };
 /* What a job did, in words ("helper-perf" is "Reading view numbers"): [English, Japanese], or null for a reel's own name. */
 function jobWords(slug = "") {
@@ -1736,6 +1807,8 @@ function noteJobProblem(job) {
     : reelJob ? ["Open the reel", "リールを開く", `#/reel/${job.slug}`] : ["See the log", "ログを見る", "#/log/activity"];
   const last = String((job.lines || []).slice(-1)[0] || job.label || "");
   const cause = jobCause(job.lines || [], last);
+  // Reading numbers: its own group and fix (problems.mjs numbersJobProblem), never "Making stopped" with a render fix.
+  if (isNumbersJob(job.slug)) { PROBLEMS.record(numbersJobProblem(job.slug, { detail: last.slice(0, 240) })); setTimeout(() => tickProblems().catch(() => {}), 2000); return; }
   PROBLEMS.record({
     id: `job:${job.slug}`, level: "red",
     title: verUse ? `The new version of ${job.slug.slice(4)} was not used` : named ? `${named[0]} did not finish` : `The ${what} of ${job.slug} did not finish`,
@@ -1755,12 +1828,19 @@ async function tickProblems() {
     let parts = [];
     try { parts = vlogsView().parts || []; } catch { /* no long videos here */ }
     // Sign-ins (when each ends) and how posts did: each read on its own, a failure only leaves that check out.
-    const [connections, perfNow, aiHealth] = await Promise.all([
+    const [connections, perfNow, aiHealth, reachNow, st] = await Promise.all([
       ask({ cmd: "connections", port: PORT }).catch(() => ({})),
       perf("summary", {}).catch(() => null),
       ai("health").catch(() => null),  // an AI service out of credit or with a key problem (py/studio/fallback.py)
+      // Plan posts' own reach rule (the account in use now only), so Needs you says what the planner does (24 Nov)
+      perfCached("reach", {}).catch(() => null),
+      liveSettings().catch(() => null),
     ]);
-    if (PROBLEMS.checked(findProblems({ posts: Array.isArray(posts) ? posts : [], reviews, parts, connections, perf: perfNow, aiHealth }))) writeEvent("problems", { count: PROBLEMS.open().length });
+    const reach = reachNow?.networks ? { ...reachNow, paused: st?.plan?.skipStalled !== false } : null;
+    // The numbers collector's last sign-in errors (YouTube's token refresh), read from its own files: no new request.
+    let readErrs = {};
+    try { readErrs = readErrors(DATA); } catch { /* no numbers read yet */ }
+    if (PROBLEMS.checked(findProblems({ posts: Array.isArray(posts) ? posts : [], reviews, parts, connections, perf: perfNow, reach, aiHealth, readErrors: readErrs }))) writeEvent("problems", { count: PROBLEMS.open().length });
   })().finally(() => { problemsRunning = null; });
   return problemsRunning;
 }
@@ -2188,11 +2268,18 @@ const server = createServer(async (req, res) => {
       if (!m) return send(res, 404, { error: "no such reel" });
       // AI notes from the project (py/studio/ai.py): aiLabel = some note needs the platform's AI label when posted.
       const notes = aiNotes(slug);
-      Object.assign(m, notes, { aiLabelNote: notes.aiLabel ? "This reel has AI-made content (an AI voice or an AI-moved photo). Tick the platform's AI label when you post; YouTube's is set on upload. No AI hashtags needed." : null });
+      // made: who made it (a person or the studio by itself) and why it looks this way (py/studio/service.py _autopilot).
+      Object.assign(m, notes, { made: madeOf(slug), aiLabelNote: notes.aiLabel ? "This reel has AI-made content (an AI voice or an AI-moved photo). Tick the platform's AI label when you post; YouTube's is set on upload. No AI hashtags needed." : null });
       m.review = await ask({ cmd: "review", slug });
       const ids = await ask({ cmd: "ids", paths: m.shots.map((s) => s.path) });
       m.shots.forEach((s) => { s.assetId = ids[s.path]; });
       return send(res, 200, m);
+    }
+    /* Why reels were sent back in the last `days` (1-365, default 30): counts per one-tap reason, per look, and the
+       newest five. Read only; the review queue shows it, and Results can (py/studio/review_actions.py reasons). */
+    if (req.method === "GET" && url.pathname === "/api/review/reasons") {
+      const days = Math.max(1, Math.min(365, Number(url.searchParams.get("days")) || 30));
+      return send(res, 200, await ask({ cmd: "reject_reasons", days }));
     }
     if (req.method === "GET" && url.pathname === "/api/log") {
       return send(res, 200, await ask({ cmd: "log" }));
@@ -2811,6 +2898,15 @@ const server = createServer(async (req, res) => {
     }
     /* Bookings holding older words, grouped by why; the switch that swaps them by itself. */
     /* Runs by itself: what it does, when it last ran, what it found; change it; run a part now. */
+    /* The making side of the loop (Track A, 24 Nov): drafts from new footage and learned looks, as Reels › Today's loop
+       strip and Settings › Workflow show them. Changed with POST /api/autopost {set: {drafts|learn: {...}}}. */
+    if (req.method === "GET" && url.pathname === "/api/loop") {
+      const st = await liveSettings(), d = draftsState(), today = new Date().toISOString().slice(0, 10);
+      return send(res, 200, { drafts: { ...st.drafts, perDayNow: await draftsPerDay(), env: AUTO_DRAFTS_ENV != null, today: d.day === today ? d.n || 0 : 0,
+        last: d.last || (d.day ? `${d.day}T00:00:00Z` : null), lastExact: !!d.last, lastN: d.last ? (d.lastMade || []).length : d.n || 0, lastMade: d.lastMade || [],
+        lastSteer: d.lastSteer || [], lastWhy: d.lastWhy || null, total: d.total ?? null, watch: watchView(), quiet: QUIET },
+        learn: { ...st.learn, env: pick("STUDIO_PERF_STEER", "") !== "", paused: await ask({ cmd: "paused_looks" }).catch(() => null) }, lessons: lessonsWeek() });
+    }
     if (req.method === "GET" && url.pathname === "/api/autopost") {
       const [settings, waiting] = await Promise.all([liveSettings(), ask({ cmd: "live", action: "waiting" })]);
       const tz = AUDIENCE_TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -3069,6 +3165,11 @@ const server = createServer(async (req, res) => {
     const researchAction = /^\/api\/research\/(ideas|site-check|page|events|links)$/.exec(url.pathname);
     if (req.method === "POST" && researchAction) {
       try { return send(res, 200, await research(researchAction[1], researchInput(researchAction[1], await body(req)))); }
+      catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
+    /* Reply to these today (BL-100): Bluesky posts worth a reply by hand and accounts to follow; read-only, cached 1 h. */
+    if (req.method === "GET" && url.pathname === "/api/engage/bluesky") {
+      try { return send(res, 200, await engage("bluesky", url.searchParams.get("fresh") === "1" ? { fresh: true } : {})); }
       catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
     }
     /* ---------- AI assist (fal.ai, OpenRouter, Together): opt-in, priced first, inside the caps (docs/ai-api.md) ---------- */
@@ -3353,11 +3454,14 @@ const server = createServer(async (req, res) => {
       let themesIn = (Array.isArray(b.themes) ? b.themes : []).filter((x) => typeof x === "string").slice(0, 40);
       // No themes named: every theme (the MCP tool and docs/openapi.yaml say so). Before 13 Nov an empty list made nothing.
       if (!themesIn.length) themesIn = Object.keys((await ask({ cmd: "themes" })) || {}).slice(0, 40);
+      // Results' "Make a reel like this" (Track B → Track A): the look, layout and recipe it names; Python keeps only known ones.
+      const preset = b.preset && typeof b.preset === "object" && !Array.isArray(b.preset)
+        ? Object.fromEntries(["look", "style", "recipe", "mode"].filter((k) => typeof b.preset[k] === "string" && /^[a-z0-9 -]{1,40}$/.test(b.preset[k])).map((k) => [k, b.preset[k]])) : null;
       const mk = { slug: `make-${Date.now().toString(36)}`, kind: "make", status: "running", queued: Date.now(), started: Date.now(), lines: [], stage: 0, stages: 1, done: 0, of: themesIn.length, label: "picking footage" };
       jobs.set(mk.slug, mk); broadcast("job", mk, true);
       for (const t of themesIn) {
         mk.label = `picking footage for ${t}`; broadcast("job", mk, true);
-        try { for (const m of await ask({ cmd: "autopilot", themes: [t], since: b.since || null, faces: !!b.faces, cut: b.cut === "long" ? "long" : "short", vary: b.vary !== false, learned: b.learned === true })) { made.push(m); startRender(m.slug); } }
+        try { for (const m of await ask({ cmd: "autopilot", themes: [t], since: b.since || null, faces: !!b.faces, cut: b.cut === "long" ? "long" : "short", vary: b.vary !== false, ...(typeof b.learned === "boolean" ? { learned: b.learned } : {}), ...(preset ? { preset } : {}) })) { made.push(m); startRender(m.slug); } }
         catch (e) { console.error(`[autopilot] ${t}: ${e.message || e}`); mk.lines.push(`${t}: ${String(e.message || e).split(/\r?\n/)[0]}`); }
         mk.done++; broadcast("job", mk, true);
       }
@@ -3595,7 +3699,8 @@ const server = createServer(async (req, res) => {
       if (asked.length && !nets.length) return send(res, 400, { error: `networks: some of ${PERF_NETWORKS.join(", ")}`, code: "bad_input" });
       return send(res, 200, jobView(startPerfBrowser({ networks: nets })));
     }
-    /* Plan a week: approved reels spread one per network per day (19:00 in the audience's zone; Maps 12:00 Fri/Sat).
+    /* Plan a week: approved reels spread one per network per day (its channels.json hour, 19:00 by default, every 4th at
+       another listed hour as a test; Maps 12:00 Fri/Sat).
        {slugs?, networks?, start? (YYYY-MM-DD), days? (1-14), confirm?}: a dry run unless confirm is true. */
     if (req.method === "POST" && url.pathname === "/api/helper/schedule-week") {
       const b = await body(req);
@@ -3610,7 +3715,7 @@ const server = createServer(async (req, res) => {
         .map((m) => ({ slug: m.slug, headline: headlineOf(m, m.channels?.[0]), networks: nets.filter((n) => postFor(m, n)) }));
       const notApproved = asked ? asked.filter((s) => !approved.has(s)) : [];
       const tz = AUDIENCE_TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const r = planWeek({ reels, networks: nets, posts, start: b.start, days, timeZone: tz });
+      const r = planWeek({ reels, networks: nets, posts, start: b.start, days, timeZone: tz, slots: postSlots(channelsView(), tz) });
       if (b.confirm !== true) return send(res, 200, { dryRun: true, ...r, notApproved });
       const batch = { signin: new Set() };
       for (const p of r.plan) {
@@ -3671,8 +3776,11 @@ const server = createServer(async (req, res) => {
       const act = url.pathname.slice(5);
       if (!["approve", "consent", "reject", "reroll"].includes(act)) return send(res, 404, "unknown action", "text/plain");
       if (!SLUG_RX.test(payload.slug || "")) return send(res, 400, "bad slug", "text/plain");
-      const args = [act, payload.slug];
+      let args = [act, payload.slug];
       if (act === "reject" || act === "reroll") args.push(String(payload.note || "").slice(0, 500));
+      // Reject with a one-tap reason (review queue, BL-111) and the reel's look, kept for Check and learning.
+      // Options first and "--" before the slug and note, so a note that starts with "-" is still a note.
+      if (act === "reject") args = ["reject", ...rejectOptions(payload), "--", payload.slug, String(payload.note || "").slice(0, 500)];
       const result = await py(args, 600_000);  // approve copies the packages to Drive: room for a slow copy, never forever
       return send(res, result.code === 0 ? 200 : 400, result.code === 0 ? result.out : result.err, "text/plain; charset=utf-8");
     }

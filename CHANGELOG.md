@@ -2,6 +2,50 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.26.0 (2026-11-24)
+
+The studio runs as one visible loop — plan, make, post, check, learn — and the networks that never got posts now do.
+
+### Added
+- **The loop** on Reels › Today: Plan → Do → Check → Act, each with its live numbers and one next step, and a line
+  saying what runs by itself. Act shows what the studio learned and is testing ("N lessons applied this week").
+- **Making reels by itself, as settings:** Settings › Workflow › "Runs by itself: making reels" — drafts a day from new
+  footage, "use what worked" and how often to try something new (no .env needed; .env still wins when set).
+  `GET /api/loop`.
+- **Use what worked** in Make reels (on by default once 15 posts are measured), and every reel keeps **why it looks the
+  way it does** (learned, trying something new, or from Results), shown in Review and in the editor.
+- **Results lead to action:** five tabs with their own addresses (`#/results`, `/next`, `/where`, `/posts`,
+  `/youtube`); **Make a reel like this** on each suggestion and **Set up this test** on insights; **Experiments
+  running** (test hours and how far along they are); Ctrl K finds them.
+- **Reject with a reason** in To review (hook is weak, wrong clip, repeats another reel). Reasons are summarised in the
+  queue and in What worked, and a look rejected twice in 30 days leaves the learned picks. `GET /api/review/reasons`.
+- **Pinterest scheduling** through your Chrome (business accounts: "Publish at a later date"), board chosen by theme,
+  booked by itself at the network's hour.
+- **Test hours:** about one booking in four goes to another of the network's listed hours, marked "test" in the week.
+- **Configure each network from the Accounts map:** click a network for its account, on/off, booked by itself,
+  sign-in, posting times and a rehearsal booking that posts nothing.
+- A local log of each lesson the loop acted on (`<data>/lessons.jsonl`).
+- **Reply on Bluesky** (Posting › Research): recent posts in your topics worth a real reply, and accounts worth
+  following — read only; you reply by hand. `GET /api/engage/bluesky`.
+- Footage: "N new since your last visit" and a **New** filter. Photo posts show when each set went out and its views.
+
+### Changed
+- **One inbox:** Needs you is the only list (Sign-ins, Posting, Making, Numbers, Ideas); the red button opens it, the
+  bell is news only, and every count agrees. A failed numbers read is filed under Numbers with the right fix.
+- **One weekly number** on Today and Results: views so far on the last 7 days' posts against last week's posts at the
+  same point.
+- Plan posts orders reels by what the learned model expects while the score does not go with views (Spearman below
+  +0.3), and says so.
+- Facebook reels are held by the studio and sent at their time (reels uploaded days ahead on Facebook's scheduler got
+  no reach).
+- A network whose posts are shown to nobody is paused where booking happens, and its reach counts only the account in
+  use now.
+- Shorter pages: Posting List (3 days a page), All reels, YouTube channel, Results, Accounts, Workflow, Reels landing,
+  Activity log, Photo posts — each about two screens or less. Posting Week / Calendar / List have their own addresses.
+- Dead sign-ins show in red with the fix; a connection check re-runs hourly while something is red.
+- TikTok: answers a new account's first-time questions, waits for its content checks, and reaches next month's dates.
+- Headlines instead of file names in Sent, the bell and the plan preview. Phones get an icon-only top bar.
+
 ## 0.25.3 (2026-11-21)
 
 Photo-post Stories can be booked, and their numbers are kept.

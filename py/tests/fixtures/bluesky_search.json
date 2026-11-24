@@ -1,0 +1,91 @@
+{
+  "_documentation": "Made-up app.bsky.feed.searchPosts answers (two topics) and one app.bsky.actor.getProfiles answer for py/tests/test_engage.py. Shapes as read 2026-11-24 from https://endpoints.bsky.app/openapi.bluesky-app.json. The test's now is 2026-11-24T09:00:00Z.",
+  "search": {
+    "キャンプ": {
+      "posts": [
+        {"uri": "at://did:plc:alice/app.bsky.feed.post/3aaa1", "author": {"did": "did:plc:alice", "handle": "alice.example.com", "displayName": "Alice"},
+         "record": {"text": "週末は高原でテント泊。夜は氷点下でしたが星がすごかった", "createdAt": "2026-11-24T04:00:00Z", "langs": ["ja"]},
+         "likeCount": 3, "replyCount": 1, "repostCount": 0, "quoteCount": 0, "indexedAt": "2026-11-24T04:00:01Z"},
+        {"uri": "at://did:plc:alice/app.bsky.feed.post/3aaa2", "author": {"did": "did:plc:alice", "handle": "alice.example.com", "displayName": "Alice"},
+         "record": {"text": "テントの結露対策、何がいちばん効きますか？", "createdAt": "2026-11-23T10:00:00Z", "langs": ["ja"]},
+         "likeCount": 0, "replyCount": 0, "repostCount": 0, "indexedAt": "2026-11-23T10:00:01Z"},
+        {"uri": "at://did:plc:own/app.bsky.feed.post/3own1", "author": {"did": "did:plc:own", "handle": "ranch.example.com"},
+         "record": {"text": "区画がないからこそ、自由に広げられる。", "createdAt": "2026-11-24T06:00:00Z", "langs": ["ja"]},
+         "likeCount": 1, "replyCount": 0, "repostCount": 0, "indexedAt": "2026-11-24T06:00:01Z"},
+        {"uri": "at://did:plc:rita/app.bsky.feed.post/3rrr1", "author": {"did": "did:plc:rita", "handle": "rita.example.com", "displayName": "Rita"},
+         "record": {"text": "わかります、冬のキャンプは朝がいちばん好きです", "createdAt": "2026-11-24T05:00:00Z", "langs": ["ja"],
+                    "reply": {"root": {"uri": "at://did:plc:zed/app.bsky.feed.post/1", "cid": "x"}, "parent": {"uri": "at://did:plc:zed/app.bsky.feed.post/1", "cid": "x"}}},
+         "likeCount": 2, "replyCount": 0, "repostCount": 0, "indexedAt": "2026-11-24T05:00:01Z"},
+        {"uri": "at://did:plc:shop/app.bsky.feed.post/3sss1", "author": {"did": "did:plc:shop", "handle": "shop.example.com"},
+         "record": {"text": "残り3点！ テント 62%OFF 現在価格はこちら #PR #キャンプ", "createdAt": "2026-11-24T07:00:00Z", "langs": ["ja"]},
+         "likeCount": 0, "replyCount": 0, "repostCount": 0, "indexedAt": "2026-11-24T07:00:01Z"},
+        {"uri": "at://did:plc:eng/app.bsky.feed.post/3eee1", "author": {"did": "did:plc:eng", "handle": "eng.example.com"},
+         "record": {"text": "Camping in the snow this weekend, so cold", "createdAt": "2026-11-24T07:00:00Z", "langs": ["en"]},
+         "likeCount": 9, "replyCount": 2, "repostCount": 0, "indexedAt": "2026-11-24T07:00:01Z"},
+        {"uri": "at://did:plc:olga/app.bsky.feed.post/3ooo1", "author": {"did": "did:plc:olga", "handle": "olga.example.com"},
+         "record": {"text": "先週末のキャンプの写真をやっと整理しました", "createdAt": "2026-11-21T09:00:00Z", "langs": ["ja"]},
+         "likeCount": 20, "replyCount": 3, "repostCount": 1, "indexedAt": "2026-11-21T09:00:01Z"},
+        {"uri": "at://did:plc:tags/app.bsky.feed.post/3ttt1", "author": {"did": "did:plc:tags", "handle": "tags.example.com"},
+         "record": {"text": "#キャンプ #焚き火 #冬キャンプ https://example.com/x", "createdAt": "2026-11-24T08:00:00Z", "langs": ["ja"]},
+         "likeCount": 1, "replyCount": 0, "repostCount": 0, "indexedAt": "2026-11-24T08:00:01Z"},
+        {"uri": "at://did:plc:lab/app.bsky.feed.post/3lll1", "author": {"did": "did:plc:lab", "handle": "lab.example.com"},
+         "record": {"text": "夜のキャンプでこっそり撮った一枚です", "createdAt": "2026-11-24T08:00:00Z", "langs": ["ja"]},
+         "labels": [{"val": "porn", "src": "did:plc:mod"}],
+         "likeCount": 4, "replyCount": 0, "repostCount": 0, "indexedAt": "2026-11-24T08:00:01Z"},
+        {"uri": "at://did:plc:big/app.bsky.feed.post/3bbb1", "author": {"did": "did:plc:big", "handle": "big.example.com"},
+         "record": {"text": "新作テントを発表しました。冬キャンプにもおすすめです", "createdAt": "2026-11-24T03:00:00Z", "langs": ["ja"]},
+         "likeCount": 300, "replyCount": 40, "repostCount": 50, "indexedAt": "2026-11-24T03:00:01Z"},
+        {"uri": "at://did:plc:tiny/app.bsky.feed.post/3iii1", "author": {"did": "did:plc:tiny", "handle": "tiny.example.com"},
+         "record": {"text": "はじめてのキャンプに行ってきました", "createdAt": "2026-11-24T03:00:00Z", "langs": ["ja"]},
+         "likeCount": 1, "replyCount": 0, "repostCount": 0, "indexedAt": "2026-11-24T03:00:01Z"},
+        {"uri": "at://did:plc:crowd/app.bsky.feed.post/3ccc1", "author": {"did": "did:plc:crowd", "handle": "crowd.example.com"},
+         "record": {"text": "キャンプでいちばん大事な道具って何だと思いますか", "createdAt": "2026-11-24T02:00:00Z", "langs": ["ja"]},
+         "likeCount": 40, "replyCount": 30, "repostCount": 2, "indexedAt": "2026-11-24T02:00:01Z"},
+        {"uri": "at://did:plc:art/app.bsky.feed.post/3art1", "author": {"did": "did:plc:art", "handle": "art.example.com"},
+         "record": {"text": "#AIイラスト 星空の下でキャンプする女の子を描きました", "createdAt": "2026-11-24T07:00:00Z", "langs": ["ja"]},
+         "likeCount": 80, "replyCount": 2, "repostCount": 5, "indexedAt": "2026-11-24T07:00:01Z"},
+        {"uri": "at://did:plc:mia/app.bsky.feed.post/3mia1", "author": {"did": "did:plc:mia", "handle": "mia.example.com"},
+         "record": {"text": "@alice.example.com そのテント、どこのですか？冬キャンプ用に気になってます", "createdAt": "2026-11-24T07:10:00Z", "langs": ["ja"]},
+         "likeCount": 0, "replyCount": 0, "repostCount": 0, "indexedAt": "2026-11-24T07:10:01Z"},
+        {"uri": "at://did:plc:bea/app.bsky.feed.post/3bea1", "author": {"did": "did:plc:bea", "handle": "bea.example.com", "displayName": "Bea", "labels": [{"val": "!no-unauthenticated", "src": "did:plc:bea"}]},
+         "record": {"text": "車中泊で使う寝袋、マイナス何度まで対応がいいんだろう", "createdAt": "2026-11-24T08:00:00Z", "langs": ["ja"]},
+         "likeCount": 0, "replyCount": 0, "repostCount": 0, "indexedAt": "2026-11-24T08:00:01Z"},
+        {"uri": "at://did:plc:cleo/app.bsky.feed.post/3cle1", "author": {"did": "did:plc:cleo", "handle": "cleo.example.com"},
+         "record": {"text": "今日はキャンプの話はしません、返信は閉じています", "createdAt": "2026-11-24T06:00:00Z", "langs": ["ja"]},
+         "viewer": {"replyDisabled": true},
+         "likeCount": 5, "replyCount": 0, "repostCount": 0, "indexedAt": "2026-11-24T06:00:01Z"},
+        {"uri": "at://did:plc:fred/app.bsky.feed.post/3fff1", "author": {"did": "did:plc:fred", "handle": "fred.example.com"},
+         "record": {"text": "わかる、冬キャンプは湯たんぽが最強", "createdAt": "2026-11-24T06:30:00Z", "langs": ["ja"],
+                    "reply": {"root": {"uri": "at://did:plc:zed/app.bsky.feed.post/2", "cid": "x"}, "parent": {"uri": "at://did:plc:zed/app.bsky.feed.post/2", "cid": "x"}}},
+         "likeCount": 1, "replyCount": 0, "repostCount": 0, "indexedAt": "2026-11-24T06:30:01Z"},
+        {"uri": "at://did:plc:feed/app.bsky.feed.post/3nnn1", "author": {"did": "did:plc:feed", "handle": "campnews.example.com"},
+         "record": {"text": "【新着】群馬のキャンプ情報まとめを更新しました", "createdAt": "2026-11-24T07:30:00Z", "langs": ["ja"]},
+         "likeCount": 2, "replyCount": 0, "repostCount": 0, "indexedAt": "2026-11-24T07:30:01Z"}
+      ]
+    },
+    "焚き火": {
+      "posts": [
+        {"uri": "at://did:plc:alice/app.bsky.feed.post/3aaa1", "author": {"did": "did:plc:alice", "handle": "alice.example.com", "displayName": "Alice"},
+         "record": {"text": "週末は高原でテント泊。夜は氷点下でしたが星がすごかった", "createdAt": "2026-11-24T04:00:00Z", "langs": ["ja"]},
+         "likeCount": 3, "replyCount": 1, "repostCount": 0, "quoteCount": 0, "indexedAt": "2026-11-24T04:00:01Z"},
+        {"uri": "at://did:plc:dan/app.bsky.feed.post/3ddd1", "author": {"did": "did:plc:dan", "handle": "dan.example.com"},
+         "record": {"text": "焚き火の前でコーヒー。今日はこれで十分", "createdAt": "2026-11-23T20:00:00Z"},
+         "likeCount": 6, "replyCount": 2, "repostCount": 1, "indexedAt": "2026-11-23T20:00:01Z"}
+      ]
+    }
+  },
+  "profiles": {
+    "profiles": [
+      {"did": "did:plc:alice", "handle": "alice.example.com", "displayName": "Alice", "followersCount": 240, "description": "週末はだいたい山にいます"},
+      {"did": "did:plc:rita", "handle": "rita.example.com", "displayName": "Rita", "followersCount": 610, "description": "冬キャンプとコーヒー"},
+      {"did": "did:plc:big", "handle": "big.example.com", "followersCount": 20000},
+      {"did": "did:plc:tiny", "handle": "tiny.example.com", "followersCount": 3},
+      {"did": "did:plc:crowd", "handle": "crowd.example.com", "followersCount": 900},
+      {"did": "did:plc:bea", "handle": "bea.example.com", "displayName": "Bea", "followersCount": 85},
+      {"did": "did:plc:cleo", "handle": "cleo.example.com", "followersCount": 400},
+      {"did": "did:plc:fred", "handle": "fred.example.com", "followersCount": 150, "viewer": {"following": "at://did:plc:own/app.bsky.graph.follow/1"}},
+      {"did": "did:plc:feed", "handle": "campnews.example.com", "followersCount": 1200},
+      {"did": "did:plc:dan", "handle": "dan.example.com", "followersCount": 4800}
+    ]
+  }
+}

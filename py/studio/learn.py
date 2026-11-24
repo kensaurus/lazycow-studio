@@ -15,9 +15,11 @@ OVERVIEW: 1. Features: each reel's theme, text layout, look, recipe, loop, lengt
           5. suggest(): each suggestion either explores (30 % by default: the least-tried choice) or draws one
              sample of the effects from the posterior and takes the best choice under it (Thompson sampling).
              Until MIN_POSTS measured posts exist every suggestion explores.
-          6. vary_draw(): what service.vary_look uses when steering is switched on (opt-in: the `learned`
-             flag on autopilot, or STUDIO_PERF_STEER=1). Below MIN_POSTS, or on an explore turn, it returns
-             None and the old uniform random choice stands.
+          6. vary_draw()/steer_draw(): what service.vary_look uses when steering is on (the `learned` flag on
+             autopilot; when a run does not say, steer_on(): the Settings › Workflow switch or STUDIO_PERF_STEER).
+             Below MIN_POSTS the old uniform random choice stands; an explore turn takes the least-measured look.
+             steer_draw also says why, in plain words, for the reel's made.steer. A look sent back in review
+             PAUSE_AFTER times within PAUSE_DAYS days (paused_looks) is left out of learned picks.
 DEPENDENCIES: numpy, studio.perf, studio.posting, studio.projects, studio.staging, studio.assemble (theme defaults)
 USAGE: summary(network=None); suggest(network=None, n=3, explore=0.3, seed=None); vary_draw(...)
 NOTES: Research and reasoning: docs/research/2026-11-09-reel-learning.md. The model is additive (no
@@ -60,9 +62,84 @@ NET_NAMES = {"youtube": "YouTube", "tiktok": "TikTok", "x": "X", "facebook": "Fa
 METRIC_WORDS = {"views": "views", "engaged_views": "engaged views", "reach": "reach", "engagements": "likes, comments, shares and saves"}
 
 
+def note_lesson(kind: str, slug: str | None = None, **detail) -> None:
+    """One line in <data>/lessons.jsonl each time the loop acts on a lesson (BL-112): a reel made with a learned, explore or
+    Results choice ("reel"), a booking at a test hour ("test-hour", written by server/review.mjs), a headline retired
+    ("retired"). Joined to the measured result later, it shows whether the Act stage works. Never raises."""
+    import json
+
+    try:
+        from studio.config import DATA
+
+        row = {"at": datetime.now().astimezone().isoformat(timespec="seconds"), "kind": kind, **({"slug": slug} if slug else {}), **detail}
+        with (DATA / "lessons.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except Exception:  # noqa: BLE001 - a log line never stops a reel
+        pass
+
+
+def lessons(limit: int = 200) -> list[dict]:
+    """The newest lesson lines, newest first."""
+    import json
+
+    from studio.config import DATA
+
+    f = DATA / "lessons.jsonl"
+    if not f.is_file():
+        return []
+    out = []
+    for line in f.read_text(encoding="utf-8").splitlines()[-limit:]:
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            continue
+    return out[::-1]
+
+
 def steer_on() -> bool:
-    """The opt-in switch for learned looks without asking per run (.env STUDIO_PERF_STEER=1)."""
-    return os.environ.get("STUDIO_PERF_STEER", "").strip().lower() in ("1", "true", "on", "yes")
+    """Whether new reels use what worked when a run does not say: .env STUDIO_PERF_STEER when it is set (1/0), else the
+    setting a person switches in Settings › Workflow (studio.live learn.steer, on by default since 24 Nov). Below
+    MIN_POSTS measured posts the choice stays random either way (vary_draw)."""
+    env = os.environ.get("STUDIO_PERF_STEER", "").strip().lower()
+    if env:
+        return env in ("1", "true", "on", "yes")
+    try:
+        from studio.live import settings
+
+        return bool(settings()["learn"]["steer"])
+    except Exception:  # an unreadable settings file never stops a reel
+        return False
+
+
+steering_on = steer_on
+
+
+PAUSE_AFTER = 2   # a look sent back in review this many times ...
+PAUSE_DAYS = 30   # ... within this many days is left out of learned picks (explore turns may still try it)
+
+
+def paused_looks(now=None) -> set[str]:
+    """Looks that people keep sending back (review_actions.reasons: the look of each rejected reel, Track D's
+    rejections table): PAUSE_AFTER or more rejections in the last PAUSE_DAYS days. A learned pick skips them, so the
+    studio stops repeating a look you refuse even if its numbers were good; an explore turn may still try one, and a
+    look comes back by itself once its rejections are older than PAUSE_DAYS."""
+    try:
+        from studio.review_actions import reasons
+
+        looks = reasons(PAUSE_DAYS, now).get("looks") or {}
+    except Exception:  # no table yet, an unreadable catalog: nothing is paused
+        return set()
+    return {lk for lk, n in looks.items() if lk and n >= PAUSE_AFTER}
+
+
+def explore_share() -> float:
+    """The share of steered reels that try something new on purpose (studio.live learn.explore, a percent; 0.3 default)."""
+    try:
+        from studio.live import settings
+
+        return max(0.0, min(0.6, float(settings()["learn"]["explore"]) / 100.0))
+    except Exception:
+        return EXPLORE
 
 
 def levels(feature: str) -> tuple[str, ...]:
@@ -476,7 +553,7 @@ def suggest(network: str | None = None, n=3, explore=None, seed=None, data: dict
     except (TypeError, ValueError):
         n = 3
     try:
-        explore = EXPLORE if explore is None else max(0.0, min(1.0, float(explore)))
+        explore = explore_share() if explore is None else max(0.0, min(1.0, float(explore)))
     except (TypeError, ValueError):
         explore = EXPLORE
     seed = int(seed) if isinstance(seed, (int, float)) or (isinstance(seed, str) and seed.isdigit()) else None
@@ -520,20 +597,61 @@ def vary_draw(theme_style: str, rng, night: bool = False, looks: list | None = N
     """For service.vary_look when steering is on: {"style", "look"} drawn from what has worked, or None
     (not enough data, or an explore turn) so the uniform random choice stands. `rng` is the caller's
     random.Random, so a seed gives the same reel again."""
+    d = steer_draw(theme_style, rng, night, looks, network, data)
+    return {"style": d["style"], "look": d["look"]} if d["mode"] == "learned" else None
+
+
+def _look_words(look: str | None) -> tuple[str, str]:
+    if not look or look == "plain":
+        return "the plain picture (no look)", "加工なしの画"
+    return f"the {look.capitalize()} look", f"{look.capitalize()} の見た目"
+
+
+def steer_draw(theme_style: str, rng, night: bool = False, looks: list | None = None, network: str | None = None,
+               data: dict | None = None) -> dict:
+    """What vary_draw decides, with why, for the reel's `made.steer` (Track A, 24 Nov: "why does this reel look like
+    this?"). mode "learned": style and look drawn from what worked (Thompson sampling); "explore": an explore turn,
+    which takes the least-measured look (style stays random); "random": fewer than MIN_POSTS measured posts.
+    `why` is one plain sentence (EN), `whyJa` the same in Japanese; `look` None means the plain picture.
+    The draw order matches the pre-24 Nov vary_draw, so a seed gives the same learned reel as before."""
     from studio.service import TEXT_STYLES
     from studio.staging import LOOKS
 
     data = data or comparable()
-    if len(data["units"]) < MIN_POSTS:
-        return None
+    n = len(data["units"])
+    if n < MIN_POSTS:
+        return {"mode": "random", "style": None, "look": None,
+                "why": f"Picked at random: {n} of {MIN_POSTS} posts measured so far, too few to learn from.",
+                "whyJa": f"ランダム：計測済みの投稿は{n}件（{MIN_POSTS}件から学びます）。"}
     nrng = np.random.default_rng(rng.getrandbits(32))
-    if nrng.random() < EXPLORE:
-        return None
     model = fit(data["units"])
     net = network if network in data["networks"] and not data["networks"][network].get("silent") else None
+    allowed = [lv for lv in (looks if looks is not None else LOOKS) if lv and (night or lv != "ember")] + ["plain"]
+    if nrng.random() < explore_share():
+        counts = {lv: model.count("look", lv, net) for lv in allowed}
+        low = min(counts.values())
+        pool = [lv for lv in allowed if counts[lv] == low]
+        look = pool[int(nrng.integers(len(pool)))]
+        en, ja = _look_words(look)
+        seen = f"has {low} measured post{'s' if low != 1 else ''} so far" if low else "is not tried yet"
+        return {"mode": "explore", "style": None, "look": None if look == "plain" else look, "picks": {"look": look},
+                "why": f"Trying something new: {en} {seen}.",
+                "whyJa": f"新しく試す：{ja}は{'まだ未計測' if not low else f'計測{low}件だけ'}。"}
     beta = model.sample(nrng)
     styles = [s for s in TEXT_STYLES if s != theme_style]
-    allowed = [lv for lv in (looks if looks is not None else LOOKS) if lv and (night or lv != "ember")] + ["plain"]
     style = max(styles, key=lambda s: model.sampled_effect(beta, "style", s, net, nrng))
-    look = max(_tried(model, "look", net, allowed), key=lambda lv: model.sampled_effect(beta, "look", lv, net, nrng))
-    return {"style": style, "look": None if look == "plain" else look}
+    tried = _tried(model, "look", net, allowed)
+    paused = sorted(paused_looks() & set(tried))
+    pool = [lv for lv in tried if lv not in paused] or tried  # every tried look paused: the numbers decide after all
+    look = max(pool, key=lambda lv: model.sampled_effect(beta, "look", lv, net, nrng))
+    m, _ = model.effect("look", look, net)
+    posts = model.count("look", look, net)
+    en, ja = _look_words(look)
+    where = f" on {NET_NAMES.get(net, net)}" if net else ""
+    out = {"mode": "learned", "style": style, "look": None if look == "plain" else look, "picks": {"look": look, "style": style},
+           "why": f"Learned: {en} did about {math.exp(m):.1f}× a typical post{where} ({posts} post{'s' if posts != 1 else ''}).",
+           "whyJa": f"学習：{ja}は、ふつうの投稿の約{math.exp(m):.1f}倍（{posts}件）。"}
+    if paused and look not in paused:
+        names = ", ".join(p.capitalize() for p in paused)
+        out.update(paused=paused, why=out["why"] + f" Paused after rejections: {names}.", whyJa=out["whyJa"] + f"（却下が続いたため休止中：{names}）")
+    return out

@@ -37,6 +37,11 @@ DEFAULTS: dict = {
     "catchUp": {"on": True, "graceH": 2},
     "tidy": {"on": True},
     "health": {"on": True, "warnDays": 3},
+    # Track A (24 Nov): the making side of the loop. drafts: new footage makes up to perDay draft reels a day by itself
+    # (review.mjs autoDrafts; .env STUDIO_AUTO_DRAFTS, when set, wins: 0 turns it off). learn: new reels use what
+    # worked (studio.learn.steer_on; .env STUDIO_PERF_STEER, when set, wins) and `explore` % of them try something new.
+    "drafts": {"on": True, "perDay": 2},
+    "learn": {"steer": True, "explore": 30},
 }
 HOLDS = ("scheduled", "queued")
 
@@ -88,7 +93,7 @@ def save_settings(fields: dict) -> dict:
                 except (TypeError, ValueError):
                     raise ValueError(f"{k}.{kk}: a whole number") from None
                 lo, hi = {"aheadDays": (1, 60), "tiktokAheadDays": (1, 10), "hour": (0, 23), "themeDays": (0, 14), "missingAfterH": (1, 72),
-                          "graceH": (0, 48), "warnDays": (1, 30)}.get(kk, (0, 10_000))
+                          "graceH": (0, 48), "warnDays": (1, 30), "perDay": (1, 10), "explore": (0, 60)}.get(kk, (0, 10_000))
                 if not lo <= vv <= hi:
                     raise ValueError(f"{k}.{kk}: from {lo} to {hi}")
             elif isinstance(want, list):

@@ -37,3 +37,10 @@ def test_saving_from_the_editor_keeps_the_ai_work(tmp_path, monkeypatch):
     assert got["shots"][1]["ai_clip"]["file"] == "a_slow.mp4", "the clip follows its source when shots move"
     assert "ai_clip" not in got["shots"][0] and "ai_clip" not in got["shots"][2]
     assert projects.keep_ai({"slug": "new-reel", "shots": []}) == {"slug": "new-reel", "shots": []}
+
+
+def test_saving_from_the_editor_keeps_why_the_reel_was_made(tmp_path, monkeypatch):
+    monkeypatch.setattr(projects, "DIR", tmp_path)
+    made = {"by": "auto", "at": "2026-11-24T09:00:00+09:00", "steer": {"mode": "learned", "why": "Learned: the Punch look did about 1.7× a typical post (8 posts)."}}
+    projects.save({"slug": "fire-1124", "made": made, "shots": []})
+    assert projects.keep_ai({"slug": "fire-1124", "shots": []})["made"] == made

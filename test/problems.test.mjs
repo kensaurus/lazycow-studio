@@ -169,3 +169,138 @@ test("an AI service out of credit: amber with the jobs that switched, red for bl
   assert.match(r.detail, /Voice-over switches only when you turn it on/);
   assert.deepEqual(findProblems({ aiHealth: null, now: NOW }), [], "no health read: nothing to say");
 });
+
+test("a missed post booked again on the same network is not red while the new booking stands (focus-1108-3, row 343, 24 Nov)", () => {
+  const posts = [
+    { id: 52, slug: "focus-1108-3", network: "bluesky", status: "missed", at: "2026-11-11T19:00+09:00" },
+    { id: 343, slug: "focus-1108-3", network: "bluesky", status: "queued", at: "2026-11-20T19:00+09:00" },
+    { id: 60, slug: "b", network: "bluesky", status: "failed", at: "2026-11-11T19:00+09:00" },
+    { id: 61, slug: "b", network: "x", status: "queued", at: "2026-11-20T19:00+09:00" },       // another network: no help
+    { id: 70, slug: "c", network: "bluesky", status: "failed", at: "2026-11-12T19:00+09:00" },
+    { id: 71, slug: "c", network: "bluesky", status: "failed", at: "2026-11-12T21:00+09:00" },  // booked again, failed again
+    { id: 80, slug: "d", network: "bluesky", status: "failed", at: "2026-11-12T19:00+09:00" },
+    { id: 81, slug: "d", network: "bluesky", status: "posted", at: "2026-11-12T20:00+09:00" },  // went out the second time
+  ];
+  const found = findProblems({ posts, reviews: [{ slug: "focus-1108-3", status: "approved" }, { slug: "b", status: "approved" }], now: NOW });
+  assert.deepEqual(found.map((f) => f.id).sort(), ["missed:60", "missed:70", "missed:71"]);
+});
+
+test("a booked photo-post Story is not a reel: never 'booked but not approved' (photo sets, 24 Nov)", () => {
+  const posts = [
+    { id: 400, slug: "1121-130614-07-aura-food", network: "photo-story", status: "queued", at: "2026-11-25T12:15+09:00" },
+    { id: 401, slug: "focus-1107", network: "instagram-story", status: "queued", at: "2026-11-25T12:15+09:00" },
+  ];
+  assert.deepEqual(findProblems({ posts, reviews: [], now: NOW }).map((f) => f.id), ["unapproved:focus-1107"]);
+});
+
+test("YouTube's dead sign-in (invalid_grant) is red with the Testing-mode cause; booked Shorts on YouTube still publish (24 Nov)", () => {
+  const readErrors = { youtube: { error: "YouTube: Google 400: invalid_grant Token has been expired or revoked.", code: "auth", at: "2026-11-13T08:10:42+08:00" },
+    bluesky: { error: "Bluesky 502: getPosts failed", code: "bluesky", at: "2026-11-13T08:10:42+08:00" } };  // not a sign-in: no problem
+  const posts = [
+    { id: 1, slug: "a", network: "youtube", status: "scheduled", at: "2026-11-20T19:00+09:00" },
+    { id: 2, slug: "b", network: "youtube", status: "queued", at: "2026-11-21T19:00+09:00" },
+    { id: 3, slug: "c", network: "youtube", status: "queued", at: "2026-11-22T19:00+09:00" },
+  ];
+  const reviews = ["a", "b", "c"].map((slug) => ({ slug, status: "approved" }));
+  const found = findProblems({ posts, reviews, readErrors, now: NOW });
+  assert.deepEqual(found.map((f) => f.id), ["signin:youtube"]);
+  const [p] = found;
+  assert.equal(p.level, "red");
+  assert.equal(p.dismissable, false);
+  assert.equal(p.title, "YouTube is signed out: nothing new uploads and no numbers are read");
+  assert.match(p.detail, /1 Short already booked on YouTube itself still publishes/);
+  assert.match(p.detail, /2 booked Shorts waiting to upload will not/);
+  assert.match(p.detail, /Testing mode.*7 days.*Publish app/);
+  assert.equal(p.fix.href, "#/accounts");
+  assert.match(p.also.href, /console\.cloud\.google\.com/);
+  assert.ok(p.ja.title && p.ja.detail.includes("7日") && p.ja.fix && p.ja.also);
+});
+
+test("a Facebook sign-in that stopped working is one red problem, covering Instagram Stories; a never-connected network is not", () => {
+  const connections = {
+    facebook: { connected: false, account: "Tsumagoi Work&Camp", error: "the token expired" },
+    "instagram-story": { connected: false, account: "@tsumagoicamp", error: "the stored Facebook token expired" },
+    bluesky: { connected: false, account: null, error: null },
+  };
+  const found = findProblems({ connections, posts: [{ id: 9, slug: "a", network: "instagram-story", status: "queued", at: "2026-11-20T12:00+09:00" }],
+    reviews: [{ slug: "a", status: "approved" }], now: NOW });
+  assert.deepEqual(found.map((f) => f.id), ["signin:facebook"]);
+  assert.match(found[0].detail, /1 booked post waiting to go out will not/);
+  assert.match(found[0].detail, /Instagram Stories use the same sign-in/);
+  assert.equal(found[0].title, "Facebook is signed out: nothing new goes out and no numbers are read");
+});
+
+test("readErrors reads the collector's files, and drops an error older than the token or after a later channel read worked", async () => {
+  const { readErrors } = await import("../server/problems.mjs");
+  const { writeFileSync, mkdirSync, utimesSync } = await import("node:fs");
+  const dir = mkdtempSync(join(tmpdir(), "readerr-"));
+  mkdirSync(join(dir, "perf")); mkdirSync(join(dir, "secrets"));
+  const grant = "YouTube: Google 400: invalid_grant Token has been expired or revoked.";
+  const state = (p) => writeFileSync(join(dir, "perf", "state.json"), JSON.stringify({ problems: p }));
+  const chan = (at, channels) => writeFileSync(join(dir, "perf", "channel.json"), JSON.stringify({ at, channels }));
+  const token = (f, at) => { writeFileSync(join(dir, "secrets", f), "x"); utimesSync(join(dir, "secrets", f), new Date(at), new Date(at)); };
+  token("youtube_token.bin", "2026-11-10T00:00:00Z");
+  state({ youtube: { error: grant, code: "auth", at: "2026-11-24T04:10:42Z" } });
+  chan("2026-11-24T03:10:47Z", [{ account: "main", error: grant }]);
+  assert.equal(readErrors(dir).youtube.code, "auth");
+  chan("2026-11-24T05:00:00Z", [{ account: "main", channel: "Tsumagoi", items: [] }]);  // a later channel read worked
+  assert.equal(readErrors(dir).youtube, undefined);
+  chan("2026-11-24T05:00:00Z", [{ account: "main", error: grant }]);                   // only the channel read knows
+  state({});
+  assert.equal(readErrors(dir).youtube.code, "auth");
+  token("youtube_token.bin", "2026-11-24T06:00:00Z");                                   // connected again since
+  assert.equal(readErrors(dir).youtube, undefined);
+  state({ facebook: { error: "Facebook is not connected", code: "auth", at: "2026-11-24T04:10:42Z" } });  // no token file: disconnected on purpose
+  chan("2026-11-24T05:00:00Z", []);
+  assert.deepEqual(readErrors(dir), {});
+  assert.deepEqual(readErrors(join(dir, "nothing-here")), {});
+});
+
+// Track C (24 Nov): one rule for "not being seen" (perf.reach stalled, the account in use now), numbers jobs in their
+// own group, and a look-only studio that never rewrites the running studio's list.
+test("reach problems follow the planner's stalled rule and say booking is paused", async () => {
+  const { reachProblems } = await import("../server/problems.mjs");
+  const reach = { networks: [
+    { network: "tiktok", stalled: true, measured: 4, oldestH: 96, hasViews: true, accountSince: "2026-11-24T19:00+09:00" },
+    { network: "facebook", stalled: false, verdict: "none", measured: 2, hasViews: true },  // too few to call
+    { network: "bluesky", stalled: true, measured: 3, oldestH: 50, hasViews: false },
+  ] };
+  const found = findProblems({ reach, perf: { networks: { facebook: { metric: "views", median: 0, posts: 7, silent: true } } }, now: NOW });
+  assert.deepEqual(found.map((f) => f.id), ["reach:bluesky", "reach:tiktok"], "with reach, the summary's 'silent' is not asked");
+  const tk = found.find((f) => f.id === "reach:tiktok");
+  assert.equal(tk.level, "amber"); assert.equal(tk.group, "numbers");
+  assert.match(tk.title, /paused/); assert.match(tk.detail, /on the account in use since/); assert.match(tk.detail, /Plan posts books no new TikTok posts/);
+  assert.match(tk.ja.title, /予約を止めています/);
+  assert.match(found.find((f) => f.id === "reach:bluesky").detail, /likes, reposts or replies/);
+  const notPaused = reachProblems(reach, { paused: false });
+  assert.ok(notPaused.every((p) => !/paused/.test(p.title) && !/Plan posts books/.test(p.detail)), "skipStalled off: no claim the planner skips it");
+  // a new account with only old posts (perf.reach: out 0, history 13) is not stalled: nothing to say
+  assert.deepEqual(findProblems({ reach: { networks: [{ network: "tiktok", stalled: false, measured: 0, history: 13 }] }, now: NOW }), []);
+});
+
+test("a numbers read that stopped is amber, in Numbers, with the log and the Chrome link as its fix", async () => {
+  const { isNumbersJob, numbersJobProblem } = await import("../server/problems.mjs");
+  assert.ok(isNumbersJob("helper-perf") && isNumbersJob("perf") && isNumbersJob("perf-collect"));
+  assert.ok(!isNumbersJob("perfect-1109") && !isNumbersJob("aerial-1108") && !isNumbersJob("helper-x-tiktok"));
+  const p = numbersJobProblem("helper-perf", { detail: "Read 0 of 6 posts in your Chrome." });
+  assert.equal(p.id, "job:helper-perf"); assert.equal(p.level, "amber"); assert.equal(p.group, "numbers");
+  assert.equal(p.fix.href, "#/log/activity"); assert.equal(p.also.href, "#/accounts");
+  assert.match(p.detail, /^Read 0 of 6 posts in your Chrome\. Nothing you made or booked is affected/);
+  assert.doesNotMatch(p.detail + p.fix.label, /render/i, "never the render fix");
+  assert.ok(p.ja.title && p.ja.fix && p.ja.also);
+});
+
+test("a store with saveTo starts from the shared list and never writes it", async () => {
+  const { readFileSync, writeFileSync, existsSync } = await import("node:fs");
+  const dir = mkdtempSync(join(tmpdir(), "probsave-"));
+  const shared = join(dir, "problems.json"), own = join(dir, "tmp", "problems-4323.json");
+  writeFileSync(shared, JSON.stringify({ items: { "job:x": { id: "job:x", level: "red", title: "t", source: "event", dismissable: true } } }));
+  const before = readFileSync(shared, "utf8");
+  const s = createStore(shared, { saveTo: own, now: () => NOW });
+  assert.deepEqual(s.open().map((i) => i.id), ["job:x"], "starts from the running studio's list");
+  s.checked([{ id: "reach:tiktok", level: "amber", title: "r", detail: "d" }]);
+  s.dismiss("job:x");
+  assert.equal(readFileSync(shared, "utf8"), before, "the shared file is untouched");
+  assert.ok(existsSync(own));
+  assert.deepEqual(JSON.parse(readFileSync(own, "utf8")).items["reach:tiktok"].id, "reach:tiktok");
+});

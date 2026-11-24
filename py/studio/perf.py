@@ -1243,9 +1243,36 @@ FEW, SOME = 20, 200  # views a post: under 20 is very few for a short video, 200
 # A network is "stalled" (not showing the posts at all) when at least this many measured posts, the oldest at least
 # this many hours out, all have no views and no reactions. A new post can sit at 0 for its first hours; days cannot.
 STALL_POSTS, STALL_H = 3, 48
+# A booking dropped because the account it was on was deleted (24 Nov: the old Singapore-region TikTok was deleted and
+# its bookings were dropped with a note saying so): the posts before it went out on the old account.
+GONE_ACCOUNT = re.compile(r"deleted|削除", re.I)
+ACCOUNT_WORD = re.compile(r"@|account|アカウント", re.I)
 
 
-def reach(days: int = REACH_DAYS, now: datetime | None = None) -> dict:
+def account_since(posts: list[dict], saved: dict | None = None) -> dict[str, datetime]:
+    """Per network, when the account in use now started: networks.json "since" (the server writes it when a network's
+    account name changes on Settings › Accounts), else the earliest booking dropped because the old account was deleted.
+    Posts before it went out on another account: they stay in the log, but say nothing about whether the account in
+    use now is being shown (24 Nov: 13 posts on a deleted TikTok at 0 views kept calling the new account unseen)."""
+    if saved is None:
+        from studio.config import DATA
+
+        try:
+            saved = json.loads((DATA / "networks.json").read_text(encoding="utf-8")).get("since") or {}
+        except (OSError, ValueError, AttributeError):
+            saved = {}
+    out: dict[str, datetime] = {n: t for n, t in ((n, _when(at)) for n, at in (saved or {}).items()) if t}
+    dropped: dict[str, datetime] = {}
+    for p in posts:
+        note, t = str(p.get("note") or ""), _when(p.get("at"))
+        if p.get("status") == "dropped" and t and GONE_ACCOUNT.search(note) and ACCOUNT_WORD.search(note):
+            dropped[p["network"]] = min(t, dropped.get(p["network"], t))
+    for n, t in dropped.items():
+        out.setdefault(n, t)
+    return out
+
+
+def reach(days: int = REACH_DAYS, now: datetime | None = None, since: dict | None = None) -> dict:
     """Per network, over the posts that went out in the last `days`: how many are out and measured, views and reactions
     (the latest reading of each post), how many got nothing, the best post, and a plain verdict:
     working / some / few / none (nobody seen or reacted) / unmeasured. The owner, 14 Nov: "i still dont understand if the
@@ -1259,13 +1286,19 @@ def reach(days: int = REACH_DAYS, now: datetime | None = None) -> dict:
     nets: dict[str, dict] = {}
     posts = posting.posts()
     gone = retired(posts)
+    fresh = account_since(posts) if since is None else {n: t for n, t in ((n, _when(v) if isinstance(v, str) else v) for n, v in since.items()) if t}
+    new = lambda net: {"network": net, "out": 0, "measured": 0, "views": 0, "hasViews": False,  # noqa: E731
+                       "likes": 0, "comments": 0, "shares": 0, "saves": 0, "zero": 0, "best": None, "oldestH": 0.0, "since": None}
     for p in posts:
         at = _when(p.get("at"))
         if p.get("status") != "posted" or not at or at > now or (now - at).days > days or int(p["id"]) in gone:
             continue
-        n = nets.setdefault(p["network"], {"network": p["network"], "out": 0, "measured": 0, "views": 0, "hasViews": False,
-                                            "likes": 0, "comments": 0, "shares": 0, "saves": 0, "zero": 0, "best": None,
-                                            "oldestH": 0.0, "since": None})
+        if p["network"] in fresh and at < fresh[p["network"]]:
+            # on the account used before: kept as history, never part of this account's verdict
+            n = nets.setdefault(p["network"], new(p["network"]))
+            n["history"] = n.get("history", 0) + 1
+            continue
+        n = nets.setdefault(p["network"], new(p["network"]))
         n["out"] += 1
         r = latest.get(int(p["id"]))
         if not r:
@@ -1303,7 +1336,9 @@ def reach(days: int = REACH_DAYS, now: datetime | None = None) -> dict:
         # account limit, a new account with no followers, a setting), not a weak reel, and better reels will not fix it.
         # 16 Nov: TikTok 15 posts at 0 views, Facebook 6 reels at 0 plays, while YouTube had 130-1,265 views a Short.
         n["stalled"] = n["verdict"] == "none" and m >= STALL_POSTS and n["oldestH"] >= STALL_H
-    order = {"working": 0, "some": 1, "few": 2, "none": 3, "unmeasured": 4}
+        if n["network"] in fresh:
+            n["accountSince"] = fresh[n["network"]].isoformat(timespec="minutes")
+    order ={"working": 0, "some": 1, "few": 2, "none": 3, "unmeasured": 4}
     rows = sorted(nets.values(), key=lambda x: (order[x["verdict"]], -x["views"], -x["reactions"]))
     return {"days": days, "networks": rows, "fewViews": FEW, "someViews": SOME,
             "totals": {"out": sum(x["out"] for x in rows), "measured": sum(x["measured"] for x in rows),
@@ -1404,7 +1439,57 @@ def table(days: int = 90, now: datetime | None = None) -> dict:
         if top and ((top["views"] or 0) or (top["reactions"] or 0)):
             top["best"] = True
     rows.sort(key=lambda x: x["at"] or "", reverse=True)
-    return {"days": days, "rows": rows, "networks": sorted({x["network"] for x in rows})}
+    return {"days": days, "rows": rows, "networks": sorted({x["network"] for x in rows}), "week": week_views(posts, gone, now)}
+
+
+# WEEKLY VIEWS: the one definition (Track B, 24 Nov). Reels › Today said "2,181, ▼54% vs 4,782" while Results said
+# "3,146, ▼23% vs 4,064": two sums (calendar days vs 7×24 h, replaced uploads in or out) and both compared a week still
+# gaining views with a week that had finished. Both pages now show this one number (editor.html weekViews()).
+WEEK_MIN_SEEN = 3  # under 3 posts with views last week there is no base for a percentage (16 Nov: "▲ 1307%" on one post)
+
+
+def week_views(posts: list[dict] | None = None, gone: dict | None = None, now: datetime | None = None,
+               reads: list[dict] | None = None) -> dict:
+    """Views this week, said one way everywhere: the views so far on the posts that went out in the last 7 days
+    (7×24 hours up to now), against what the posts of the 7 days before had at this same point last week (each one's
+    newest reading taken by then). Like with like: posts keep gaining views for days, so last week's finished numbers
+    against this week's young ones would always read as a drop. Replaced and removed uploads are left out (retired).
+    {now, before: {views, posts, seen, measured}, beforeNow (those posts' views today), pct (None without a base), from, to}."""
+    from studio import posting
+
+    now = now or _now()
+    posts = posting.posts() if posts is None else posts
+    gone = retired(posts) if gone is None else gone
+    then = now - timedelta(days=7)
+    by: dict[int, list[tuple[datetime, dict]]] = {}
+    for r in (readings() if reads is None else reads):
+        t = _when(r.get("fetched_at"))
+        if t:
+            by.setdefault(int(r["post_id"]), []).append((t, r))
+    zero = lambda: {"views": 0, "posts": 0, "seen": 0, "measured": 0}  # noqa: E731
+    week, before, before_now = zero(), zero(), 0
+    for p in posts:
+        at = _when(p.get("at"))
+        if p.get("status") != "posted" or not at or at > now or int(p["id"]) in gone or p.get("network") == "all":
+            continue
+        age = now - at
+        if age >= timedelta(days=14):
+            continue
+        got = sorted(by.get(int(p["id"]), []), key=lambda x: x[0])
+        if age < timedelta(days=7):
+            bucket, r = week, (got[-1][1] if got else None)
+        else:
+            older = [x for x in got if x[0] <= then]
+            bucket, r = before, (older[-1][1] if older else None)
+            before_now += int((got[-1][1].get("views") if got else 0) or 0)
+        v = int((r or {}).get("views") or 0)
+        bucket["posts"] += 1
+        bucket["measured"] += 1 if r else 0
+        bucket["views"] += v
+        bucket["seen"] += 1 if v > 0 else 0
+    pct = round(100 * (week["views"] - before["views"]) / before["views"]) if before["views"] > 0 and before["seen"] >= WEEK_MIN_SEEN else None
+    return {"now": week, "before": before, "beforeNow": before_now, "pct": pct, "minSeen": WEEK_MIN_SEEN,
+            "from": then.isoformat(timespec="minutes"), "to": now.isoformat(timespec="minutes")}
 
 
 CHANNEL_CACHE_S = 3 * 3600   # the channel table is read at most every 3 hours ({fresh: true} asks again)

@@ -127,3 +127,46 @@ def test_the_ai_marks_are_read_on_the_scale_they_are_given_in():
     typical = predict.score({"slug": "t", "nearHook": 0}, 20.0, review={"hook": {"score": 6}, "look": {"score": 6}})
     weak = predict.score({"slug": "w", "nearHook": 0}, 20.0, review={"hook": {"score": 3}, "look": {"score": 6}})
     assert typical["score"] == 80 and weak["score"] == 62 and typical["parts"]["hook"]["value"] == 6
+
+
+def test_bookings_are_ordered_by_the_learned_model_when_the_score_does_not_go_with_views(monkeypatch):
+    # BL-109 (24 Nov 2026): the score's rank correlation with views was -0.10, so "best score first" was close to random.
+    from studio import predict as P
+
+    out = {"a": {"score": 90}, "b": {"score": 10}}
+    monkeypatch.setattr(P.learn, "fit", lambda units: object())
+    monkeypatch.setattr(P.learn, "comparable", lambda: {"units": []})
+    monkeypatch.setattr("studio.projects.load", lambda slug: {"slug": slug})
+    monkeypatch.setattr(P, "predict", lambda project, network, model=None, **k: {"mid": 2.0 if project["slug"] == "b" else 0.5})
+    got = P._rank_by([], out, {"spearman": -0.10})
+    assert got["rankBy"] == "learned" and "-0.10" in got["rankWhy"]
+    assert out["b"]["rank"] > out["a"]["rank"], "the reel the model expects more of comes first, whatever its score"
+
+
+def test_bookings_keep_the_score_while_it_predicts_views_or_nothing_is_measured():
+    from studio import predict as P
+
+    for rho in (0.45, None):
+        out = {"a": {"score": 90}, "b": {"score": 10}}
+        got = P._rank_by([], out, {"spearman": rho})
+        assert got["rankBy"] == "score"
+        assert out["a"]["rank"] == 90 and out["b"]["rank"] == 10
+
+
+def test_one_rule_decides_learned_or_score_for_the_planner_and_the_page(monkeypatch):
+    # _learned_model is shared by _rank_by (the planner) and report() (the page's wording): "learned" only when the
+    # score does not go with views AND a model fits; a failed fit keeps the score, so the page never claims otherwise.
+    from studio import predict as P
+
+    fitted = object()
+    monkeypatch.setattr(P.learn, "fit", lambda units: fitted)
+    assert P._learned_model(-0.10, [1]) is fitted
+    assert P._learned_model(0.45, [1]) is None and P._learned_model(None, [1]) is None
+    monkeypatch.setattr(P.learn, "fit", lambda units: None)
+    assert P._learned_model(-0.10, [1]) is None
+
+    def boom(units):
+        raise RuntimeError("no data")
+
+    monkeypatch.setattr(P.learn, "fit", boom)
+    assert P._learned_model(-0.10, [1]) is None
