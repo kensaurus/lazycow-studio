@@ -79,12 +79,12 @@ export function todayIn(timeZone, now = Date.now()) {
     at all (BL-055: TikTok showed nobody anything and kept being booked). themeDays: the theme rule for every network.
     slots: each network's hours (postSlots); a booking at a test hour carries test: "hour", usual and why. */
 export function planAhead({ reels = [], networks = AUTO_NETS, posts = [], timeZone = "Asia/Tokyo", now = Date.now(),
-  aheadDays = 14, tiktokAheadDays = 9, youtubeLeft = Infinity, stalled = [], themeDays = THEME_DAYS_ALL, slots = {} } = {}) {
+  aheadDays = 14, tiktokAheadDays = 9, youtubeLeft = Infinity, stalled = [], themeDays = THEME_DAYS_ALL, slots = {}, perDay = {} } = {}) {
   const limits = { ...AUTO_LIMITS, tiktok: Math.min(AUTO_LIMITS.tiktok, tiktokAheadDays) };
   const quiet = new Set(stalled);
   const nets = networks.filter((n) => n in limits && !quiet.has(n));
   const start = todayIn(timeZone, now);
-  const r = planWeek({ reels, networks: nets, posts, start, days: aheadDays, timeZone, now, limits, themeDays, slots });
+  const r = planWeek({ reels, networks: nets, posts, start, days: aheadDays, timeZone, now, limits, themeDays, slots, perDay });
   let yt = 0;
   // Said the same way as Needs you (server/problems.mjs reachProblems): one rule, one sentence, so the page shows why.
   const plan = [], skipped = [...networks.filter((n) => n in limits && quiet.has(n)).map((n) => ({ day: start, network: n, stalled: true,

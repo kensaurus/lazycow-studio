@@ -2,6 +2,13 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.27.1 (2026-11-25)
+
+### Added
+- **TikTok several a day:** Posting › Runs by itself › **TikTok a day** (1 to 4, one by default; `plan.tiktokPerDay` in
+  `POST /api/autopost`). Each post goes out at one of TikTok's listed hours (12:00, 19:00 and 21:30 JST); no reel
+  twice, no theme twice in a day, no headline repeated on neighbouring days. Bookings already made count toward the day.
+
 ## 0.27.0 (2026-11-24)
 
 Lazycow for anyone, not just its author: a new project starts simple (Home, Footage, Reels, Posting, Results,

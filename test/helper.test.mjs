@@ -372,3 +372,26 @@ test("pinterest: date in the field's own order, time 12 h or 24 h as shown", () 
   assert.deepEqual(pinterestLabels(p, "YYYY/MM/DD", "12:00"), { date: "2026/11/05", time: "21:00" });
   assert.deepEqual(pinterestLabels(p, "MM/DD/YYYY", "1:30 AM"), { date: "11/05/2026", time: "9:00 PM" });
 });
+
+test("TikTok several a day (owner, 25 Nov): up to N posts a day at its listed hours, no reel twice, headlines and themes kept apart", () => {
+  const themes = ["field", "fire", "aerial", "night", "autumn", "office", "pov", "warm", "loud"];
+  const many = themes.flatMap((t) => [1, 2, 3].map((i) => ({ slug: `${t}-11${i}0`, headline: `${t} line ${i}`, networks: ["tiktok"], score: i })));
+  const slots = { tiktok: { usual: "19:00", others: ["12:00", "21:30"] } };
+  const posts = [{ id: 1, slug: "loud-1110", network: "tiktok", status: "scheduled", at: "2026-11-10T19:00+09:00" }];
+  const r = planWeek({ reels: many, networks: ["tiktok"], posts, start: "2026-11-10", days: 3, now: NOW, timeZone: "Asia/Tokyo", slots, perDay: { tiktok: 3 } });
+  const byDay = Object.groupBy(r.plan, (p) => p.day);
+  assert.equal(byDay["2026-11-10"].length, 2, "the 19:00 already booked counts: two more that day");
+  assert.deepEqual(byDay["2026-11-10"].map((p) => p.at.slice(11, 16)).sort(), ["12:00", "21:30"], "the free hours, not 19:00 twice");
+  for (const d of ["2026-11-11", "2026-11-12"]) assert.deepEqual(byDay[d].map((p) => p.at.slice(11, 16)), ["12:00", "19:00", "21:30"], d);
+  const slugs = r.plan.map((p) => p.slug);
+  assert.equal(new Set(slugs).size, slugs.length, "no reel twice");
+  assert.ok(!slugs.includes("loud-1110"), "nor one already booked");
+  for (const [d, ps] of Object.entries(byDay)) {
+    const themesThatDay = ps.map((p) => p.slug.split("-")[0]);
+    assert.equal(new Set(themesThatDay).size, themesThatDay.length, `${d}: no theme twice in a day`);
+  }
+  const one = planWeek({ reels: many, networks: ["tiktok"], posts: [], start: "2026-11-10", days: 3, now: NOW, timeZone: "Asia/Tokyo", slots });
+  assert.ok(Object.values(Object.groupBy(one.plan, (p) => p.day)).every((ps) => ps.length === 1), "without perDay: one a day as before");
+  const capped = planWeek({ reels: many, networks: ["tiktok"], posts: [], start: "2026-11-10", days: 1, now: NOW, timeZone: "Asia/Tokyo", slots, perDay: { tiktok: 9 } });
+  assert.ok(capped.plan.length <= 4, "never more than 4 a day");
+});

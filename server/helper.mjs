@@ -668,7 +668,7 @@ export const themeOf = (slug) => String(slug || "").split("-")[0];
    networks (LINE, LinkedIn) and Google Maps keep their fixed hours. */
 export const EXPLORE_EVERY = 4;
 export function planWeek({ reels = [], networks = SCHEDULERS, posts = [], start, days = 7, timeZone = "Asia/Tokyo", now = Date.now(), limits = MAX_DAYS_AHEAD,
-  themeDays = THEME_DAYS_ALL, slots = {} }) {
+  themeDays = THEME_DAYS_ALL, slots = {}, perDay = {} }) {
   // limits: days ahead per network; the Chrome networks by default, more (Facebook, Bluesky, YouTube) from server/autoplan.mjs.
   const nets = networks.filter((n) => n in limits);
   const first = start || addDays(dayIn(new Date(now), timeZone), 1);
@@ -688,6 +688,46 @@ export function planWeek({ reels = [], networks = SCHEDULERS, posts = [], start,
   const apart = (a, b) => Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86400e3;
   const plan = [], skipped = [], count = new Map();
   const booked = Object.fromEntries(nets.map((n) => [n, posts.filter((r) => r.network === n && held(r)).length]));  // for the test-hour turn
+  /* perDay (owner, 25 Nov: "tiktok is a little slow to the party, 2-3 videos a day"): a network may take up to 4 posts a
+     day, each at its own hour: its listed hours (channels.json postTimesJst, usual first) and then 12:00, 19:00, 21:30.
+     A reel never goes out twice; no two posts within a day apart share a headline; the theme rule is the network's
+     days divided by its posts a day (3 days at 3 a day: no theme again the next day). Bookings already made count. */
+  const perNet = (n) => Math.max(1, Math.min(4, Math.floor(Number(perDay[n]) || 1)));
+  const hmIn = (at) => new Date(at).toLocaleTimeString("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hour12: false });
+  const add = (m, k, v) => m.set(k, [...(m.get(k) || []), v]);
+  const heads = Object.fromEntries(nets.map((n) => [n, new Map()])), slugsOn = Object.fromEntries(nets.map((n) => [n, new Map()]));
+  const hmsOn = Object.fromEntries(nets.map((n) => [n, new Map()]));
+  for (const r of posts) {
+    if (!nets.includes(r.network) || !held(r)) continue;
+    const d = dayIn(r.at, timeZone);
+    add(heads[r.network], d, headlineBy.get(r.slug) ?? `#${r.slug}`); add(slugsOn[r.network], d, r.slug); add(hmsOn[r.network], d, hmIn(r.at));
+  }
+  const several = (day, net) => {
+    const n = perNet(net), headOf = (r) => String(r.headline || "").trim(), scoreOf = (r) => (Number.isFinite(r.score) ? r.score : -1);
+    const times = [...new Set([slots[net]?.usual, ...(slots[net]?.others || []), "12:00", "19:00", "21:30"].filter(Boolean))].slice(0, n).sort();
+    const gap = Math.ceil((THEME_DAYS[net] ?? themeDays) / n);
+    for (const hm of times) {
+      if ((heads[net].get(day) || []).length >= n) break;
+      if ((hmsOn[net].get(day) || []).includes(hm)) continue;
+      const at = zonedIso(day, hm, timeZone), t = Date.parse(at);
+      if (t < now + 15 * 60e3) { skipped.push({ day, network: net, why: "already past" }); continue; }
+      if (t > now + limits[net] * 86400e3) { skipped.push({ day, network: net, why: `too far ahead for ${net}` }); continue; }
+      const nearThemes = gap ? [...slugsOn[net]].filter(([d]) => apart(d, day) <= gap).flatMap(([, s]) => s.map(themeOf)) : [];
+      const near = [addDays(day, -1), day, addDays(day, 1)].flatMap((d) => heads[net].get(d) || []).filter(Boolean);
+      const pick = reels
+        .filter((r) => !off.has(r.slug) && (r.networks || []).includes(net) && !used[net].has(r.slug) && !near.includes(headOf(r)) && !nearThemes.includes(themeOf(r.slug)))
+        .map((r, k) => ({ r, k }))
+        .sort((a, b) => (count.get(a.r.slug) || 0) - (count.get(b.r.slug) || 0) || scoreOf(b.r) - scoreOf(a.r) || a.k - b.k)[0]?.r;
+      if (!pick) { skipped.push({ day, network: net, why: `no approved reel left that it has not had, with a headline it did not have the day before, that day or after${gap ? ` and a theme it did not have within ${gap} day${gap > 1 ? "s" : ""}` : ""} (${n} a day)` }); break; }
+      plan.push({ slug: pick.slug, network: net, at, day, headline: headOf(pick) });
+      booked[net]++;
+      used[net].add(pick.slug);
+      add(heads[net], day, headOf(pick)); add(slugsOn[net], day, pick.slug); add(hmsOn[net], day, hm);
+      days_[net].set(day, headOf(pick));
+      slugOn[net].set(day, pick.slug);
+      count.set(pick.slug, (count.get(pick.slug) || 0) + 1);
+    }
+  };
   for (let i = 0; i < days; i++) {
     const day = addDays(first, i);
     const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
@@ -700,6 +740,7 @@ export function planWeek({ reels = [], networks = SCHEDULERS, posts = [], start,
       if (net in weekly && [...days_[net].keys()].some((d) => Math.abs(Date.parse(`${d}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`)) < 7 * 86400e3)) {
         skipped.push({ day, network: net, why: `${net === "linkedin" ? "LinkedIn already has a post" : "LINE already has a message"} within 7 days` }); continue;
       }
+      if (perNet(net) > 1 && net !== "gbp" && !(net in weekly)) { several(day, net); continue; }
       const hours = net === "gbp" || net in weekly ? null : slots[net];
       let hm = net === "gbp" ? "12:00" : net === "line-oa" ? "10:00" : hours?.usual || "19:00", test = null;
       if (hours?.others?.length && (booked[net] + 1) % EXPLORE_EVERY === 0) {

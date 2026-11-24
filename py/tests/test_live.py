@@ -100,6 +100,13 @@ def test_the_planner_settings_for_variety_stalled_networks_and_scores(fresh):
     assert live.settings()["plan"]["themeDays"] == 0 and live.settings()["plan"]["skipStalled"] is False
     with pytest.raises(ValueError):
         live.save_settings({"plan": {"themeDays": 30}})
+    # TikTok posts a day (owner, 25 Nov): one by default, up to 4.
+    assert live.settings()["plan"]["tiktokPerDay"] == 1
+    live.save_settings({"plan": {"tiktokPerDay": 3}})
+    assert live.settings()["plan"]["tiktokPerDay"] == 3
+    for bad in (0, 5):
+        with pytest.raises(ValueError):
+            live.save_settings({"plan": {"tiktokPerDay": bad}})
 
 def test_a_reading_of_numbers_confirms_the_post(fresh):
     from studio import perf

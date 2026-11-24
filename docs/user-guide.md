@@ -266,7 +266,7 @@ If **Runs by itself** is off, also press **Posting › Plan posts › Everything
 
 | Job | What it does | How often |
 |:--|:--|:--|
-| Book posts | Books the next days' posts from approved reels on every connected network. Each network gets one post a day at its own hour, and never the same reel twice. TikTok is booked 9 days ahead. Networks booked in Chrome wait until the Chrome link is on. | Once a day, after the hour you set |
+| Book posts | Books the next days' posts from approved reels on every connected network. Each network gets one post a day at its own hour, and never the same reel twice. TikTok is booked 9 days ahead, and can take up to 4 posts a day (**TikTok a day**: each at one of its hours, 12:00, 19:00 and 21:30 JST, with no theme repeated within a day). Networks booked in Chrome wait until the Chrome link is on. | Once a day, after the hour you set |
 | Check posts went out | Confirms each booked post on its network (YouTube, Facebook, and your Chrome for the others). A post still not seen 6 hours after its time goes to **Needs a look** and to **What needs you** (the bell lists it as news but does not count it). | Every hour |
 | Send late posts | Sends posts that came due while the computer was off, if they are up to 2 hours late. Later posts are marked missed, so nothing goes out days late without warning. | When the studio starts |
 | Set aside failures | Marks a failed booking "replaced" when the same day was booked again. | Every hour |
