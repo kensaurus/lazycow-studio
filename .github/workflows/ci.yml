@@ -4,12 +4,19 @@
 # Each system gets ffmpeg the way a person there would (apt on Linux; on Windows and macOS the build the double-click
 # setup downloads, pinned in scripts/bootstrap/versions.json and checked against its SHA-256) and the same
 # locked Python packages the setup installs (py/requirements-<system>.lock, checked against their hashes).
+#
+# Windows and macOS legs: every run in the public repository (its Actions minutes are free). In a private copy
+# they bill (Windows ~2x, macOS ~10x Linux), so there they run only with release intent: a manual run
+# (workflow_dispatch), a v* tag, or a pull request from a release/* branch. Pushes and other pull requests run
+# Linux only, on vars.LINUX_RUNNER when the repository sets one, else GitHub's Ubuntu 24.04.
 name: CI
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -25,8 +32,9 @@ jobs:
       fail-fast: false
       matrix:
         # ubuntu-24.04, not ubuntu-latest: that label moves to 26.04 in November 2026 (actions/runner-images#14748).
-        os: [ubuntu-24.04, windows-latest, macos-15]
-    runs-on: ${{ matrix.os }}
+        # All three systems in the public repository or with release intent (see the top of this file); else Linux.
+        os: ${{ fromJSON((!github.event.repository.private || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || startsWith(github.head_ref, 'release/')) && '["ubuntu-24.04","windows-latest","macos-15"]' || '["ubuntu-24.04"]') }}
+    runs-on: ${{ matrix.os == 'ubuntu-24.04' && ((github.actor != 'dependabot[bot]' && vars.LINUX_RUNNER) || 'ubuntu-24.04') || matrix.os }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -45,17 +53,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-24.04
-            lock: requirements-linux.lock
-            torch: --torch-backend cpu
-          - os: windows-latest
-            lock: requirements-win.lock
-            torch: --torch-backend cpu
-          - os: macos-15   # Apple silicon, 7 GB RAM
-            lock: requirements-mac.lock
-            torch: ""
-    runs-on: ${{ matrix.os }}
+        # The same systems as the node job. macos-15 is Apple silicon, 7 GB RAM. The lock file and torch backend
+        # follow runner.os in the "Python packages" step: a matrix `include` for a system left out of `os` would
+        # add that system back as a job of its own.
+        os: ${{ fromJSON((!github.event.repository.private || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || startsWith(github.head_ref, 'release/')) && '["ubuntu-24.04","windows-latest","macos-15"]' || '["ubuntu-24.04"]') }}
+    runs-on: ${{ matrix.os == 'ubuntu-24.04' && ((github.actor != 'dependabot[bot]' && vars.LINUX_RUNNER) || 'ubuntu-24.04') || matrix.os }}
     timeout-minutes: 30
     env:
       UV_PYTHON_PREFERENCE: only-managed   # the same standalone Python 3.13 the setup installs, not the runner's own
@@ -108,24 +110,29 @@ jobs:
           ffprobe -hide_banner -version | sed -n 1p
 
       - name: Python packages (the setup's lock, checked against its hashes)
+        env:
+          LOCK: requirements-${{ runner.os == 'Windows' && 'win' || runner.os == 'macOS' && 'mac' || 'linux' }}.lock
+          TORCH: ${{ runner.os != 'macOS' && '--torch-backend cpu' || '' }}
         run: |
-          uv pip sync ${{ matrix.torch }} --require-hashes ${{ matrix.lock }}
+          uv pip sync $TORCH --require-hashes "$LOCK"
           uv pip install "pytest>=8.0"
       - run: python -m pytest -q
 
   # The branch protection on the public repository requires checks named "npm test" and "pytest". With the OS matrix
-  # the jobs are named per system, so these two report one result each: green only when every system passed.
+  # the jobs are named per system, so these two report one result each: green only when every system that ran passed.
   node-all:
     name: npm test
     needs: node
     if: ${{ always() }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ (github.actor != 'dependabot[bot]' && vars.LINUX_RUNNER) || 'ubuntu-24.04' }}
+    timeout-minutes: 5
     steps:
       - run: test "${{ needs.node.result }}" = "success"
   python-all:
     name: pytest
     needs: python
     if: ${{ always() }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ (github.actor != 'dependabot[bot]' && vars.LINUX_RUNNER) || 'ubuntu-24.04' }}
+    timeout-minutes: 5
     steps:
       - run: test "${{ needs.python.result }}" = "success"

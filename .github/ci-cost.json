@@ -1,0 +1,22 @@
+{
+  "allow": [
+    {
+      "file": "release.yml",
+      "rule": "hosted",
+      "job": "npm",
+      "reason": "Runs only when a release is published. npm trusted publishing and provenance need a GitHub-hosted runner's OIDC identity."
+    },
+    {
+      "file": "release.yml",
+      "rule": "hosted",
+      "job": "mcpb",
+      "reason": "Runs only when a release is published, beside the npm job; a few minutes per release."
+    },
+    {
+      "file": "docker.yml",
+      "rule": "hosted",
+      "job": "image",
+      "reason": "Runs only when a release is published. Building and pushing the image needs Docker on the runner."
+    }
+  ]
+}

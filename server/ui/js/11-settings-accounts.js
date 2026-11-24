@@ -819,11 +819,14 @@ function netCheckHtml(once = []) {
   const fine = nets.filter((n) => n.state === "ok" && !isOnce(n)), need = nets.filter((n) => n.state !== "ok"), checkOnce = nets.filter(isOnce);
   const item = (x) => `<li><span class="${x.ok === false ? "t-bad" : "t-warn"}">${tr(x.ok === false ? "nc.bad" : "nc.warn")}</span> ${esc(x.say)}
     ${x.fix || x.url ? `<span class="ncfix">${esc(x.fix || "")}${x.url ? ` <a href="${escUrl(x.url)}" target="_blank" rel="noopener">${tr("nc.open")} ↗</a>` : ""}</span>` : ""}</li>`;
-  return `<section class="netcheck ${worst}" aria-live="polite">${head(worst, tr(k ? "tc.nc.sum" : "nc.sum", { ok: c.ok || 0, warn: c.warn || 0, bad: c.bad || 0 }) + (V.at ? ` · ${esc(whenText(V.at))}` : ""))}
-    ${checkOnce.length ? `<p class="meta"><span class="t-warn">${tr("nc.warn")}</span> ${esc(tr("tc.nc.once", { list: checkOnce.map((n) => n.name).join(lang === "ja" ? "・" : ", ") }))}</p>` : ""}
+  // One row when nothing is wrong (24 Nov, Accounts ≤ 2 screens): the fine networks are the count's tooltip, and the ones
+  // to check once are named on the same line with the full reason as their tooltip.
+  const sep = lang === "ja" ? "・" : ", ";
+  const sum = `<span title="${esc(fine.length ? tr("nc.fine", { list: fine.map((n) => n.name).join(sep) }) : "")}">${tr(k ? "tc.nc.sum" : "nc.sum", { ok: c.ok || 0, warn: c.warn || 0, bad: c.bad || 0 })}</span>`;
+  const onceLine = checkOnce.length ? ` · <span class="t-warn" title="${esc(tr("tc.nc.once", { list: checkOnce.map((n) => n.name).join(sep) }))}">${esc(tr("tc.nc.oncesh", { list: checkOnce.map((n) => n.name).join(sep) }))}</span>` : "";
+  return `<section class="netcheck ${worst}" aria-live="polite">${head(worst, sum + (V.at ? ` · ${esc(whenText(V.at))}` : "") + onceLine)}
     ${need.length ? `<ul class="nclist">${tcNcGroups(need).map(({ x, nets: ns }) => `<li><span class="ncnet">${ns.map((n) => `<span class="tc-ncn">${netLogo(n.network, "sm")}${esc(n.name)}${n.account ? ` <span class="meta">${esc(n.account)}</span>` : ""}</span>`).join("")}</span>
-      <ul>${item(x)}</ul></li>`).join("")}</ul>` : ""}
-    ${fine.length ? `<p class="meta">${tr("nc.fine", { list: fine.map((n) => esc(n.name)).join(lang === "ja" ? "・" : ", ") })}</p>` : ""}</section>`;
+      <ul>${item(x)}</ul></li>`).join("")}</ul>` : ""}</section>`;
 }
 document.addEventListener("click", (e) => { if (e.target.closest?.("[data-netcheck]")) runNetCheck(); });
 function drawAccounts() {
