@@ -3,7 +3,7 @@
   "name": "io.github.kensaurus/lazycow",
   "title": "Lazycow Studio",
   "description": "Drive Lazycow Studio by kensaurus: make reels and trip films from your footage, plan and post them.",
-  "version": "0.26.0",
+  "version": "0.27.0",
   "websiteUrl": "https://github.com/kensaurus/lazycow-studio",
   "icons": [
     {
@@ -31,7 +31,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "lazycow",
-      "version": "0.26.0",
+      "version": "0.27.0",
       "transport": {
         "type": "stdio"
       },
@@ -62,9 +62,9 @@
     },
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/kensaurus/lazycow-studio/releases/download/v0.26.0/lazycow-0.26.0.mcpb",
-      "version": "0.26.0",
-      "fileSha256": "e50c4fd392ae5e939ce48994389d0ba265d0b8fcdb7cf17d04d7121c3a17dbca",
+      "identifier": "https://github.com/kensaurus/lazycow-studio/releases/download/v0.27.0/lazycow-0.27.0.mcpb",
+      "version": "0.27.0",
+      "fileSha256": "bfb4de8cc4af347c41907df1276564d1a015ea67de9635f720f38292fac14f70",
       "transport": {
         "type": "stdio"
       }

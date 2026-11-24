@@ -4,8 +4,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { assemblePage } from "../server/ui.mjs";
 
-const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+// the page is its shell plus the parts in server/ui (server/ui.mjs): "server/editor.html" reads the whole page
+const read = (p) => (p === "server/editor.html" ? assemblePage(fileURLToPath(new URL("..", import.meta.url))) : readFileSync(new URL(`../${p}`, import.meta.url), "utf8"));
 const has = (p) => existsSync(new URL(`../${p}`, import.meta.url));
 const V = JSON.parse(read("scripts/bootstrap/versions.json"));
 

@@ -9,7 +9,8 @@ from studio import stills
 
 
 def test_every_theme_and_caption_passes_the_ranch_copy_rules():
-    """No banned word (キャンプ場, campground, 牛...), no price, 牧場 only inside 嬬恋牧場Work&Camp: on any slide or caption."""
+    """No banned word, no price, the bare word only inside the registered name (the project's copy rules): on any
+    slide or caption."""
     for th in stills.themes():
         for st in stills.styles():
             words = stills.slide_words(th) + [v for k, v in stills.captions(th, st, st["panels"]).items() if not k.startswith("_")]
@@ -17,17 +18,22 @@ def test_every_theme_and_caption_passes_the_ranch_copy_rules():
             assert not bad, f"{th['id']}/{st['id']}: {bad[:3]}"
 
 
-def test_copy_problems_catches_banned_words_prices_and_the_registered_name():
-    assert stills.copy_problems("最高のキャンプ場です")
-    assert stills.copy_problems("1泊 3,000円")
-    assert stills.copy_problems("牧場でゆっくり")
-    assert not stills.copy_problems("嬬恋牧場Work&Campでゆっくり")
+def test_copy_problems_catches_banned_words_prices_and_the_registered_name(monkeypatch):
+    from studio import brand
+
+    # The example business's own rules (Cafe Kumo), so the check is tested without any one project's words.
+    monkeypatch.setattr(brand, "copy_rules", lambda: {"banned": ["食べ放題"], "noPrices": True, "registered": "Cafe Kumo Kitchen",
+                                                      "bare": "Kitchen"})
+    assert stills.copy_problems("最高の食べ放題です")
+    assert stills.copy_problems("ランチ 1,200円")
+    assert stills.copy_problems("Kitchen open") == ["Kitchen outside the registered name"]
+    assert not stills.copy_problems("Cafe Kumo Kitchenでゆっくり")
 
 
 def test_x_length_counts_japanese_as_two_and_links_as_23():
     assert stills.x_length("abc") == 3
     assert stills.x_length("山で働く") == 8
-    assert stills.x_length("see https://tsumagoi.kensaur.us/very/long/path?x=1") == 4 + 23
+    assert stills.x_length("see https://cafe-kumo.example/very/long/path?x=1") == 4 + 23
 
 
 @pytest.mark.parametrize("theme", [t["id"] for t in stills.themes()])
@@ -124,8 +130,8 @@ def test_approve_copies_slides_story_and_one_caption_per_network(tmp_path, monke
     d.mkdir(parents=True)
     for f in ("slide-01.jpg", "slide-02.jpg", "story.jpg"):
         (d / f).write_bytes(b"jpg")
-    meta = {"id": d.name, "style": "pano", "theme": "autumn", "styleJa": "つながるパノラマ", "themeJa": "嬬恋の秋", "styleEn": "Seamless panorama",
-            "themeEn": "Autumn in Tsumagoi", "slides": ["slide-01.jpg", "slide-02.jpg"], "story": "story.jpg",
+    meta = {"id": d.name, "style": "pano", "theme": "autumn", "styleJa": "つながるパノラマ", "themeJa": "雲の上の秋", "styleEn": "Seamless panorama",
+            "themeEn": "Autumn at Cafe Kumo", "slides": ["slide-01.jpg", "slide-02.jpg"], "story": "story.jpg",
             "captions": {"instagram": "秋", "facebook": "fb", "threads": "th", "x": "x", "bluesky": "b"}}
     (d / "meta.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
     r = stills.approve(d.name)
@@ -151,12 +157,11 @@ def cafe(tmp_path, monkeypatch):
     return tmp_path
 
 
-def test_another_brand_never_gets_the_ranch_words_facts_or_place(cafe):
+def test_another_brand_never_gets_the_ranch_words_facts_or_place(cafe, ranch_words):
     import random
-    import re
 
     words = json.dumps(stills.themes(), ensure_ascii=False)
-    assert not re.search("嬬恋|1,444|浅間|tsumagoi|こたつ|Asama", words, re.I)
+    assert not [w for w in ranch_words if w.lower() in words.lower()]
     assert stills.facts() == []
     pl = stills.place()
     assert pl["place"] == "Cafe Kumo" and pl["alt"] == "" and pl["region"] == ""
@@ -164,14 +169,7 @@ def test_another_brand_never_gets_the_ranch_words_facts_or_place(cafe):
     assert "numbers" not in looks  # no made-up numbers
     for th in stills.themes():
         caps = stills.captions(th, stills.styles()[0], 5, random.Random(2))
-        assert "#cafekumo" in caps["instagram"] and "#tsumagoicamp" not in caps["instagram"]
-
-
-@pytest.mark.ranch
-def test_the_ranch_keeps_its_own_words_facts_and_place():
-    assert any(t["titleJa"] == "嬬恋の秋" for t in stills.themes())
-    assert any(f["big"] == "1,444" for f in stills.facts())
-    assert stills.place()["place"] == "TSUMAGOI"
+        assert "#cafekumo" in caps["instagram"] and not [w for w in ranch_words if w in caps["instagram"]]
 
 
 def test_hooks_vary_between_sets_of_one_subject():
@@ -233,7 +231,7 @@ def _story_set(out, sid="1121-090000-01-contact-autumn"):
     d.mkdir(parents=True)
     for k, colour in enumerate(("#c84", "#48c", "#8c4"), 1):
         Image.new("RGB", (stills.SLIDE_W, stills.SLIDE_H), colour).save(d / f"slide-0{k}.jpg")
-    meta = {"id": d.name, "style": "contact", "theme": "autumn", "styleJa": "コンタクトシート", "themeJa": "嬬恋の秋",
+    meta = {"id": d.name, "style": "contact", "theme": "autumn", "styleJa": "コンタクトシート", "themeJa": "雲の上の秋",
             "slides": ["slide-01.jpg", "slide-02.jpg", "slide-03.jpg"], "story": "story.jpg", "captions": {}}
     (d / "meta.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
     return d

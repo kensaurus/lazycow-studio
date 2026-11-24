@@ -252,7 +252,7 @@ def place_from(
     """Where a file was shot. Own GPS, then its folder's, then its event's, then the event's name.
 
     "ranch…" means at the project's home place (the ranch in the main project; studio.brand.home_place).
-    The name test reads only the event folder: the media root itself is called 20_tsumagoi-work-camp.
+    The name test reads only the event folder: the media root itself is often named after the place (20_cafe-kumo).
     A file without GPS taken more than a day before its event's date is the trip there, not the ranch.
     An event the owner has declared off-site (spec.json ranch.awayEvents) is away whatever its GPS says.
     A project with no home place uses every clip it has: "ranch (no home place)".

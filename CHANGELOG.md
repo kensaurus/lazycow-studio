@@ -2,6 +2,71 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.27.0 (2026-11-24)
+
+Lazycow for anyone, not just its author: a new project starts simple (Home, Footage, Reels, Posting, Results,
+Settings), the rest waits one step away on More tools, the six common networks are on, and no business-specific words
+are left in the app. Footage gets a real map.
+
+### Added
+- **Where it was filmed is a real map:** OpenStreetMap squares under the footage dots, with drag to move, + and − to
+  zoom, Whole area / Close up, and a note per place (files, unused, days filmed, Open in Google Maps, Show in
+  Library). The squares come through the studio (`GET /api/tiles/{z}/{x}/{y}.png`), are kept 7+ days in
+  `<data>/tiles` and are fetched only for the views you look at; `STUDIO_TILE_URL` / `STUDIO_TILE_CREDIT` pick another
+  provider (docs/self-host.md › Map tiles).
+- **More files have a place:** phone and camera videos' own GPS (ISO 6709 tags) is read when they are catalogued; a
+  DJI video takes the first fix of its own `.SRT` log (the log format with `[altitude: …]` was not read before); a file
+  with no GPS gets a position **estimated** from a GPS file filmed within 90 minutes on the same day, when those GPS
+  files agree within 2 km. Estimates are kept apart from real positions, drawn hollow, and say how many minutes
+  away the GPS file was. `python -m studio media backfill-gps` fills existing files (empty positions only).
+- **Why some files have no place:** the map says how many came through Google Photos (which strips locations) and how
+  to keep them; per camera on hover (`gps` in `GET /api/footage/places`).
+- **Place names, offline:** **Get place names** downloads GeoNames' world towns (11 MB), then optionally one country's
+  villages, mountains and lakes (Japan 5 MB), only when a person presses it (`POST /api/places/download`, or
+  `python -m studio places download world|JP`). Names in English or Japanese; credited "GeoNames (CC BY 4.0)".
+- **Home** (`#/home`, and `#/` now opens it): a new project gets four setup cards in order (add footage, connect a
+  network, make the first reel, book the first post), each ticked by what the studio sees; a returning one gets the
+  loop, the next posts, what needs you and the last 7 days in one line. Reels moved to `#/reels`.
+- **Simple by default** (BL-114): a new project shows the everyday tools only; the rest wait on **More tools**
+  (`#/more`), one card each with what it is for. **Show all tools** switches per project (`GET`/`POST /api/ui`,
+  `<data>/ui.json`). Projects that already have reels or posts, and the ranch project, keep every tool. One list in
+  the page (`FEATURES`) drives the menus, the tab rows, Ctrl K and the next-step links; a hidden tool still opens by its
+  address, with one line saying so.
+- **Private usage counts** (BL-120): how often each page, approve, book and make reels was used, and when last, kept
+  in `<data>/usage.json` (`POST /api/ui/usage` takes only ids from the page's list) and never sent anywhere; shown on
+  More tools and in Settings › About and usage.
+- **Settings › Everyday settings** (BL-119): tools shown, language, time zone, footage, posting by itself, starting
+  with the computer, AI keys, spending limit and networks, each with its one control; everything else under one
+  **Advanced** fold. docs/self-host.md › Advanced settings lists every `.env.example` variable in one line (a test keeps
+  them in step).
+
+### Changed
+- The map draws without a home place too (a project with none sees its footage on the map instead of a message).
+- The line under the map counts the same files as its dots (the library files it draws: GPS + estimated + none, and
+  none = Google Photos + saved without one), so its numbers add up; Close up names one group "at the home point"
+  (everything within 150 m of it) and the others by distance and direction.
+- **Networks in tiers** (BL-116): YouTube Shorts, TikTok, Instagram, Facebook, X and LinkedIn are on in a new project
+  and come first on Settings › Accounts; the rest fold under **More networks (N)**, open when one of them is on.
+  `GET /api/channels` gives each channel its `tier`. **Upgrading changes nothing you post to:** a project that already
+  made anything (reels, photo posts, long videos or a booked post) and never chose its networks gets its old set
+  written to `<data>/networks.json` on the first start.
+- The public channel list no longer has the author's own site and article networks (kensaur.us, Zenn, note).
+- **No business-specific words in the app** (BL-117): the author's own business's names, places, hashtags, themes,
+  research lines, Bluesky topics and Pinterest boards live in a private overlay that the public copy does not have;
+  every other project gets neutral text or its own (its brand name on the end card and the collect-footage message,
+  its hashtags and place names for research and Bluesky). YouTube uploads no longer add the author's address line
+  to every project; calendar files are named `lazycow-post-<id>.ics`.
+- Settings › Keys & AI is now **General & AI** and opens on Everyday settings; Accounts keeps its tab row after the
+  connection check (it disappeared when the check finished).
+- **One setup list:** Reels no longer shows its own "Getting started" list. Home's setup cards and the header chip
+  count the same essential steps (add footage, connect a network, make a reel, book a post), so they read the same
+  number; the setup wizard and Ctrl K › Getting started also walk the optional ones (system check, time zone, YouTube,
+  first approval).
+- Two colour looks named after a place are renamed `meadow-film` and `violet-dusk` (`luts/`).
+- **The page is in parts** (BL-121): `server/editor.html` is a short shell and each page or tool is its own file under
+  `server/ui/js` (styles under `server/ui/css`), joined by `server/ui.mjs` into one page on every load. Nothing
+  changes for a person using the studio; a contributor edits one page's file (docs/architecture.md).
+
 ## 0.26.0 (2026-11-24)
 
 The studio runs as one visible loop — plan, make, post, check, learn — and the networks that never got posts now do.
@@ -250,7 +315,7 @@ Docs and media only; the studio itself is unchanged from 0.23.0.
 
 ### Changed
 - **Every picture and the demo come from a real studio.** The README hero, the 40-second demo, the tour stills, the
-  Long videos picture and the page loops are recorded in the owner's own studio (Tsumagoi Work&Camp, everyone on
+  Long videos picture and the page loops are recorded in the owner's own studio (the author's own business, everyone on
   camera agreed), in light colours. None show the made-up Cafe Kumo any more, and there is no stock footage.
   `examples/cafe-kumo/` stays as the sample brand for new studios.
 - **The hero no longer suggests a click was recorded:** the pointer rests on Approve, then the Posting week shows the
@@ -480,7 +545,7 @@ Docs and media only; the studio itself is unchanged from 0.23.0.
 ### Added
 - **More from kensaurus.** The README, the Japanese README, the npm README and the About window link the other
   kensaurus products that suit Lazycow users: Mushi Mushi (`npm i mushi-mushi`: why an AI-built app broke, and the fix
-  for your editor), kenji skills (`@kensaurus/skills`), Tsumagoi Work&Camp and Konte, with every app on kensaur.us.
+  for your editor), kenji skills (`@kensaurus/skills`), the author's own business and Konte, with every app on kensaur.us.
   Names and taglines follow kensaur.us/apps.json; the links say they came from Lazycow (utm_source=lazycow).
 
 ## 0.17.0 (2026-11-17)
@@ -558,7 +623,7 @@ Docs and media only; the studio itself is unchanged from 0.23.0.
 - **Results uses the width.** On a wide screen the per-network bars and the "not being shown" panel sit side by side.
 - **The Windows installer draws a progress bar** under every step and a full one at the end.
 
-- **TikTok captions are short and Japanese** (about 125 characters): the reel's lines, 「嬬恋牧場」で検索, the search
+- **TikTok captions are short and Japanese** (about 125 characters): the reel's lines, a search line for the place's name, the search
   words and the tags, as the playbook's own 150-character ideal says. The English block and price list are gone there.
 - **The TikTok channel note says to check the account region** (tiktok.com/setting); the old "profile editing is
   restricted" warning is gone (Account check showed no issues on 16 Nov).
@@ -653,10 +718,10 @@ Docs and media only; the studio itself is unchanged from 0.23.0.
   (21 real) and YouTube showed 65 booked (29 real).
 - Results said "Higher scores went with better results by -0.58": it now says better, worse or no clear link by the
   sign. The first comparison date lost a stray comma ("Mon 16 Nov,.").
-- `research_ideas` searched the original workspace's place (Tsumagoi, Gunma, in Japan's results) for every project
+- `research_ideas` searched the original workspace's place (the ranch's place, in Japan's results) for every project
   without a topic; it now searches the open project's own name and home place, in that country. `research_events`
   without a home place answers 400 with where to set one (it was a 500).
-- The header showed "Tsumagoi Work&Camp" before a project loaded.
+- The header showed the ranch's name before a project loaded.
 - The `lazycow` package's author is an object (`name` + `url`). npm read the string form's first parentheses as the
   URL, so `lazycow@0.14.0` on npm shows "Kenji Sakuramoto" as the author link; the next version links https://kensaur.us.
 
@@ -893,7 +958,7 @@ ranch's.
   lines, what to film and hashtags. A project with no themes says so and offers to write the first one.
 - **Settings › Keys & AI › This project** (`GET`/`POST /api/brand`, `py/studio/brand.py`): name and second-language
   name for the last card, handle, link and hashtags for posts, a home place (or all footage counts), and words never
-  to use. Fixed for the Tsumagoi workspace.
+  to use. Fixed for the ranch workspace.
 - **Settings › Keys & AI › Use with Claude or Cursor**: the MCP setup for Claude Code, Claude Desktop and Cursor with this
   computer's paths filled in, Copy buttons, and a link to the API description (`GET /api/openapi.yaml`).
 - **Optional API token** (`STUDIO_API_TOKEN`): every caller must carry it; the browser gets it once from the address the
@@ -924,9 +989,9 @@ ranch's.
   steadied, cache keys).
 
 ### Changed
-- **A project made in the studio is its own brand** (`config.RANCH` is the Tsumagoi workspace only): its own home place
+- **A project made in the studio is its own brand** (`config.RANCH` is the ranch workspace only): its own home place
   or none, its own themes and word bank, its name on the last card and in titles, its hashtags, link and handle in posts,
-  its own copy rules, no house reels, and files named after it. The AI reviewer is told whose reel it is. The Tsumagoi
+  its own copy rules, no house reels, and files named after it. The AI reviewer is told whose reel it is. The ranch
   workspace is unchanged (compared byte for byte: themes, posts, word bank, titles, tags and post text of 25 reels).
 - "Create project" opens the new project straight away, without an extra Switch and "are you sure".
 - Make reels starts with no theme ticked; "1 reel" reads as one.
@@ -942,7 +1007,7 @@ ranch's.
 - A key the provider refuses reads "Saved, but refused", not "Saved and working".
 - An automatic AI review no longer fails on every render when there is no reviewer key; it is skipped.
 - A shell-exported `STUDIO_DATA` made every project write into the main project's folder.
-- The last card of every reel said @tsumagoicamp, whatever the project.
+- The last card of every reel said the ranch's handle, whatever the project.
 - A new project's Words › Suggest, Ideas and Events, the music prompt and the profile kit no longer use the ranch's
   copy, site, search words or bios (research.approved_copy, site_url, default_topic, angle_system, wording.suggest_system).
 - A render in another project overwrote the ranch's `shared/reels.json` with that project's reels; each project now keeps
@@ -1272,7 +1337,7 @@ Several projects, posting from the studio itself, and an Accounts page.
 
 ### Changed
 - Each page has its own colour in the top bar, and the header carries the project's colour.
-- Threads is set up (@tsumagoicamp); the "not joined yet" warning is gone.
+- Threads is set up (the ranch's handle); the "not joined yet" warning is gone.
 
 ## 0.3.0 (2026-11-08)
 

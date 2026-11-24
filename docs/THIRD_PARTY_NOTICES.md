@@ -120,6 +120,8 @@ The interface itself uses your operating system's own font.
 
 The long-video series maps (`src/SeriesMap.tsx`) draw country outlines from [Natural Earth](https://www.naturalearthdata.com) 1:50m Admin 0 countries, which is in the **public domain** (crediting is optional; the YouTube description says "Map data: Natural Earth"). The outlines come through [world-atlas](https://github.com/topojson/world-atlas) 2.0.2 (ISC, © 2013-2019 Michael Bostock; the licence text is `public/geo/LICENSE-world-atlas.txt`), cut down to East Africa and the Gulf by `scripts/geo-crop.mjs` into `public/geo/east-africa-50m.json`. `shared/countries.json` lists the country names and ISO numbers from the same file. `shared/geo/world-110m.json` (made by `scripts/geo-world.mjs` from the same package's 1:110m countries) lets a Google Maps Timeline import name the country of any place offline. Place pins are approximate park, gate and airport positions the studio keeps in `py/studio/vlog.py` (`PINS`), or the ones you type in the trip notes.
 
+Footage › Where it was filmed shows map squares © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (data ODbL, squares from the OpenStreetMap Foundation's tile servers under its [tile policy](https://operations.osmfoundation.org/policies/tiles/); nothing is shipped, they are fetched as you look and kept in `<data>/tiles`). Its place names come from [GeoNames](https://www.geonames.org/) (CC BY 4.0), downloaded into `<data>/places` only when you press **Get place names**; the map credits both.
+
 ## Icons
 
 The interface icons are inline SVG drawn in the style of, and in several cases taken from, [Lucide](https://lucide.dev) (ISC License, © Lucide Contributors; parts © Cole Bemis, Feather, MIT).

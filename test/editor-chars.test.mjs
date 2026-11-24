@@ -7,9 +7,11 @@
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { assemblePage } from "../server/ui.mjs";
+import { fileURLToPath } from "node:url";
 
 test("editor.html has no control characters but tab and line ends", () => {
-  const html = readFileSync(new URL("../server/editor.html", import.meta.url), "utf8");
+  const html = assemblePage(fileURLToPath(new URL("..", import.meta.url)));
   const bad = [...html.matchAll(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g)].map((m) => `${html.slice(0, m.index).split("\n").length}:${m[0].charCodeAt(0)}`);
   assert.deepEqual(bad, []);
 });

@@ -7,8 +7,10 @@
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { assemblePage } from "../server/ui.mjs";
+import { fileURLToPath } from "node:url";
 
-const html = readFileSync(new URL("../server/editor.html", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const html = assemblePage(fileURLToPath(new URL("..", import.meta.url))).replace(/\r\n/g, "\n");
 const start = html.indexOf("<script>");
 const script = html.slice(start, html.lastIndexOf("</script>"));
 const lines = script.split("\n");
@@ -79,9 +81,18 @@ test("no handler calls an async helper that catches nothing outside try", () => 
   }), []);
 });
 
-test("the Getting started card and the header chip count the same steps", () => {
-  const at = script.indexOf("function setupCard()");
-  assert.match(script.slice(at, script.indexOf("\n}", at)), /startSteps\(\)/, "setupCard keeps its own copy of the steps");
+test("one setup list: Home's cards and the header chip count the same essentials of startSteps; Reels has no second card", () => {
+  assert.ok(!script.includes("function setupCard()"), "the Reels page's own checklist is gone (BL-115: Home owns it)");
+  const body = (name) => { const at = script.indexOf(`function ${name}(`); assert.ok(at > 0, name); return script.slice(at, script.indexOf("\n}", at) + 2); };
+  assert.match(body("essentialSteps"), /startSteps\(\)\.filter\(\(s\) => !s\.optional\)/, "the essentials are cut from the one list");
+  assert.match(body("homeSteps"), /return essentialSteps\(\)/, "Home's cards are the essentials");
+  assert.match(body("paintStartChip"), /const s = essentialSteps\(\)/, "the header chip counts the same essentials, so '2/4' reads the same everywhere");
+  const steps = body("startSteps");
+  assert.doesNotMatch(script.replace(steps, ""), /ok: [^,]*postsLog\.some|ok: [^,]*connected\) \|\|/, "no second copy of a step's test outside startSteps");
+  for (const id of ["network", "footage", "reel", "book", "vlogs", "ytvlog"]) {
+    assert.ok(steps.includes(`id: "${id}"`), id);
+    for (const k of [`d_fw.s.${id}`, `d_fw.d.${id}`]) assert.ok(html.includes(`"${k}":`), `${k} has a label`);
+  }
 });
 
 test("choosing a language in the setup wizard redraws the whole page, as the header toggle does", () => {
@@ -147,7 +158,7 @@ test("phones: one header row with the project's name, tab rows show a fade when 
 });
 
 test("a swapped-out booking is history: never counted as sent or listed twice (Posting › Sent, Results)", () => {
-  // The Tsumagoi log had 137 rows "replaced by a new render"; they took their replacement's state, so Sent said 36
+  // The owner's posting log had 137 rows "replaced by a new render"; they took their replacement's state, so Sent said 36
   // (21 real) and Results › Out and booked said 65 booked on YouTube (29 real).
   const pick = (re) => { const m = script.match(re); assert.ok(m, `not found: ${re}`); return m[0]; };
   const src = [pick(/const isHistory = [^\n]+\n/), pick(/function recentPosts\(limit = 10\) \{[\s\S]*?\n\}\n/)].join("\n");

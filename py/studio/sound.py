@@ -29,11 +29,11 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from studio.config import DATA, SPEC, ffmpeg_bin, ffprobe_bin
+from studio.config import DATA, SPEC, STUDIO_NAME, ffmpeg_bin, ffprobe_bin
 
 LIB = DATA / "audio"
 OPENVERSE = "https://api.openverse.org/v1/audio/"
-UA = "tsumagoi-studio/1.0 (local reel tool; contact via kensaur.us)"
+UA = "lazycow-studio/1.0 (local reel tool; https://github.com/kensaurus/lazycow-studio)"
 LICENSES = "cc0,pdm"
 AUDIO_EXT = {".mp3", ".ogg", ".wav", ".flac", ".m4a", ".oga"}
 
@@ -185,7 +185,7 @@ def synth() -> list[str]:
                  "-map", "[a]", "-t", f"{sec}", str(dest)],
                 check=True, capture_output=True, timeout=60,
             )
-            meta = {"kind": "sfx", "title": name.replace("_", " "), "creator": "Tsumagoi Studio (synthesised)", "license": "OWN",
+            meta = {"kind": "sfx", "title": name.replace("_", " "), "creator": f"{STUDIO_NAME} (synthesised)", "license": "OWN",
                     "licenseUrl": None, "landing": None, "source": "ffmpeg lavfi", "duration": sec, "query": name, "via": "made locally"}
             _sidecar(dest).write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
         made.append(str(dest))
@@ -552,6 +552,6 @@ def credits(audio: dict) -> str:
         lines += [f"Voice: AI-generated Japanese voice ({v.get('model')}, {v.get('voiceId')}) reading the reel's approved words.",
                   "Label it as AI-made content where the platform asks.", ""]
     if audio.get("sfx"):
-        lines += ["Effects: whoosh / riser / hit synthesised locally by Tsumagoi Studio (no third-party rights)."]
+        lines += [f"Effects: whoosh / riser / hit synthesised locally by {STUDIO_NAME} (no third-party rights)."]
     lines += ["", "Instagram / TikTok: a *_no-music.mp4 is included if you add trending audio in the app."]
     return "\n".join(lines) + "\n"

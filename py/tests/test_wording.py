@@ -19,7 +19,7 @@ def bank(tmp_path, monkeypatch):
 def _reel(slug, hook, lines, made="2026-11-10T10:00:00"):
     beats = [{"kind": "hook", "ja": hook, "en": "x", "startSec": 0.1, "endSec": 2}]
     beats += [{"kind": "line", "ja": ja, "en": "x", "startSec": 3 + i, "endSec": 4 + i} for i, ja in enumerate(lines)]
-    beats.append({"kind": "end", "ja": "嬬恋牧場Work&Camp", "en": "Tsumagoi Work&Camp", "startSec": 9, "endSec": 12})
+    beats.append({"kind": "end", "ja": "カフェ雲", "en": "Cafe Kumo", "startSec": 9, "endSec": 12})
     projects.save({"slug": slug, "theme": "office", "beats": beats, "made_at": made, "shots": []})
 
 
@@ -27,6 +27,10 @@ def _sig(d):
     return wording._key(d["hook"][0]) + "|" + "|".join(sorted(wording._key(ja) for ja, _ in d["lines"]))
 
 
+# Tests marked `ranch` draw from the ranch's own themes and word bank (its overlay); a public clone has neither.
+
+
+@pytest.mark.ranch
 def test_a_draw_uses_only_approved_lines_and_is_new(bank):
     theme = THEMES["office"]
     approved = {wording._key(r["ja"]) for r in wording.bank() if r["status"] == "approved"}
@@ -41,6 +45,7 @@ def test_a_draw_uses_only_approved_lines_and_is_new(bank):
     assert len(seen) >= 6  # twelve draws, many different reels
 
 
+@pytest.mark.ranch
 def test_a_line_is_never_inside_its_own_headline(bank):
     for seed in range(30):
         d = wording.draw("office", THEMES["office"]["slots"], random.Random(seed))
@@ -48,6 +53,7 @@ def test_a_line_is_never_inside_its_own_headline(bank):
         assert not any(wording._key(ja) in hook or hook in wording._key(ja) for ja, _ in d["lines"])
 
 
+@pytest.mark.ranch
 def test_retired_lines_and_suggestions_are_not_drawn(bank):
     office_hook = THEMES["office"]["beats"][0][1]
     wording.set_status(office_hook, "retired")
@@ -59,6 +65,7 @@ def test_retired_lines_and_suggestions_are_not_drawn(bank):
     assert any(r["status"] == "approved" and r["ja"] == "山で、\nもう一度。" for r in wording.bank())
 
 
+@pytest.mark.ranch
 def test_the_fact_guard_refuses_a_bad_line(bank):
     with pytest.raises(ValueError, match="fact guard"):
         wording.save_line("line", "1泊¥3,000から。", "From ¥3,000 a night.")
@@ -67,29 +74,28 @@ def test_the_fact_guard_refuses_a_bad_line(bank):
     assert not (bank / "words.json").exists() or "¥" not in (bank / "words.json").read_text(encoding="utf-8")
 
 
-def test_reword_keeps_shots_and_timings_and_changes_the_caption(bank):
-    theme = THEMES["office"]
-    _reel("office-b", theme["beats"][0][1], [ja for _, ja, _ in theme["beats"][1:]])
-    _reel("office-c", theme["beats"][0][1], [ja for _, ja, _ in theme["beats"][1:]], made="2026-11-10T11:00:00")
-    before = projects.load("office-c")
-    out = wording.reword("office-c", seed=3)
-    after = projects.load("office-c")
-    assert [b["startSec"] for b in after["beats"]] == [b["startSec"] for b in before["beats"]]
-    assert wording.signature(after["beats"]) != wording.signature(before["beats"])
-    assert out["fresh"] and after["posts"]["ja"].startswith(after["beats"][0]["ja"].replace("\n", ""))
-    assert after["style"] in ("column", "centre", "lower", "split") and after["tags"][0] == "#tsumagoicamp"
-    assert wording.same_words("office-b") == []  # c no longer repeats b
+def test_the_fact_guard_refuses_a_bad_line_in_any_project(bank, monkeypatch):
+    from studio import brand
+
+    # The example business's own rules (Cafe Kumo): no prices, one banned phrase.
+    monkeypatch.setattr(brand, "copy_rules", lambda: {"banned": ["食べ放題"], "noPrices": True, "registered": None, "bare": None})
+    with pytest.raises(ValueError, match="fact guard"):
+        wording.save_line("line", "ランチ¥1,200から。", "Lunch from ¥1,200.")
+    with pytest.raises(ValueError, match="fact guard"):
+        wording.save_line("hook", "食べ放題の日。", "All you can eat.")
+    assert not (bank / "words.json").exists() or "¥" not in (bank / "words.json").read_text(encoding="utf-8")
 
 
 def test_report_counts_repeats(bank):
-    theme = THEMES["office"]
+    hook, lines = "雲の上で、\nランチを。", ["席は12だけ。", "パンは毎朝焼きます。"]
     for k in range(3):
-        _reel(f"office-r{k}", theme["beats"][0][1], [ja for _, ja, _ in theme["beats"][1:]])
+        _reel(f"office-r{k}", hook, lines)
     r = wording.report()
     assert r["reels"] == 3 and r["wordSets"] == 1 and r["repeatedReels"] == 3
     assert json.dumps(r, ensure_ascii=False)  # the page reads it as JSON
 
 
+@pytest.mark.ranch
 def test_a_reworded_reel_avoids_headlines_booked_near_it_on_its_networks(bank, monkeypatch):
     from studio import posting
 
@@ -114,11 +120,16 @@ def test_lines_that_would_wrap_inside_a_word_never_go_on_screen(bank):
     assert not wording.fits_screen("昼は紅葉、夜は焚き火。\nそのあとは、あったかいラウンジへ。")  # 17 characters: ラウ / ンジ
     with pytest.raises(ValueError, match="at most 14"):
         wording.save_line("line", "とても長い一行の文章がここにあります。", "A long line.")
+
+
+@pytest.mark.ranch
+def test_every_drawn_line_fits_the_screen(bank):
     for seed in range(20):
         d = wording.draw("autumn", THEMES["autumn"]["slots"], random.Random(seed))
         assert all(wording.fits_screen(ja) for ja in [d["hook"][0], *[x for x, _ in d["lines"]]])
 
 
+@pytest.mark.ranch
 def test_one_reel_never_says_the_same_fact_twice(bank):
     for theme in ("aerial", "office", "fire", "carstay"):
         for seed in range(15):
@@ -140,6 +151,7 @@ def test_a_line_suits_the_picture_it_plays_over():
     assert wording.picture_fits("不便だからこそ、\nこの尾根が見える。", [None])        # an unknown clip never blocks
 
 
+@pytest.mark.ranch
 def test_every_draw_keeps_the_theme(bank):
     for theme, word in (("office", "work"), ("carstay", "car"), ("fire", "fire")):
         core = wording.topics_of(THEMES[theme]["beats"][0][1]) - {"sleep"}

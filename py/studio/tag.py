@@ -15,16 +15,25 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-from studio.config import SPEC, daily_budget, openrouter_key
+from studio.config import SPEC, daily_budget, openrouter_key, ranch_data
 from studio.db import connect, spent_today
 
 PROMPT = (
-    "You are logging a real shot from Tsumagoi Work&Camp in Gunma, Japan. "
+    "You are logging a real shot from a small business. "
     "Reply with JSON only: "
     '{"subject":"","action":"","mood":"","time_of_day":"","season":"","shot_type":"","quality":0,"people":false}. '
     "quality is 0-10 for a social reel. Do not invent cattle, a Milky Way, or a fire on the ground. "
     "If unsure, use empty strings."
 )
+
+
+def prompt() -> str:
+    """The tagging brief, naming whose shot it is: the ranch's place (its overlay) or the project's name."""
+    from studio.brand import brand
+
+    b = brand()
+    where = ((ranch_data("copy", {}) or {}).get("tag") or {}).get("where") if b["ranch"] else b["name"]
+    return PROMPT.replace("a small business", where, 1) if where else PROMPT
 
 
 def _usd(usage: dict) -> tuple[float, int, int]:
@@ -36,7 +45,7 @@ def _usd(usage: dict) -> tuple[float, int, int]:
 
 
 def _call(image_paths: list[str]) -> tuple[dict, dict]:
-    content: list[dict] = [{"type": "text", "text": PROMPT}]
+    content: list[dict] = [{"type": "text", "text": prompt()}]
     for path in image_paths[:3]:
         blob = Path(path).read_bytes()
         b64 = base64.b64encode(blob).decode("ascii")

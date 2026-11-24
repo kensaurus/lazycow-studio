@@ -6,8 +6,10 @@
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { assemblePage } from "../server/ui.mjs";
+import { fileURLToPath } from "node:url";
 
-const html = readFileSync(new URL("../server/editor.html", import.meta.url), "utf8");
+const html = assemblePage(fileURLToPath(new URL("..", import.meta.url)));
 const block = (name) => {
   const start = html.indexOf(`  ${name}: {`, html.indexOf("const I18N = {"));
   const end = html.indexOf("\n  },", start);

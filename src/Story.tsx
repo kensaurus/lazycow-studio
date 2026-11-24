@@ -419,7 +419,9 @@ const End: React.FC<{ beat: StoryBeat; handle: string }> = ({ beat, handle }) =>
   if (!live) return null;
   const L = storyLayout(width, height);
   const big = (L.vertical ? 132 : 112) * k.enScale;
-  const [kanji, latin] = beat.ja.includes("Work&Camp") ? [beat.ja.replace("Work&Camp", ""), "Work & Camp"] : [beat.ja, beat.en];
+  // A registered name written as kanji then a Latin "A&B" part (the ranch's) sets the two parts on two lines.
+  const split = /^([^\x00-\x7F]+)([A-Za-z]+&[A-Za-z]+)$/.exec(beat.ja);
+  const [kanji, latin] = split ? [split[1], split[2].replace("&", " & ")] : [beat.ja, beat.en];
   return (
     <>
       <AbsoluteFill style={{ background: "rgba(20,22,18,0.38)", opacity: alpha }} />

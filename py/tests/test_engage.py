@@ -13,6 +13,18 @@ from studio import engage
 NOW = datetime(2026, 11, 24, 9, 0, tzinfo=timezone.utc)
 FIX = json.loads((Path(__file__).parent / "fixtures" / "bluesky_search.json").read_text(encoding="utf-8"))
 OWN = {"did:plc:own"}
+# A made-up camping niche for the fixture's posts (a project's own niche; the ranch workspace's is in its overlay and
+# is empty in a public clone).
+NICHE = ("キャンプ", "テント", "タープ", "焚き火", "焚火", "薪", "寝袋", "シュラフ", "車中泊", "デイキャンプ", "ソロ", "野営",
+         "星空", "星", "夜空", "天の川", "流れ星", "冬", "雪", "霜", "氷点下", "寒", "山", "登山", "高原", "紅葉", "冠雪",
+         "ワーケーション", "リモートワーク", "テレワーク", "在宅", "温泉", "ドライブ", "ツーリング", "アウトドア", "ギア", "ランタン",
+         "コーヒー", "景色", "絶景", "草原", "キャンプ飯", "焼き芋", "朝焼け", "夕焼け", "湯たんぽ", "℃", "道具", "設営", "撤収",
+         "サイト", "森", "湖", "自然", "釣り", "サウナ", "BBQ", "バーベキュー", "ハンモック")
+
+
+@pytest.fixture(autouse=True)
+def _camp_niche(monkeypatch):
+    monkeypatch.setattr(engage, "NICHE", NICHE)
 
 
 def _profiles():

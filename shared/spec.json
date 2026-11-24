@@ -4,11 +4,6 @@
   "audioCodec": "aac",
   "audioRate": 48000,
   "loudnessLufs": -14,
-  "ranch": {
-    "lat": 36.5893, "lon": 138.5096, "radiusKm": 2,
-    "awayEvents": ["20250807_嬬恋牧場-summer-burn", "20250621_森のオフィス、TAKIVILLAGE"],
-    "awayEventsNote": "Event folders the owner has said were not shot at the ranch. They outrank any single file's GPS (owner, 2026-11-07: summer-burn is not Tsumagoi)."
-  },
   "brand": { "moss": "#4d6b52", "paper": "#faf8f1", "ink": "#1c1a14", "display": "Shippori Mincho" },
   "variants": {
     "_note": "Cut families per network (docs/research/2026-11-08-networks-variants.md §3). channels.json names each network's family. a-loop is today's edit; b-explainer is made by Make reels > Cut > Long explainer (py/studio/assemble.py long_theme) and packaged only for b-explainer channels; c-silent uses the 16:9 master (captions are already burnt in); long-tour is a separate, hand-made project.",
@@ -28,18 +23,5 @@
     "usdPerMInput": 0.825,
     "usdPerMOutput": 4.125
   },
-  "bannedSubstrings": [
-    "milky way",
-    "天の川",
-    "cattle",
-    "牛",
-    "cow",
-    "cows",
-    "直火",
-    "ground fire",
-    "campground",
-    "キャンプ場",
-    "numbered plot", "満天", "光害"
-  ],
   "pricePattern": "[¥$]|\\\\d+円"
 }

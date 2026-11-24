@@ -16,7 +16,7 @@ It is **not** generic shadcn/Tailwind slop any more (no violet gradients, no rou
 filler words). But it is **not one of a kind yet** either. The frame is a borrowed look (a terminal plus the Monokai
 editor palette), applied the same way to every section, with an icon on almost everything. That pattern is common
 in 2026 "brutalist / terminal" AI-built dashboards. What only this studio has (the ranch's own footage, the Mincho
-voice, Tsumagoi time and seasons) is underused.
+voice, the place's own time and seasons) is underused.
 
 ## Slop score
 

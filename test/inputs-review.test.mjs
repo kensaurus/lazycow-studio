@@ -9,8 +9,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { REJECT_REASONS } from "../server/trust.mjs";
+import { assemblePage } from "../server/ui.mjs";
+import { fileURLToPath } from "node:url";
 
-const html = readFileSync(new URL("../server/editor.html", import.meta.url), "utf8");
+const html = assemblePage(fileURLToPath(new URL("..", import.meta.url)));
 const py = readFileSync(new URL("../py/studio/review_actions.py", import.meta.url), "utf8");
 
 /** The td_ keys of the Object.assign(I18N.<lang>, {...}) pack that holds them. */

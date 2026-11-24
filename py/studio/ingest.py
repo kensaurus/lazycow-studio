@@ -15,17 +15,16 @@ import re
 import subprocess
 from pathlib import Path
 
-from studio.config import DATA, ensure_dirs, ffmpeg_bin
+from studio.config import DATA, RANCH_BRAND, ensure_dirs, ffmpeg_bin
 from studio.db import connect, connect_autocommit
 from studio.media import PHOTO, VIDEO, captured_from_name, device_of, exif_photo, file_sha256, near_ranch, parse_srt, probe_video
 
 KEEP = VIDEO | PHOTO | {".srt"}
 
 
-OUTPUT_DIRS = {"tsumagoi-video-edit-sns", "ready", "drafts", "_superseded_20261107"}
+OUTPUT_DIRS = {*([RANCH_BRAND["driveFolder"]] if RANCH_BRAND.get("driveFolder") else []), "ready", "drafts", "_superseded_20261107"}
 EDITED_NAME = re.compile(r"_reel_|_(9x16|16x9|4x5)(_|\.)", re.I)
 
-
 
 def captured_time(tagged: str | None, path: Path, mtime: float) -> str | None:
     """When it was filmed: the file's own tag, unless it is the zero date (Google Photos' video copies carry
@@ -190,49 +189,21 @@ def ingest(
             )
             added += 1
             asset_id = con.execute("SELECT id FROM assets WHERE path = ?", (str(path),)).fetchone()["id"]
-            if kind == "telemetry":
+            if kind == "telemetry":  # a DJI flight log: its rows wait under its own id; join_srt below hands them to its video
                 con.execute("DELETE FROM telemetry WHERE asset_id = ?", (asset_id,))
-                stem = path.stem.lower()
-                video = con.execute(
-                    "SELECT id FROM assets WHERE kind = 'video' AND lower(path) LIKE ?",
-                    (f"%{stem}%",),
-                ).fetchone()
-                target = video["id"] if video else asset_id
-                for row_t in parse_srt(path):
-                    con.execute(
-                        "INSERT INTO telemetry (asset_id, t, lat, lon, rel_alt) VALUES (?, ?, ?, ?, ?)",
-                        (target, row_t["t"], row_t["lat"], row_t["lon"], row_t["rel_alt"]),
-                    )
-                if video:
-                    sample = con.execute(
-                        "SELECT lat, lon FROM telemetry WHERE asset_id = ? AND lat IS NOT NULL LIMIT 1",
-                        (video["id"],),
-                    ).fetchone()
-                    if sample:
-                        con.execute(
-                            "UPDATE assets SET lat = ?, lon = ?, near_ranch = ? WHERE id = ?",
-                            (sample["lat"], sample["lon"], near_ranch(sample["lat"], sample["lon"]), video["id"]),
-                        )
+                con.executemany(
+                    "INSERT INTO telemetry (asset_id, t, lat, lon, rel_alt) VALUES (?, ?, ?, ?, ?)",
+                    [(asset_id, r["t"], r["lat"], r["lon"], r["rel_alt"]) for r in parse_srt(path)],
+                )
             if do_proxy and kind == "video":
                 proxy = _proxy(path, asset_id)
                 if proxy:
                     con.execute("UPDATE assets SET proxy_path = ? WHERE id = ?", (str(proxy), asset_id))
-        for srt in con.execute("SELECT id, path FROM assets WHERE kind = 'telemetry'").fetchall():
-            stem = Path(srt["path"]).stem.lower()
-            video = con.execute(
-                "SELECT id FROM assets WHERE kind = 'video' AND lower(path) LIKE ? AND id != ?",
-                (f"%{stem}%", srt["id"]),
-            ).fetchone()
-            if not video:
-                continue
-            con.execute("UPDATE telemetry SET asset_id = ? WHERE asset_id = ?", (video["id"], srt["id"]))
-            sample = con.execute(
-                "SELECT lat, lon FROM telemetry WHERE asset_id = ? AND lat IS NOT NULL LIMIT 1",
-                (video["id"],),
-            ).fetchone()
-            if sample:
-                con.execute(
-                    "UPDATE assets SET lat = ?, lon = ?, near_ranch = ? WHERE id = ? AND lat IS NULL",
-                    (sample["lat"], sample["lon"], near_ranch(sample["lat"], sample["lon"]), video["id"]),
-                )
+        # A drone video takes its own log's first fix (same name, same folder); then files with no position take one
+        # from a GPS file filmed close in time (studio.gps; estimates are kept apart and recomputed every run).
+        from studio import gps
+
+        gps.join_srt(con)
+        if added:
+            gps.estimate_all(con)
     return {"seen": seen, "upserted": added}

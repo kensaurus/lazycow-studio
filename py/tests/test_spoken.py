@@ -6,7 +6,7 @@ from studio.reels import spoken_spans
 BEATS = [
     {"kind": "hook", "ja": "朝は\n霧の中", "startSec": 0.0, "endSec": 2.5},
     {"kind": "line", "ja": "標高1444m", "startSec": 3.0, "endSec": 5.0},
-    {"kind": "end", "ja": "嬬恋牧場", "startSec": 6.0, "endSec": 8.0},
+    {"kind": "end", "ja": "カフェ雲", "startSec": 6.0, "endSec": 8.0},
 ]
 VOICE = {"lines": [{"text": "朝は霧の中", "at": 0.15, "seconds": 1.8, "tempo": 1.2, "file": "a.mp3"},
                    {"text": "標高1444m", "at": 3.15, "seconds": 1.5, "tempo": 1.0, "file": "b.mp3"}]}

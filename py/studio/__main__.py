@@ -3,7 +3,8 @@ FILE: py/studio/__main__.py
 PURPOSE: Command line for the studio.
 OVERVIEW: ingest, shots, tag, luts, reels (build / package / remix), vlog, review, extras, verify,
           youtube (connect / upload / schedule / list), posts (posting log and reminders),
-          gphotos (pick and import footage from Google Photos).
+          gphotos (pick and import footage from Google Photos), media backfill-gps (positions from video tags,
+          drone logs and time), places (offline place names: status / download).
 DEPENDENCIES: the studio package
 USAGE: python -m studio <command>
 NOTES: Paid calls stay inside the daily budget. Gap-fill stays dry without --confirm.
@@ -173,6 +174,12 @@ def main() -> None:
     fo = sub.add_parser("footage", help="footage left, cameras, reuse and what to film next")
     fo.add_argument("action", choices=["health", "cameras"])
     fo.add_argument("--limit", type=int, default=5000)
+    md = sub.add_parser("media", help="positions: backfill-gps fills empty ones from video tags and drone logs, then estimates the rest by time")
+    md.add_argument("action", choices=["backfill-gps", "gps-report"])
+    md.add_argument("--limit", type=int, default=None)
+    pl = sub.add_parser("places", help="place names (GeoNames, offline): status, or download world | a country code such as JP")
+    pl.add_argument("action", choices=["status", "download"])
+    pl.add_argument("which", nargs="?", default="world")
     gp = sub.add_parser("gphotos", help="bring footage in from Google Photos (Picker API)")
     gp.add_argument("action", choices=["status", "auth-url", "exchange", "session", "poll", "import"])
     gp.add_argument("--id", default=None)
@@ -525,6 +532,21 @@ def main() -> None:
         from studio import footage
 
         out = footage.health() if args.action == "health" else footage.backfill_cameras(args.limit)
+        print("RESULT " + json.dumps(out, ensure_ascii=False, default=str))
+    elif args.cmd == "media":
+        from studio import gps
+        from studio.db import connect
+
+        if args.action == "backfill-gps":
+            out = gps.backfill(args.limit)
+        else:
+            with connect() as con:
+                out = gps.report(con)
+        print("RESULT " + json.dumps(out, ensure_ascii=False, default=str))
+    elif args.cmd == "places":
+        from studio import places
+
+        out = places.status() if args.action == "status" else places.download(args.which)
         print("RESULT " + json.dumps(out, ensure_ascii=False, default=str))
     elif args.cmd == "gphotos":
         from studio import gphotos

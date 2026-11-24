@@ -1,12 +1,14 @@
 """Point the catalog at a throwaway folder before studio.config is imported.
 
-The tests' main project is the built-in reference workspace (Tsumagoi Work&Camp: its themes, place and copy rules are in
-the code and shared/spec.json), so STUDIO_RANCH defaults to 1 here. Neutral projects are tested with the `neutral`
-fixture (test_brand.py) and a neutral process (test_a_neutral_process_...)."""
+The tests' main project is the ranch workspace (the owner's: its themes, place and copy rules are in its overlay,
+shared/ranch/*.json, which a public clone does not have), so STUDIO_RANCH defaults to 1 here. A test that needs the
+overlay's words is marked `ranch` (skipped in a clone); one that checks a neutral project never shows them takes the
+`ranch_words` fixture. Neutral projects are tested with the `neutral` fixture (test_brand.py) and a neutral process
+(test_a_neutral_process_...)."""
 import os
 import tempfile
 
-os.environ["STUDIO_DATA"] = tempfile.mkdtemp(prefix="tsumagoi-studio-test-")
+os.environ["STUDIO_DATA"] = tempfile.mkdtemp(prefix="lazycow-studio-test-")
 os.environ["STUDIO_AESTHETIC_FETCH"] = "0"  # no download of the aesthetic head during tests
 os.environ.setdefault("STUDIO_RANCH", "1")
 
@@ -36,8 +38,8 @@ def _no_real_keys(tmp_path_factory, monkeypatch):
 
 
 def pytest_collection_modifyitems(config, items):
-    """A test marked `ranch` reads the owner's own Tsumagoi files (the ranch overlay: shared/reels.json, words,
-    house reels). A public clone has none, so it is skipped there with the reason; in the owner's checkout every one runs."""
+    """A test marked `ranch` reads the owner's own ranch files (the ranch overlay: shared/reels.json, shared/ranch/*.json,
+    words, house reels). A public clone has none, so it is skipped there with the reason; in the owner's checkout every one runs."""
     import pytest
     from studio.config import RANCH_MARKER
 
@@ -47,3 +49,12 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if item.get_closest_marker("ranch"):
             item.add_marker(skip)
+
+
+@pytest.fixture
+def ranch_words() -> tuple:
+    """The ranch's own names and markers (shared/ranch/brand.json "markers", part of the ranch overlay), for a test that
+    checks a neutral project never shows them. Empty in a public clone, which has no ranch words to leak."""
+    from studio.config import RANCH_BRAND
+
+    return tuple(RANCH_BRAND.get("markers") or ())

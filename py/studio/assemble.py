@@ -11,7 +11,8 @@ DEPENDENCIES: studio.library, studio.projects, studio.guard
 USAGE: assemble(THEMES["office"], slug="office-1102") or python -m studio assemble office
 NOTES: Copy comes only from the website SSOT or the approved channel copy in
        docs/marketing/SOCIAL_CHANNELS.md. The assembler never writes new claims.
-       The themes below are the Tsumagoi workspace's (RANCH_THEMES). A project made in the studio has only its
+       The ranch workspace's built-in themes are part of its overlay (shared/ranch/themes.json, RANCH_THEMES). A
+       project made in the studio, and every project of a public clone, has only its
        own themes, written by a person in the theme editor (<data>/themes.json, load_themes()); their words are
        approved by being typed there and pass the project's own guard.
 """
@@ -27,7 +28,7 @@ from pathlib import Path
 import numpy as np
 
 from studio.aesthetic import nudge
-from studio.config import DATA, RANCH, SOURCE
+from studio.config import DATA, RANCH, RANCH_BRAND, SOURCE, ranch_data
 from studio.guard import assert_copy
 from studio.library import items
 from studio.projects import save
@@ -40,419 +41,36 @@ RHYTHM = [2.0, 1.5, 1.0, 1.5, 1.5, 1.0, 1.5, 2.0, 3.0]
 # venue shots, held longer, and the theme's lines plus venue facts already approved in the posts (no prices
 # on screen: the copy guard still runs on every line).
 LONG_RHYTHM = [3.5, 3.0, 3.5, 3.0, 3.5, 3.0, 3.5, 3.0, 3.5, 3.0, 3.5, 3.0, 3.5, 4.0]  # 46.5 s; photos (held 2 s at most) bring it to ~40
-VENUE_SLOTS = [
-    "a laptop on a desk for remote work", "the inside of a lounge room", "a wide view of an open grass field",
-    "the outside of a wooden building with a blue roof", "a wide view of mountains and ridges at dusk",
-]
-VENUE_LINES = [
-    ("line", "標高1,444m、\n100Mbpsの光回線。", "Fibre at 1,444 m."),
-    ("line", "一般開放日は、\n1日5組まで。", "Open days: five groups at most."),
-    ("line", "イベントは、\n50名まで。", "Events: up to 50 people."),
-]
+# The ranch's venue shots and facts for it (shared/ranch/copy.json "assemble"); a clone, and any other project, has none.
+_RANCH_COPY: dict = ((ranch_data("copy", {}) or {}).get("assemble") or {}) if RANCH else {}
+VENUE_SLOTS: list[str] = list(_RANCH_COPY.get("venueSlots") or [])
+VENUE_LINES: list[tuple] = [tuple(b) for b in _RANCH_COPY.get("venueLines") or []]
 
 
 def long_theme(theme: dict) -> dict:
     """The theme stretched into a 40-60 s explainer: up to 14 slots and 7 caption lines, spread evenly."""
-    slots = list(theme["slots"]) + [s for s in VENUE_SLOTS if s not in theme["slots"]]
+    venue_slots, venue_lines = (VENUE_SLOTS, VENUE_LINES) if RANCH else ([], [])  # venue facts are the ranch's
+    slots = list(theme["slots"]) + [s for s in venue_slots if s not in theme["slots"]]
     for k in range(len(LONG_RHYTHM) - len(slots)):  # still short: search the theme's lines again (a file is never used twice)
         slots.append(theme["slots"][1 + k % (len(theme["slots"]) - 1)])
     seen = {ja.replace("\n", "") for _, ja, _ in theme["beats"]}
-    extra = [b for b in VENUE_LINES if b[1].replace("\n", "") not in seen and not any(b[1].split("\n")[0].rstrip("、") in s for s in seen)]
+    extra = [b for b in venue_lines if b[1].replace("\n", "") not in seen and not any(b[1].split("\n")[0].rstrip("、") in s for s in seen)]
     return {**theme, "slots": slots[: len(LONG_RHYTHM)], "beats": (list(theme["beats"]) + extra)[:8], "cues": []}
 
-THEMES = {
-    "office": {
-        "title_ja": "山で働く。冬でも、夜通しでも。",
-        "slots": [
-            "a wide view of mountains from a deck", "the outside of a wooden building with a blue roof", "a laptop on a desk for remote work",
-            "the inside of a lounge room", "a view of mountains through a large window", "a wooden deck with tables and a railing",
-            "a car parked next to a tent on grass", "bell tents on a field", "a wide view of mountains and ridges at dusk",
-        ],
-        "cues": [2, 4, 6],
-        "beats": [
-            ("hook", "山で働く。\n冬でも、夜通しでも。", "Work in the mountains. Even in winter. Even all night."),
-            ("line", "標高1,444m、\n100Mbpsの光回線。", "Fibre at 1,444 m."),
-            ("line", "窓の外に、\n建物はありません。", "No buildings outside the window."),
-            ("line", "寝るのは、\n自分の車かテント。", "You sleep in your own car or a tent."),
-        ],
-        "posts": {
-            "ja": "標高1,444m、100Mbpsの光回線。窓の外に建物はありません。\n山で働く。冬でも、夜通しでも。寝るのは、自分の車かテント。",
-            "en": "Fibre at 1,444 m. No buildings outside the window.\nWork in the mountains. Even in winter. Even all night. You sleep in your own car or a tent.",
-            "price_ja": "ぜんぶ込みキャンプ：大人1人目 ¥7,200／泊・2人目から1名 ¥4,200。シャワー・こたつラウンジ（24時間）・ジムまで込み。",
-            "linkedin": "標高1,444m、100Mbpsの光回線。窓の外に建物はありません。\n山まるごとの貸切は一律料金です。〜30名で日帰り¥120,000／テント泊¥180,000、31〜50名で¥180,000／¥250,000。\n\n山で働く。冬でも、夜通しでも。チームの合宿を、この窓の前で。",
-            "path": "reserve",
-            "x": "標高1,444m、100Mbpsの光回線。窓の外に建物はありません。\n山で働く。冬でも、夜通しでも。",
-            "zh": "在山上工作。冬天也行，通宵也行。\n海拔1,444米，100Mbps光纤网络，窗外没有建筑。\n睡在自己的车里或帐篷里。\n群马县嬬恋村・嬬恋牧场Work&Camp",
-        },
-        "tags": ["#tsumagoicamp", "#嬬恋", "#ワーケーション", "#光回線"],
-        "yt_title": "標高1,444mの光回線で働く｜嬬恋牧場Work&Camp",
-    },
-    "carstay": {
-        "title_ja": "車で来て、車で寝る。",
-        "slots": [
-            "an aerial drone view of a field with cars", "a van parked on grass", "a car parked in a parking lot with mountains",
-            "a road or path through the hills", "a white van in an open field", "the outside of a wooden building with a blue roof",
-            "a wide view of mountains and ridges", "an open grass field at dusk", "a wide view of an open grass field",
-        ],
-        "cues": [2, 5, 7],
-        "beats": [
-            ("hook", "車で来て、\n車で寝る。", "Come by car. Sleep in your car."),
-            ("line", "大駐車場を、\n1晩5台まで。", "The big car park, five vehicles a night."),
-            ("line", "トイレ・共用キッチン・\nWi-Fi込み。", "Toilets, the shared kitchen and Wi-Fi included."),
-            ("line", "フィールドに灯りはありません。\nゆっくりお走りください。", "No lights on the field. Drive slowly after dark."),
-        ],
-        "posts": {
-            "ja": "車で来て、車で寝る。それだけの日のために、大駐車場を1晩5台まで。\nトイレ・共用キッチン・冷蔵庫・Wi-Fi込みです。",
-            "en": "Come by car, sleep in your car. The big car park, five vehicles a night.\nToilets, the shared kitchen, a fridge and Wi-Fi included.",
-            "price_ja": "車中泊：1台 ¥3,500／泊（大人2名まで込み・3人目から1名 +¥1,000）。",
-            "linkedin": "車で来て、車で寝る。それだけの日のために、大駐車場を1晩5台まで。\n山まるごとの貸切は一律料金です。〜30名で日帰り¥120,000／テント泊¥180,000、31〜50名で¥180,000／¥250,000。駐車は100台超。",
-            "path": "reserve",
-            "x": "車で来て、車で寝る。\n大駐車場を1晩5台まで。トイレ・共用キッチン・Wi-Fi込み。",
-            "zh": "开车来，睡在车里。\n大停车场每晚最多5辆车，含厕所、共用厨房和Wi-Fi。\n群马县嬬恋村・嬬恋牧场Work&Camp",
-        },
-        "tags": ["#tsumagoicamp", "#車中泊", "#嬬恋", "#群馬"],
-        "yt_title": "車中泊｜大駐車場を1晩5台まで｜嬬恋牧場Work&Camp",
-    },
-    "autumn": {
-        "title_ja": "不便だからこそ、景色がいい。",
-        "slots": [
-            "autumn leaves in orange and red on mountains", "a wooden deck with a pizza oven and mountains", "an aerial drone view of autumn forest",
-            "a road through an autumn forest", "a fire burning in a pizza oven", "a wooden deck facing a grass field",
-            "an open grass field in autumn", "bell tents on a field in autumn", "a wide view of mountains and ridges",
-        ],
-        "cues": [2, 5],
-        "beats": [
-            ("hook", "不便だからこそ、\n景色がいい。", "Hard to reach. That is why the view is this good."),
-            ("line", "いちばん近い民家まで、\n道のりで約10km。", "About 10 km by road to the nearest homes."),
-            ("line", "デッキの前は草原、\nその先に山の尾根。", "In front of the deck: grassland, then the ridges."),
-        ],
-        "posts": None,
-        "tags": ["#tsumagoicamp", "#嬬恋", "#紅葉", "#浅間山"],
-        "yt_title": "紅葉の嬬恋｜標高1,444m｜嬬恋牧場Work&Camp",
-    },
-}
 
-# More themes, every word from the website SSOT (src/constants/reversal-lines.ts,
-# place-line.ts: REVERSAL_LINES, CORE_LINE, SLEEP_LINE, POSITIONING_PILLARS).
-# "posts_from" borrows the approved channel copy (prices, LinkedIn text, path) of a house reel;
-# "post" replaces the opening lines with this theme's own headline and proof.
-THEMES.update({
-    "fire": {
-        "title_ja": "お店がないからこそ、同じ火を囲む。",
-        "style": "centre",
-        "slots": [
-            "flames in a brick fire pit at night", "a wooden deck at dusk with mountains", "a kitchen counter with cooking",
-            "food cooking on a grill over fire", "a pizza oven with fire inside", "a fire pit with chairs around it at night",
-            "a wooden deck with tables and lights at night", "glowing embers of a campfire", "the outside of a wooden building at dusk",
-        ],
-        "cues": [2, 4, 6],
-        "beats": [
-            ("hook", "お店がないからこそ、\n同じ火を囲む。", "No restaurant. So you sit around one fire."),
-            ("line", "レストランも\n店員もいません。", "No restaurant and no staff."),
-            ("line", "共用キッチンで、\n自分で作って。", "You cook in the shared kitchen,"),
-            ("line", "デッキの焚き火台へ。", "and bring it to the fire on the deck."),
-        ],
-        "posts_from": "fire",
-        "tags": ["#tsumagoicamp", "#焚き火", "#嬬恋", "#キャンプ飯"],
-        "yt_title": "お店がないからこそ、同じ火を囲む｜嬬恋牧場Work&Camp",
-    },
-    "field": {
-        "title_ja": "区画がないからこそ、好きな場所に張れる。",
-        "style": "lower",
-        "slots": [
-            "an aerial drone view of tents on a wide grass field", "a bell tent on grass", "a tent on a hill with mountains behind",
-            "a wide open grass field on a hill", "tents and cars on a field from above", "a camping chair on grass",
-            "a tent at dusk", "a grass field with mountain ridges", "a wide aerial view of a green field and forest",
-        ],
-        "cues": [3, 6],
-        "beats": [
-            ("hook", "区画がないからこそ、\n好きな場所に張れる。", "No marked pitches. So you pitch wherever you like."),
-            ("line", "区画のない、\nひとつの草原。", "One open field with no marked pitches."),
-            ("line", "1日5組までだから、\nとなりのテントが近すぎない。", "At most 5 groups a night, so the next tent is never too close."),
-        ],
-        "posts_from": "field",
-        "tags": ["#tsumagoicamp", "#フリーサイト", "#嬬恋", "#キャンプ"],
-        "yt_title": "区画がないからこそ、好きな場所に張れる｜嬬恋牧場Work&Camp",
-    },
-    "warm": {
-        "title_ja": "寒いからこそ、ぬくもりがうれしい。",
-        "style": "split",
-        "slots": [
-            "an aerial view of snow covered hills", "a wooden building in snow", "snow on mountain ridges",
-            "a warm lounge interior with wooden tables", "a laptop on a desk by a window", "frost and snow on trees",
-            "a car parked in snow", "a snowy field at dusk", "an aerial view of a snowy forest and road",
-        ],
-        "cues": [3, 6],
-        "beats": [
-            ("hook", "寒いからこそ、\nぬくもりがうれしい。", "Cold. That is why warmth feels this good."),
-            ("line", "外は氷点下。\n中は、こたつと光回線。", "Below zero outside. A kotatsu and fibre inside."),
-            ("line", "寝るのは、\n自分の車かテント。", "You sleep in your own car or a tent."),
-        ],
-        "posts_from": "winter",
-        "post": {"ja": "寒いからこそ、ぬくもりがうれしい。\n冬の夜は氷点下。中は、こたつと光回線。寝るのは、自分の車かテント。",
-                 "en": "Cold. That is why warmth feels this good.\nWinter nights go below zero. A kotatsu and fibre inside. You sleep in your own car or a tent.",
-                 "x": "寒いからこそ、ぬくもりがうれしい。\n外は氷点下。中は、こたつと光回線。"},
-        "tags": ["#tsumagoicamp", "#冬キャンプ", "#嬬恋", "#雪"],
-        "yt_title": "寒いからこそ、ぬくもりがうれしい｜嬬恋牧場Work&Camp",
-    },
-    "loud": {
-        "title_ja": "遠いからこそ、騒げる。",
-        "style": "centre",
-        "slots": [
-            "an aerial view of a long road through a forest", "a remote building on a hill from above", "a wide open field with no houses",
-            "a fire pit at night", "tents and cars on a field from above", "camping chairs around a fire",
-            "a wooden deck with tables at night", "a field at dusk", "a wide aerial view of mountains and forest",
-        ],
-        "cues": [2, 5],
-        "beats": [
-            ("hook", "遠いからこそ、\n騒げる。", "Far away. So you can be loud."),
-            ("line", "お隣さんまで、\n道のりで約10km。", "About 10 km by road to the nearest homes."),
-            ("line", "22:00までは、\n笑い声も気にせずに。", "Laugh as loud as you like until 22:00."),
-        ],
-        "posts_from": "view",
-        "post": {"ja": "遠いからこそ、騒げる。\nお隣さんまで道のりで約10km。22:00までは笑い声も気にせずに。全面貸切なら、静かにする時間はありません。",
-                 "en": "Far away. So you can be loud.\nAbout 10 km by road to the nearest homes. Laugh as loud as you like until 22:00; on a whole-site charter there are no quiet hours.",
-                 "x": "遠いからこそ、騒げる。\nお隣さんまで道のりで約10km。22:00までは笑い声も気にせずに。"},
-        "tags": ["#tsumagoicamp", "#貸切", "#嬬恋", "#グループキャンプ"],
-        "yt_title": "遠いからこそ、騒げる｜嬬恋牧場Work&Camp",
-    },
-    "lookup": {
-        "title_ja": "暗いからこそ、上を向く。",
-        "style": "lower",
-        "slots": [
-            "a field at dusk with a dark blue sky", "a sunset sky over mountain ridges", "a dramatic evening sky with clouds",
-            "a dark field at night", "a campfire at night", "a tent glowing at night",
-            "the silhouette of mountains at dusk", "a night sky over a field", "the last light over the mountains",
-        ],
-        "cues": [3, 6],
-        "beats": [
-            ("hook", "暗いからこそ、\n上を向く。", "Dark at night. So you look up."),
-            ("line", "夜のフィールドに\n照明はありません。", "The field has no lights at night."),
-            ("line", "晴れた夜は、\n星もくっきり見えます。", "On a clear night, the stars are sharp."),
-        ],
-        "posts_from": "view",
-        "post": {"ja": "暗いからこそ、上を向く。\n夜のフィールドに照明はありません。晴れた夜は、星もくっきり見えます。",
-                 "en": "Dark at night. So you look up.\nThe field has no lights at night. On a clear night, the stars are sharp.",
-                 "x": "暗いからこそ、上を向く。\n夜のフィールドに照明はありません。晴れた夜は、星もくっきり見えます。"},
-        "tags": ["#tsumagoicamp", "#夜", "#嬬恋", "#キャンプ"],
-        "yt_title": "暗いからこそ、上を向く｜嬬恋牧場Work&Camp",
-    },
-    "focus": {
-        "title_ja": "山にこもって、どこまで進むか。",
-        "style": "split",
-        "slots": [
-            "a laptop on a wooden desk with a mountain view", "mountains seen through a large window", "the inside of a quiet lounge",
-            "a wide view of mountains from a deck", "a desk by a window", "a quiet forest",
-            "the outside of a wooden building with a blue roof", "a cup of coffee on a table", "a wide view of mountains and ridges at dusk",
-        ],
-        "cues": [3, 6],
-        "beats": [
-            ("hook", "山にこもって、\nどこまで進むか。", "Go up the mountain. See how far you get."),
-            ("line", "標高1,444m、\n100Mbpsの光回線。", "Fibre at 1,444 m."),
-            ("line", "寝るのは、\n自分の車かテント。", "You sleep in your own car or a tent."),
-        ],
-        "posts_from": "winter",
-        "post": {"ja": "山にこもって、どこまで進むか。\n標高1,444m、100Mbpsの光回線。寝るのは、自分の車かテント。",
-                 "en": "Go up the mountain. See how far you get.\nFibre at 1,444 m. You sleep in your own car or a tent.",
-                 "x": "山にこもって、どこまで進むか。\n標高1,444m、100Mbpsの光回線。"},
-        "tags": ["#tsumagoicamp", "#ワーケーション", "#嬬恋", "#集中"],
-        "yt_title": "山にこもって、どこまで進むか｜嬬恋牧場Work&Camp",
-    },
-    "connect": {
-        "title_ja": "仕事は浅く、つながりは深く。",
-        "style": "column",
-        "slots": [
-            "a wooden deck with long tables and mountains", "a fire pit with chairs around it", "a long table with food outdoors",
-            "tents together on a field", "a wide view from a deck at dusk", "a kitchen counter with cooking",
-            "a group of tents and cars from above", "a deck with lights at night", "a wide view of mountains and ridges",
-        ],
-        "cues": [3, 6],
-        "beats": [
-            ("hook", "仕事は浅く、\nつながりは深く。", "Work shallower. Connect deeper."),
-            ("line", "東京の逆を、\n山で。", "The opposite of Tokyo."),
-            ("line", "標高1,444m。", "1,444 m up."),
-        ],
-        "posts_from": "fire",
-        "post": {"ja": "仕事は浅く、つながりは深く。東京の逆を、山で。\n標高1,444m。寝るのは、自分の車かテント。",
-                 "en": "Work shallower. Connect deeper. The opposite of Tokyo.\n1,444 m up. You sleep in your own car or a tent.",
-                 "x": "仕事は浅く、つながりは深く。東京の逆を、山で。"},
-        "tags": ["#tsumagoicamp", "#オフサイト", "#チームビルディング", "#嬬恋"],
-        "yt_title": "仕事は浅く、つながりは深く｜嬬恋牧場Work&Camp",
-    },
-    "aerial": {
-        "title_ja": "不便だからこそ、景色がいい。",
-        "style": "centre",
-        "slots": [
-            "an aerial drone view of mountain ridges", "an aerial view of a forest and a winding road", "an aerial view of a building on a green hill",
-            "an aerial view of an open grass field", "an aerial view of tents on a field", "an aerial view of autumn forest",
-            "an aerial view of clouds over mountains", "an aerial view of a field and forest edge", "a wide aerial view of mountains",
-        ],
-        "cues": [3, 6],
-        "beats": [
-            ("hook", "不便だからこそ、\n景色がいい。", "Hard to reach. That is why the view is this good."),
-            ("line", "標高1,444m。", "1,444 m up."),
-            ("line", "いちばん近い民家まで、\n道のりで約10km。", "About 10 km by road to the nearest homes."),
-        ],
-        "posts_from": "view",
-        "tags": ["#tsumagoicamp", "#ドローン", "#嬬恋", "#絶景"],
-        "yt_title": "標高1,444mを空から｜嬬恋牧場Work&Camp",
-    },
-})
-THEMES["aerial"]["device"] = ["dji"]
-THEMES["warm"]["boost"] = {"season": "winter", "tags": ["snow"]}
-THEMES["fire"]["boost"] = {"tags": ["fire", "night", "grill"]}
-THEMES["lookup"]["boost"] = {"tags": ["night", "sunset", "sky"]}
-THEMES["autumn"]["boost"] = {"season": "autumn", "tags": ["autumn"]}
-THEMES["office"]["style"] = "column"
-THEMES["carstay"]["style"] = "lower"
-THEMES["autumn"]["style"] = "split"
-THEMES["autumn"]["posts_from"] = "view"
+def _ranch_themes() -> dict:
+    """The ranch workspace's built-in themes (shared/ranch/themes.json, part of the ranch overlay), each beat a
+    (kind, ja, en) tuple. Any other project, and a clone without the overlay, has none: its themes are the ones a
+    person writes."""
+    themes = ((ranch_data("themes", {}) or {}).get("themes") or {}) if RANCH else {}
+    return {k: {**t, "beats": [tuple(b) for b in t.get("beats", [])]} for k, t in themes.items()}
 
-# Recipe themes (2026-11-08, docs/research/2026-11-08-reel-effects.md): the same approved lines, staged
-# differently. `look` and `recipe` are defaults (studio/staging.py, src/looks.tsx); `kicker` is a framing
-# label, not a claim (guard-checked like every line); `loop` ends on the opening frame.
-# `slot_season` (split pairs) prefers a season per slot; marks shown on screen come from each clip's data.
-THEMES.update({
-    "reasons": {
-        "title_ja": "ここで働く、3つの理由。",
-        "recipe": "countdown", "look": "punch", "style": "centre", "loop": True,
-        "kicker": {"ja": "ここで働く、3つの理由。", "en": "Three reasons to work from here."},
-        "slots": [
-            "a wide view of mountains from a deck", "a laptop on a desk for remote work", "a laptop on a wooden desk with a mountain view",
-            "mountains seen through a large window", "a view of mountains through a large window", "a wide open field with no houses",
-            "a car parked next to a tent on grass", "bell tents on a field", "a wide view of mountains and ridges at dusk",
-        ],
-        "cues": [2, 4, 6],
-        "beats": [
-            ("hook", "山で働く。\n冬でも、夜通しでも。", "Work in the mountains. Even in winter. Even all night."),
-            ("line", "標高1,444m、\n100Mbpsの光回線。", "Fibre at 1,444 m."),
-            ("line", "窓の外に、\n建物はありません。", "No buildings outside the window."),
-            ("line", "寝るのは、\n自分の車かテント。", "You sleep in your own car or a tent."),
-        ],
-        "posts_from": "winter",
-        "post": {"ja": "山で働く。冬でも、夜通しでも。\n標高1,444m、100Mbpsの光回線。窓の外に建物はありません。寝るのは、自分の車かテント。",
-                 "en": "Work in the mountains. Even in winter. Even all night.\nFibre at 1,444 m. No buildings outside the window. You sleep in your own car or a tent.",
-                 "x": "山で働く。冬でも、夜通しでも。\n標高1,444m、100Mbpsの光回線。窓の外に建物はありません。"},
-        "tags": ["#tsumagoicamp", "#ワーケーション", "#嬬恋", "#リモートワーク"],
-        "yt_title": "ここで働く、3つの理由｜標高1,444mの光回線｜嬬恋牧場Work&Camp",
-    },
-    "day": {
-        "title_ja": "山の一日。",
-        "recipe": "timeline", "look": "film", "style": "centre", "loop": True,
-        "kicker": {"ja": "山の一日。", "en": "One day on the mountain."},
-        "slots": [
-            "morning light over mountain ridges", "a cup of coffee on a wooden deck", "a laptop on a desk by a window",
-            "a wide open grass field in sunshine", "a kitchen counter with cooking", "a sunset sky over mountain ridges",
-            "a fire pit with chairs around it at dusk", "a tent glowing at night", "a campfire at night",
-        ],
-        "cues": [2, 4, 6],
-        "beats": [
-            ("hook", "山にこもって、\nどこまで進むか。", "Go up the mountain. See how far you get."),
-            ("line", "標高1,444m、\n100Mbpsの光回線。", "Fibre at 1,444 m."),
-            ("line", "共用キッチンで、\n自分で作って。", "You cook in the shared kitchen,"),
-            ("line", "デッキの焚き火台へ。", "and bring it to the fire on the deck."),
-        ],
-        "posts_from": "fire",
-        "post": {"ja": "山にこもって、どこまで進むか。\n標高1,444m、100Mbpsの光回線。共用キッチンで自分で作って、デッキの焚き火台へ。",
-                 "en": "Go up the mountain. See how far you get.\nFibre at 1,444 m. You cook in the shared kitchen, and bring it to the fire on the deck.",
-                 "x": "山にこもって、どこまで進むか。\n標高1,444m、100Mbpsの光回線。共用キッチンで自分で作って、デッキの焚き火台へ。"},
-        "tags": ["#tsumagoicamp", "#ワーケーション", "#嬬恋", "#キャンプ"],
-        "yt_title": "山の一日｜標高1,444mで働いて、火を囲む｜嬬恋牧場Work&Camp",
-    },
-    "seasons": {
-        "title_ja": "不便だからこそ、景色がいい。（季節くらべ）",
-        "look": "split", "style": "centre",
-        "slots": [
-            "green summer mountain ridges", "mountain ridges with autumn colours",
-            "a wooden deck facing a green grass field", "a wooden deck in autumn",
-            "an aerial view of a green field and forest", "an aerial view of autumn forest",
-            "bell tents on a green field", "bell tents on a field in autumn",
-            "a wide view of mountains and ridges at dusk",
-        ],
-        "slot_season": ["summer", "autumn", "summer", "autumn", "summer", "autumn", "summer", "autumn", None],
-        "cues": [2, 6],
-        "beats": [
-            ("hook", "不便だからこそ、\n景色がいい。", "Hard to reach. That is why the view is this good."),
-            ("line", "デッキの前は草原、\nその先に山の尾根。", "In front of the deck: grassland, then the ridges."),
-            ("line", "標高1,444m。", "1,444 m up."),
-        ],
-        "posts_from": "view",
-        "post": {"ja": "不便だからこそ、景色がいい。\nデッキの前は草原、その先に山の尾根。標高1,444m。",
-                 "en": "Hard to reach. That is why the view is this good.\nIn front of the deck: grassland, then the ridges. 1,444 m up.",
-                 "x": "不便だからこそ、景色がいい。\nデッキの前は草原、その先に山の尾根。"},
-        "tags": ["#tsumagoicamp", "#嬬恋", "#紅葉", "#季節"],
-        "yt_title": "夏と秋、同じ山｜標高1,444m｜嬬恋牧場Work&Camp",
-    },
-    "pov": {
-        "title_ja": "POV：今日のデスク",
-        "recipe": "pov", "look": "film", "style": "lower", "loop": True,
-        "kicker": {"ja": "POV：今日のデスク", "en": "POV: your desk today"},
-        "slots": [
-            "a laptop on a desk by a window with mountains", "mountains seen through a large window", "a cup of coffee on a table",
-            "the inside of a quiet lounge", "a wide view of mountains from a deck", "a laptop on a wooden desk with a mountain view",
-            "a wooden deck with tables and a railing", "a quiet forest", "a wide view of mountains and ridges at dusk",
-        ],
-        "cues": [3, 6],
-        "beats": [
-            ("hook", "窓の外に、\n建物はありません。", "No buildings outside the window."),
-            ("line", "標高1,444m、\n100Mbpsの光回線。", "Fibre at 1,444 m."),
-            ("line", "寝るのは、\n自分の車かテント。", "You sleep in your own car or a tent."),
-        ],
-        "posts_from": "winter",
-        "post": {"ja": "窓の外に、建物はありません。\n標高1,444m、100Mbpsの光回線。寝るのは、自分の車かテント。",
-                 "en": "No buildings outside the window.\nFibre at 1,444 m. You sleep in your own car or a tent.",
-                 "x": "窓の外に、建物はありません。\n標高1,444m、100Mbpsの光回線。"},
-        "tags": ["#tsumagoicamp", "#ワーケーション", "#嬬恋", "#POV"],
-        "yt_title": "POV：今日のデスク｜標高1,444m｜嬬恋牧場Work&Camp",
-    },
-    "nightfire": {
-        "title_ja": "お店がないからこそ、同じ火を囲む。（夜）",
-        "look": "ember", "style": "split", "loop": True,
-        "slots": [
-            "flames in a fire pit at night", "glowing embers of a campfire", "a tent glowing at night",
-            "a dark field at night", "a wooden deck with lights at night", "a fire pit with chairs around it at night",
-            "the silhouette of mountains at dusk", "a night sky over a field", "a campfire at night",
-        ],
-        "cues": [3, 6],
-        "beats": [
-            ("hook", "お店がないからこそ、\n同じ火を囲む。", "No restaurant. So you sit around one fire."),
-            ("line", "夜のフィールドに\n照明はありません。", "The field has no lights at night."),
-            ("line", "晴れた夜は、\n星もくっきり見えます。", "On a clear night, the stars are sharp."),
-        ],
-        "posts_from": "fire",
-        "post": {"ja": "お店がないからこそ、同じ火を囲む。\n夜のフィールドに照明はありません。晴れた夜は、星もくっきり見えます。",
-                 "en": "No restaurant. So you sit around one fire.\nThe field has no lights at night. On a clear night, the stars are sharp.",
-                 "x": "お店がないからこそ、同じ火を囲む。\n夜のフィールドに照明はありません。"},
-        "tags": ["#tsumagoicamp", "#焚き火", "#嬬恋", "#夜キャンプ"],
-        "yt_title": "火を囲む夜｜嬬恋牧場Work&Camp",
-    },
-    "altitude": {
-        "title_ja": "標高1,444m。",
-        "recipe": "altitude", "look": "punch", "style": "centre", "loop": True,
-        "slots": [
-            "an aerial view of a forest and a winding road", "a road or path through the hills", "an aerial view of a building on a green hill",
-            "an aerial drone view of mountain ridges", "a wide view of mountains from a deck", "an aerial view of clouds over mountains",
-            "a wide open grass field on a hill", "a wide aerial view of mountains", "a wide view of mountains and ridges at dusk",
-        ],
-        "cues": [3, 6],
-        "beats": [
-            ("hook", "標高1,444m。", "1,444 m up."),
-            ("line", "いちばん近い民家まで、\n道のりで約10km。", "About 10 km by road to the nearest homes."),
-            ("line", "不便だからこそ、\n景色がいい。", "Hard to reach. That is why the view is this good."),
-        ],
-        "posts_from": "view",
-        "post": {"ja": "標高1,444m。\nいちばん近い民家まで、道のりで約10km。不便だからこそ、景色がいい。",
-                 "en": "1,444 m up.\nAbout 10 km by road to the nearest homes. Hard to reach. That is why the view is this good.",
-                 "x": "標高1,444m。\nいちばん近い民家まで、道のりで約10km。不便だからこそ、景色がいい。"},
-        "tags": ["#tsumagoicamp", "#嬬恋", "#絶景", "#ドローン"],
-        "yt_title": "標高1,444m｜嬬恋牧場Work&Camp",
-    },
-})
-THEMES["nightfire"]["boost"] = {"tags": ["fire", "night"]}
+
+THEMES = _ranch_themes()
 
 # ---------- the open project's themes ----------
-# Everything above is the Tsumagoi workspace's. THEMES is what the open project makes reels from: those (main
-# project only) plus the project's own from <data>/themes.json, written by the theme editor (POST /api/themes).
+# THEMES is what the open project makes reels from: the ranch's built-in themes (its main project only) plus the
+# project's own from <data>/themes.json, written by the theme editor (POST /api/themes).
 # It stays one dict object, so every `from studio.assemble import THEMES` sees an edit after load_themes().
 RANCH_THEMES = dict(THEMES)
 THEME_FILE = DATA / "themes.json"
@@ -644,7 +262,7 @@ def _beats(theme: dict, chosen: list[dict]) -> list[dict]:
         beats.append({"kind": "line", "ja": ja, "en": en, "startSec": round(bounds[k] + 0.1, 2), "endSec": round(bounds[k + 1] - 0.2, 2)})
     from studio.brand import end_card
 
-    end_ja, end_en = end_card()  # the ranch: 嬬恋牧場Work&Camp / Tsumagoi Work&Camp; any other project, its own name
+    end_ja, end_en = end_card()  # the project's own name (studio.brand): the ranch's from its overlay
     beats.append({"kind": "end", "ja": end_ja, "en": end_en, "startSec": round(end_start, 2), "endSec": round(total, 2)})
     return beats
 
@@ -719,8 +337,7 @@ def _src(path: str) -> str:
 
 
 STYLES = ("column", "centre", "lower", "split")
-TAG_POOL = ["#嬬恋", "#群馬", "#キャンプ", "#ワーケーション", "#車中泊", "#焚き火", "#絶景", "#浅間山", "#嬬恋村",
-            "#リモートワーク", "#ソロキャンプ", "#デイキャンプ", "#山の上", "#高原"]
+TAG_POOL: list[str] = list(_RANCH_COPY.get("tagPool") or [])  # the ranch's extra hashtags (overlay); none elsewhere
 
 
 def vary_copy(project: dict, theme: dict, rng: random.Random) -> dict:
@@ -741,13 +358,15 @@ def vary_copy(project: dict, theme: dict, rng: random.Random) -> dict:
         if post.get(k):
             assert_copy(post[k])
     first = one(lines[0]["ja"]) if lines else ""
-    if RANCH:
-        title = f"{one(hook['ja'])}{first}｜嬬恋牧場Work&Camp"
+    if RANCH and RANCH_BRAND:
+        # The ranch: its registered name after the words, its brand tag first, two of the theme's and two of its pool.
+        name, tag = RANCH_BRAND["name"], RANCH_BRAND["tags"][0]
+        title = f"{one(hook['ja'])}{first}｜{name}"
         if len(title) > 90:
-            title = f"{one(hook['ja'])}｜嬬恋牧場Work&Camp"
-        own = [t for t in theme["tags"] if t != "#tsumagoicamp"]
+            title = f"{one(hook['ja'])}｜{name}"
+        own = [t for t in theme["tags"] if t != tag]
         extra = [t for t in TAG_POOL if t not in own]
-        tags = ["#tsumagoicamp"] + rng.sample(own, k=min(2, len(own))) + rng.sample(extra, k=2)
+        tags = [tag] + rng.sample(own, k=min(2, len(own))) + rng.sample(extra, k=min(2, len(extra)))
     else:
         # Any other project: its own name after the words, its own hashtags first, then the theme's. No ranch pool.
         from studio.brand import brand
@@ -1050,8 +669,9 @@ def alternate_opening(slug: str) -> dict:
     return {"slug": base, "opening": pick["file"]}
 
 
-CHARTER_LINE = "山まるごとの貸切は一律料金です。〜30名で日帰り¥120,000／テント泊¥180,000、31〜50名で¥180,000／¥250,000。"
-EVENT_CAP_LINE = "イベントは50名まで — 山の水インフラに正直な上限です。"
+# The ranch's approved charter-price and event-size lines for LinkedIn (shared/ranch/copy.json); none elsewhere.
+CHARTER_LINE: str = _RANCH_COPY.get("charterLine", "")
+EVENT_CAP_LINE: str = _RANCH_COPY.get("eventCapLine", "")
 
 
 def posts_for(theme: dict) -> dict:
@@ -1060,8 +680,10 @@ def posts_for(theme: dict) -> dict:
     would describe another reel; the Xiaohongshu folder then asks for a native writer."""
     if theme.get("posts"):
         return theme["posts"]
-    if not RANCH:
-        # A project made in the studio: only its own words. No borrowed ranch prices, LinkedIn charter or link path.
+    from studio.reels import POSTS, SHORT
+
+    if not RANCH or theme.get("posts_from", "view") not in POSTS:
+        # A project made in the studio (or a clone without the ranch's house posts): only its own words. No borrowed ranch prices, LinkedIn charter or link path.
         one = lambda s: s.replace("\n", "")  # noqa: E731
         hook = theme["beats"][0]
         post = dict(theme.get("post") or {"ja": "\n".join(one(b[1]) for b in theme["beats"]),
@@ -1071,8 +693,6 @@ def posts_for(theme: dict) -> dict:
             if post.get(k):
                 assert_copy(post[k])
         return post
-    from studio.reels import POSTS, SHORT
-
     key = theme.get("posts_from", "view")
     base = {**POSTS[key], **SHORT.get(key, {})}
     if theme.get("post"):

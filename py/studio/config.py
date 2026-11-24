@@ -40,12 +40,30 @@ def _from_file() -> None:
 
 
 _from_file()
+# The ranch overlay's own data: shared/ranch/*.json (its brand, home place, copy rules, themes, house posts and search
+# words). Never exported (scripts/public-export.json), so a clone reads `default` and stays brand-neutral.
+RANCH_DATA = ROOT / "shared" / "ranch"
+
+
+def ranch_data(name: str, default=None):
+    """One overlay file, shared/ranch/<name>.json, or `default` when it is not here or does not read."""
+    try:
+        return json.loads((RANCH_DATA / f"{name}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return default
+
+
+RANCH_BRAND: dict = ranch_data("brand", {}) or {}
 SPEC = json.loads((ROOT / "shared" / "spec.json").read_text(encoding="utf-8"))
+# The ranch's point and banned phrases live in the overlay; a clone has a placeholder point no project uses
+# (studio.brand.home_place answers None there) and no banned phrases but each project's own.
+SPEC.setdefault("ranch", RANCH_BRAND.get("place") or {"lat": 0.0, "lon": 0.0, "radiusKm": 0, "awayEvents": []})
+SPEC.setdefault("bannedSubstrings", list(RANCH_BRAND.get("bannedSubstrings") or []))
 # Defaults keep everything beside the code in ./data (gitignored); a machine sets its own paths in .env.
 DATA = Path(os.environ.get("STUDIO_DATA", str(ROOT / "data")))
 SOURCE = Path(os.environ.get("STUDIO_SOURCE", str(DATA / "footage")))
-# The ranch overlay: the original Tsumagoi Work&Camp workspace's own files (its reel plan, word bank, profile kit, reel
-# projects and house reels). Its reel plan is the marker. The owner's private checkout has it; a public clone does not,
+# The ranch overlay: the owner's original workspace's own files (its reel plan, word bank, profile kit, reel
+# projects, house reels and shared/ranch data). Its reel plan is the marker. The owner's private checkout has it; a public clone does not,
 # so a clone starts brand-neutral.
 RANCH_MARKER = ROOT / "shared" / "reels.json"
 
@@ -77,14 +95,18 @@ OVERLAY = ranch_overlay()
 # A reel project file per reel. The ranch keeps them in ./projects (in its git); a clone without the overlay keeps them
 # in its data folder, beside everything else it makes. A second studio project keeps its own folder.
 PROJECTS = Path(os.environ.get("STUDIO_PROJECTS", str(ROOT / "projects" if OVERLAY else DATA / "projects")))
-# The Tsumagoi Work&Camp workspace (the owner's own): its main project uses the ranch's place, themes, words and links.
+# The ranch workspace (the owner's own): its main project uses the ranch's place, themes, words and links.
 # Any other project, and every project of a clone without the overlay, is its own brand (studio.brand).
 RANCH = is_ranch(PROJECTS, ROOT, OVERLAY)
 # Approved files: the ranch's Drive folder the Instagram poster opens; any other project, its own data folder.
 # Every reel's words, written after each render: the ranch's in shared/ (in git), any other project's in its own folder,
 # so one project never overwrites another's.
 PLAN = ROOT / "shared" / "reels.json" if RANCH else DATA / "reels.json"
-READY = Path(os.environ.get("STUDIO_READY", str(SOURCE / "tsumagoi-video-edit-sns" / "ready" if RANCH else DATA / "ready")))
+# The name the studio signs its own files with (calendar entries, synthesised effects): the ranch's own, else the app's.
+STUDIO_NAME: str = (RANCH and RANCH_BRAND.get("studioName")) or "Lazycow Studio"
+# The ranch's Drive folder for drafts and approved files (shared/ranch/brand.json driveFolder); None anywhere else.
+RANCH_DRIVE = SOURCE / RANCH_BRAND["driveFolder"] if RANCH and RANCH_BRAND.get("driveFolder") else None
+READY = Path(os.environ.get("STUDIO_READY", str(RANCH_DRIVE / "ready" if RANCH_DRIVE else DATA / "ready")))
 
 
 def project_file(name: str) -> Path:

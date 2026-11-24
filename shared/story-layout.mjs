@@ -2,7 +2,7 @@
  * FILE: shared/story-layout.mjs
  * PURPOSE: Where the Story composition puts its words, for every canvas and text style.
  * OVERVIEW: hook = the reversal headline, line = a proof sentence, end = the
- *           嬬恋牧場 Work & Camp card. Four styles so reels do not all look alike:
+ *           brand's end card (a registered name set on two lines). Four styles so reels do not all look alike:
  *             column  vertical Mincho top-right (tall canvases), lines low
  *             centre  horizontal headline centred in the upper third, lines centred low
  *             lower   horizontal headline in the lower third, lines high

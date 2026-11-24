@@ -1,5 +1,5 @@
 """A project made in the studio is any brand: its own place, themes, words, name and links, nothing of the ranch's.
-The Tsumagoi workspace (the main project, config.RANCH) keeps every ranch value exactly as before."""
+The ranch workspace (the main project, config.RANCH) keeps every ranch value exactly as before: test_ranch_brand.py."""
 import json
 import os
 import random
@@ -13,13 +13,13 @@ import studio.ai as ai
 import studio.assemble as assemble
 import studio.brand as brand
 import studio.reels as reels
+import studio.research  # noqa: F401  first imported here, not under `neutral`: it reads the ranch overlay once, at import
 import studio.wording as wording
-from studio.config import SPEC
 from studio.guard import problems
 from studio.library import place_from
 from studio.media import near_ranch
 
-RANCH_STRINGS = ("嬬恋", "tsumagoi", "Tsumagoi", "牧場", "kensaur", "¥", "#キャンプ")
+RANCH_STRINGS = ("kensaur", "¥", "#キャンプ")  # with the ranch's own words (the ranch_words fixture)
 CHANNELS = ("instagram", "tiktok", "threads", "line-voom", "line-oa", "pinterest", "bluesky", "gbp", "x", "facebook",
             "youtube-shorts", "linkedin", "xiaohongshu")
 
@@ -98,36 +98,21 @@ def test_this_checkout_with_the_overlay_is_still_the_ranch():
     assert config.PLAN == config.ROOT / "shared" / "reels.json" and wording.WORDS == config.ROOT / "shared" / "words.json"
 
 
-# ---------- the ranch stays the ranch ----------
-
-def test_the_ranch_workspace_keeps_its_name_place_rules_and_themes():
-    b = brand.brand()
-    assert b["name"] == "嬬恋牧場Work&Camp" and b["tags"] == ["#tsumagoicamp"] and b["link"] == "https://tsumagoi.kensaur.us/"
-    home = brand.home_place()
-    assert (home["lat"], home["lon"], home["radiusKm"]) == (SPEC["ranch"]["lat"], SPEC["ranch"]["lon"], SPEC["ranch"]["radiusKm"])
-    assert brand.copy_rules()["banned"] == SPEC["bannedSubstrings"] and brand.copy_rules()["noPrices"]
-    assert set(assemble.RANCH_THEMES) <= set(assemble.THEMES) and len(assemble.RANCH_THEMES) == 17
-    assert brand.end_card() == ("嬬恋牧場Work&Camp", "Tsumagoi Work&Camp")
-    assert problems("牧場の朝") == ["bare-bokujo"] and "price" in problems("¥3,500")
-    with pytest.raises(ValueError):
-        brand.save_brand({"name": "x"})  # the ranch's values live in code, not in a form
-
-
-# ---------- a new project: place ----------
+# ---------- a new project: place (against the ranch's own place and folder names: test_ranch_brand.py) ----------
 
 def test_a_project_without_a_home_place_uses_all_its_footage(neutral):
     assert brand.home_place() is None
     assert near_ranch(35.68, 139.76) is None  # nothing to be near
     assert place_from(None, (0, 0), (0, 0), "2026-01 anywhere at all") == "ranch (no home place)"
-    assert place_from(0, (0, 5), (0, 5), "20250807_嬬恋牧場-summer-burn") == "ranch (no home place)"  # the ranch's away list is not this project's
+    assert place_from(0, (0, 5), (0, 5), "20250807_osaka-summer-burn") == "ranch (no home place)"  # no away list without a home place
 
 
 def test_a_project_with_a_home_place_keeps_footage_from_elsewhere_out(neutral):
     brand.save_brand({"place": {"lat": 35.6812, "lon": 139.7671, "radiusKm": 1, "names": ["kumo"]}})
     assert near_ranch(35.6815, 139.7675) == 1
-    assert near_ranch(SPEC["ranch"]["lat"], SPEC["ranch"]["lon"]) == 0  # the ranch is far from Tokyo Station
+    assert near_ranch(34.6937, 135.5023) == 0  # Osaka is far from Tokyo Station
     assert place_from(None, (0, 0), (0, 0), "2026-03 kumo opening") == "ranch (folder name)"
-    assert place_from(None, (0, 0), (0, 0), "202610- tsumagoi-phone") == "unknown"  # the ranch's folder names mean nothing here
+    assert place_from(None, (0, 0), (0, 0), "202610- osaka-phone") == "unknown"  # another place's folder names mean nothing here
     with pytest.raises(ValueError):
         brand.save_brand({"place": {"lat": 200, "lon": 0}})
     brand.save_brand({"place": None})
@@ -171,8 +156,8 @@ def test_a_theme_needs_a_headline_enough_shots_and_a_free_name(neutral):
     assert no_shots["shots"] == assemble.STARTER_SHOTS  # nothing named: plain searches that fit most places
 
 
-def test_a_projects_own_copy_rules_and_only_those(neutral):
-    assert problems("牧場の牛と天の川、¥500") == []  # the ranch's facts are not this project's rules
+def test_a_projects_own_copy_rules_and_only_those(neutral, ranch_words):
+    assert problems("".join(ranch_words) + "の牛と天の川、¥500") == []  # the ranch's facts (its bare word, no prices) are not this project's rules
     brand.save_brand({"banned": "cheapest\nbest in town", "noPrices": True})
     assert problems("The cheapest lunch, ¥500") == ["banned:cheapest", "price"]
     with pytest.raises(ValueError, match="fact guard"):
@@ -194,7 +179,7 @@ def test_the_word_bank_has_the_projects_lines_and_no_ranch_site_lines(neutral):
     assert not any("山" in t or "ラウンジ" in t or "1,444" in t for t in texts)
 
 
-def test_titles_hashtags_end_card_and_posts_carry_the_projects_name_not_the_ranchs(neutral):
+def test_titles_hashtags_end_card_and_posts_carry_the_projects_name_not_the_ranchs(neutral, ranch_words):
     brand.save_brand({"name": "Cafe Kumo", "nameEn": "", "link": "https://kumo.example/", "tags": "#cafekumo #tokyo"})
     assemble.save_theme("lunch", LUNCH)
     theme = assemble.THEMES["lunch"]
@@ -204,20 +189,20 @@ def test_titles_hashtags_end_card_and_posts_carry_the_projects_name_not_the_ranc
                          {"kind": "line", "ja": "席は12だけ。", "en": "Only twelve seats."}], "posts": posts}
     varied = assemble.vary_copy(project, theme, random.Random(1))
     assert varied["yt_title"].endswith("｜Cafe Kumo")
-    assert varied["tags"][:2] == ["#cafekumo", "#tokyo"] and "#tsumagoicamp" not in varied["tags"]
+    assert varied["tags"][:2] == ["#cafekumo", "#tokyo"] and not any(w in t for w in ranch_words for t in varied["tags"])
     assert brand.end_card() == ("Cafe Kumo", "")
     reel = {"slug": "lunch-1111", "title_ja": "雲の上で、ランチを。", "yt_title": varied["yt_title"], "tags": varied["tags"], "posts": varied["posts"]}
     for ch in CHANNELS:
         text = reels._post_text(reel, ch)
-        assert not any(s in text for s in RANCH_STRINGS), (ch, text)
+        assert not any(s in text for s in RANCH_STRINGS + ranch_words), (ch, text)
         if ch in ("bluesky", "x", "threads", "line-oa", "pinterest", "youtube-shorts"):
             assert "https://kumo.example/?utm_source=" + ch in text, ch
     assert len(reels._post_text(reel, "bluesky")) <= 301
     assert reels.file_prefix() == "cafe-kumo"
 
 
-def test_the_ai_reviewer_is_told_whose_reel_it_is(neutral):
-    assert "Cafe Kumo" in ai._review_system() and "嬬恋" not in ai._review_system()
+def test_the_ai_reviewer_is_told_whose_reel_it_is(neutral, ranch_words):
+    assert "Cafe Kumo" in ai._review_system() and not any(w in ai._review_system() for w in ranch_words)
 
 
 def test_the_ranchs_house_reels_stay_in_the_ranch_workspace(neutral):
@@ -236,10 +221,6 @@ def test_the_end_card_handle_is_the_projects_own(neutral):
     assert brand.brand()["handle"] == "@cafe.kumo" and reels._brand_handle() == "@cafe.kumo"
 
 
-def test_the_ranch_end_card_handle_is_unchanged():
-    assert reels._brand_handle() == "@tsumagoicamp"
-
-
 @pytest.mark.ranch
 def test_each_project_keeps_its_own_reel_list(neutral, monkeypatch):
     import studio.config as config
@@ -251,7 +232,7 @@ def test_each_project_keeps_its_own_reel_list(neutral, monkeypatch):
     assert (config.ROOT / "shared" / "reels.json").read_bytes() == before  # the ranch's list is untouched
 
 
-def test_words_suggest_and_research_carry_no_ranch_material_in_a_new_project(neutral, monkeypatch):
+def test_words_suggest_and_research_carry_no_ranch_material_in_a_new_project(neutral, monkeypatch, ranch_words):
     import studio.research as research
 
     brand.save_brand({"link": "https://kumo.example/menu?x=1"})
@@ -266,16 +247,7 @@ def test_words_suggest_and_research_carry_no_ranch_material_in_a_new_project(neu
     research._llm_angles([{"url": "https://example.com/a", "title": "t", "snippet": "s", "date": None}], research.default_topic()["ja"])
     copy = " ".join(t for _, t in research.approved_copy())
     for text in sent + [copy, research.site_url(), research.default_topic()["en"], research.angle_system()]:
-        assert not any(s in text for s in ("嬬恋", "牧場", "Work&Camp", "Tsumagoi", "群馬", "tsumagoi", "1,444")), text[:200]
+        assert not any(s in text for s in ("群馬", "1,444") + ranch_words), text[:200]
     assert "席は12だけ。" in copy and research.site_url() == "https://kumo.example/menu"
     with pytest.raises(research.ResearchError, match="home place"):
         research.events({})
-
-
-@pytest.mark.ranch
-def test_the_ranch_keeps_its_research_and_suggest_briefs():
-    import studio.research as research
-
-    assert research.default_topic() is research.DEFAULT_TOPIC and research.angle_system() is research.ANGLE_SYSTEM
-    assert wording.suggest_system() is wording.SUGGEST_SYSTEM
-    assert any("嬬恋" in t for _, t in research.approved_copy())

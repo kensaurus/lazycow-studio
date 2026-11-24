@@ -1,6 +1,7 @@
 """Research (studio.research) against a fake HTTP layer, no real network: ideas and trends, the website check
 against the approved facts, a page read, local events, the link check, status and the key check; the 24 h
-cache, the daily cap, and every error as one plain sentence that never carries the key."""
+cache, the daily cap, and every error as one plain sentence that never carries the key. The ranch workspace's own
+topic, website facts, events and pages are checked in test_ranch_research.py."""
 import io
 import json
 import socket
@@ -59,11 +60,11 @@ def use(monkeypatch, routes):
 
 SEARCH = {"success": True, "creditsUsed": 4, "data": {
     "web": [
-        {"url": "https://example.jp/workation-gunma", "title": "群馬でワーケーション #ワーケーション", "description": "嬬恋の高原でワーケーション。紅葉と光回線のある宿 #ワーケーション"},
-        {"url": "https://example.com/tsumagoi-camp", "title": "Tsumagoi camping guide", "description": "Camping in Tsumagoi: ワーケーション and autumn foliage, camping spots"},
+        {"url": "https://example.jp/workation-gunma", "title": "高原でワーケーション #ワーケーション", "description": "高原の村でワーケーション。紅葉と光回線のある宿 #ワーケーション"},
+        {"url": "https://example.com/highland-camp", "title": "Highland camping guide", "description": "Camping in the highlands: ワーケーション and autumn foliage, camping spots"},
     ],
     "news": [
-        {"url": "https://news.example.jp/a", "title": "嬬恋村 紅葉 ワーケーション", "snippet": "紅葉の嬬恋村", "date": "3 days ago"},
+        {"url": "https://news.example.jp/a", "title": "高原の村 紅葉 ワーケーション", "snippet": "紅葉の高原の村", "date": "3 days ago"},
         {"url": "https://news.example.jp/old", "title": "古い記事", "snippet": "old", "date": "2 years ago"},
     ],
 }}
@@ -71,32 +72,8 @@ SEARCH = {"success": True, "creditsUsed": 4, "data": {
 
 # ---------- ideas, cache, cap ----------
 
-def test_ideas_search_ja_and_en_and_cite_sources(env, monkeypatch):
-    fake = use(monkeypatch, [("POST", "/v2/search", [(200, SEARCH)])])
-    r = research.run("ideas", {"days": 14})
-    calls = fake.find("/v2/search")
-    assert len(calls) == 2, "one search in Japanese, one in English"
-    sent = calls[0]["body"]
-    assert sent["sources"] == ["web", "news"] and sent["country"] == "JP" and sent["limit"] == 8
-    assert sent["tbs"] == "cdr:1,cd_min:10/26/2026,cd_max:11/9/2026", "the last 14 days"
-    assert calls[0]["headers"]["authorization"] == f"Bearer {KEY}"
-    urls = {it["url"] for it in r["items"]}
-    assert "https://news.example.jp/old" not in urls, "news older than asked is dropped (tbs does not filter news)"
-    assert set(r["sources"]) == urls and len(r["items"]) == 3, "deduplicated across the two searches"
-    assert {"title", "url", "source", "date", "snippet"} <= set(r["items"][0])
-    assert r["hashtags"][0]["tag"] == "#ワーケーション"
-    words = [k["word"] for k in r["keywords"]]
-    assert "紅葉" in words, "a word two pages share"
-    assert "ワーケーション" not in words, "the topic's own words are not news"
-    assert 3 <= len(r["angles"]) <= 5
-    for a in r["angles"]:
-        assert a["from"] == "template" and a["sources"] and set(a["sources"]) <= urls, "every angle cites pages that were read"
-    assert r["cached"] is False and r["cost"]["firecrawlCalls"] == 2 and r["cost"]["credits"] == 8
-    assert "approved copy" in r["note"]
-
-
-def test_ideas_search_where_the_project_is_and_never_name_the_ranch(env, monkeypatch):
-    """A public user's project searched "Tsumagoi Gunma camping" in Japan's results when no topic was typed."""
+def test_ideas_search_where_the_project_is_and_never_name_the_ranch(env, monkeypatch, ranch_words):
+    """A public user's project searched the ranch's own place and "camping" in Japan's results when no topic was typed."""
     from studio import brand
     monkeypatch.setattr(brand, "RANCH", False)
     monkeypatch.setattr(brand, "brand", lambda: {"name": "Cafe Kumo"})
@@ -107,7 +84,7 @@ def test_ideas_search_where_the_project_is_and_never_name_the_ranch(env, monkeyp
     assert len(calls) == 1, "one English search outside Japan"
     body = calls[0]["body"]
     assert body["query"] == "Cafe Kumo Berlin Mitte" and body["location"] == "Germany" and "country" not in body
-    assert "Tsumagoi" not in r["summary"] and "Cafe Kumo Berlin Mitte" in r["summary"]
+    assert not any(w in r["summary"] for w in ranch_words) and "Cafe Kumo Berlin Mitte" in r["summary"]
     monkeypatch.setattr(brand, "home_place", lambda: None)
     fake = use(monkeypatch, [("POST", "/v2/search", [(200, SEARCH)])])
     research.run("ideas", {"days": 14, "fresh": True})
@@ -148,7 +125,7 @@ def test_ideas_use_the_ai_when_a_key_and_budget_allow_and_keep_only_real_sources
     monkeypatch.setattr(research, "openrouter_key", lambda: "or-key")
     monkeypatch.setattr(research, "daily_budget", lambda: 5.0)
     angles = {"angles": [
-        {"title": "紅葉の嬬恋", "why": "Autumn pages are trending", "sources": ["https://news.example.jp/a"]},
+        {"title": "紅葉の高原", "why": "Autumn pages are trending", "sources": ["https://news.example.jp/a"]},
         {"title": "Workation at altitude", "why": "Gunma workation pages", "sources": ["https://example.jp/workation-gunma", "https://made-up.example/x"]},
         {"title": "No source", "why": "invented", "sources": ["https://made-up.example/y"]},
     ]}
@@ -195,6 +172,11 @@ def test_firecrawl_errors_are_plain_sentences(env, monkeypatch, reply, code, sta
 
 
 def test_no_key_says_where_to_add_one_and_calls_nothing(env, monkeypatch):
+    from studio import brand
+
+    # A project with a website and a home place (Cafe Kumo), so only the missing key stops each action.
+    monkeypatch.setattr(research, "site_url", lambda: "https://cafe-kumo.example/")
+    monkeypatch.setattr(brand, "home_place", lambda: {"lat": 35.68, "lon": 139.76, "radiusKm": 5, "names": ["千代田区"]})
     monkeypatch.setattr(research, "api_key", lambda: "")
     fake = use(monkeypatch, [])
     for action, req in (("ideas", {}), ("events", {}), ("site-check", {}), ("page", {"url": "https://example.com/"})):
@@ -222,68 +204,11 @@ def test_bad_input_is_refused_before_any_call(env, monkeypatch):
     assert fake.calls == []
 
 
-# ---------- website check ----------
+# ---------- website check (against the ranch's approved facts: test_ranch_research.py) ----------
 
-def _scrape(json_part, markdown, status=200, url="https://tsumagoi.kensaur.us/"):
-    return (200, {"success": True, "data": {"markdown": markdown, "json": json_part, "summary": "A mountain work camp.",
-                                            "metadata": {"statusCode": status, "url": url, "title": "嬬恋牧場Work&Camp"}}})
-
-
-def test_site_check_reports_matches_and_mismatches_in_plain_words(env, monkeypatch):
-    # The page reader (JSON) proposes; only numbers the page text writes beside the plan's name count.
-    home = _scrape({"altitude_m": 1444, "field_first_yen": 5500, "camp_first_yen": 11800, "camp_extra_yen": 1200, "fibre_mbps": 100,
-                    "camp_two_adults_yen": 11800, "inclusions": ["シャワー", "こたつラウンジ24時間", "サウナ"], "booking_url": "/reserve"},
-                   "標高1,444 m、いちばん近い民家まで約10km。光回線100Mbps。1日5組まで。[貸切](https://tsumagoi.kensaur.us/charter)\n"
-                   "ぜんぶ込みキャンプ 大人2名1泊 ¥11,800〜。ぜんぶ込みキャンプは1人目 ¥7,200／泊。\n"
-                   "フィールドだけは1人目 ¥5,500・追加1名 ¥2,200／泊。\nラウンジ日帰り 1日 ¥2,000・4時間 ¥1,200")
-    reserve = _scrape({}, "ご予約はこちら", url="https://tsumagoi.kensaur.us/reserve")
-    charter = _scrape(None, "山まるごと貸切。日帰り ¥120,000〜／テント泊 ¥180,000〜（30名まで）。31〜50名は 日帰り ¥180,000／テント泊 ¥250,000。イベントは50名まで。",
-                      url="https://tsumagoi.kensaur.us/charter")
-    fake = use(monkeypatch, [("POST", "/v2/scrape", [home, reserve, charter])])
-    r = research.run("site-check", {})
-    sent = [c["body"] for c in fake.find("/v2/scrape")]
-    assert [x["url"] for x in sent] == ["https://tsumagoi.kensaur.us/", "https://tsumagoi.kensaur.us/reserve", "https://tsumagoi.kensaur.us/charter"], \
-        "the profile link, the booking page, then the private-hire page it links to"
-    assert sent[0]["formats"][0] == "markdown" and sent[0]["formats"][1]["type"] == "json" and "field_first_yen" in sent[0]["formats"][1]["schema"]["properties"]
-    assert sent[2]["formats"] == ["markdown"], "the extra page is read as text only (1 credit)"
-    by = {f["fact"]: f for f in r["facts"]}
-    assert by["altitude_m"]["status"] == "match" and by["altitude_m"]["message"] == "Altitude: the website and your copy both say 1,444 m."
-    field = by["field_first_yen"]
-    assert field["status"] == "mismatch" and field["site"] == 5500 and field["ours"] == 5200 and field["onPage"] is True
-    assert field["message"].startswith("Field only: first adult per night: the website says ¥5,500; your copy says ¥5,200 (")
-    assert by["field_extra_yen"]["status"] == "match", "¥2,200 is written beside フィールドだけ"
-    assert by["camp_first_yen"]["status"] == "match", "the reader misfiled the 2-adult price; the text has ¥7,200 per person"
-    extra = by["camp_extra_yen"]
-    assert extra["status"] == "unsure" and extra["site"] == 1200 and "check it by eye" in extra["message"], "¥1,200 sits beside the lounge, not the camp"
-    two = by["camp_two_adults_yen"]
-    assert two["status"] == "mismatch" and two["message"] == ("All-in camp, 2 adults for 1 night: the website quotes ¥11,800; your copy's prices add up to "
-                                                             "¥11,400 (¥7,200 + ¥4,200).")
-    for k in ("charter30_day_yen", "charter30_tent_yen", "charter50_day_yen", "charter50_tent_yen", "event_cap"):
-        assert by[k]["status"] == "match" and by[k]["source"] == "https://tsumagoi.kensaur.us/charter", k
-    assert r["mismatches"] == [field["message"], two["message"]]
-    inc = {i["item"]: i["status"] for i in r["inclusions"]}
-    assert inc["shower"] == "match" and inc["parking"] == "not_on_site"
-    assert r["booking"]["status"] == "match"
-    assert r["sources"] == ["https://tsumagoi.kensaur.us/", "https://tsumagoi.kensaur.us/reserve", "https://tsumagoi.kensaur.us/charter"]
-    assert r["summary"].startswith("Checked 3 pages of tsumagoi.kensaur.us:") and "2 differ, 1 to check by eye" in r["summary"]
-
-
-def test_site_check_a_two_adult_price_proves_the_extra_person_price(env, monkeypatch):
-    use(monkeypatch, [("POST", "/v2/scrape", [_scrape({}, "| 人数 | フィールドだけ |\n| 1名 | ¥5,200 |\n| 2名 | ¥7,400 |")])])
-    r = research.run("site-check", {"url": "https://tsumagoi.kensaur.us/"})
-    by = {f["fact"]: f for f in r["facts"]}
-    assert by["field_first_yen"]["status"] == "match" and by["field_two_adults_yen"]["status"] == "match"
-    assert by["field_extra_yen"]["status"] == "match" and "¥7,400 = ¥5,200 + ¥2,200" in by["field_extra_yen"]["message"]
-
-
-def test_site_check_does_not_trust_a_number_the_page_text_does_not_have(env, monkeypatch):
-    use(monkeypatch, [("POST", "/v2/scrape", [_scrape({"altitude_m": 1500, "charter30_tent_yen": 0}, "高原のキャンプ場です")])])
-    r = research.run("site-check", {"url": "https://tsumagoi.kensaur.us/"})
-    by = {f["fact"]: f for f in r["facts"]}
-    alt = by["altitude_m"]
-    assert alt["status"] == "unsure" and alt["onPage"] is False and alt["site"] == 1500 and "check it by eye" in alt["message"]
-    assert by["charter30_tent_yen"]["status"] == "not_on_site", "a 0 from the reader means not stated, never ¥0"
-    assert r["mismatches"] == []
+def _scrape(json_part, markdown, status=200, url="https://cafe-kumo.example/"):
+    return (200, {"success": True, "data": {"markdown": markdown, "json": json_part, "summary": "A small cafe.",
+                                            "metadata": {"statusCode": status, "url": url, "title": "Cafe Kumo"}}})
 
 
 @pytest.mark.parametrize("status, code", [(403, "blocked"), (404, "not_found")])
@@ -296,6 +221,7 @@ def test_a_page_the_site_refuses_is_a_plain_error(env, monkeypatch, status, code
 
 # ---------- read a page ----------
 
+@pytest.mark.ranch  # "what they say that we don't" is measured against the ranch workspace's approved copy (overlay)
 def test_page_read_gives_summary_points_and_what_they_say_that_we_dont(env, monkeypatch):
     fake = use(monkeypatch, [("POST", "/v2/scrape", [(200, {"success": True, "data": {
         "summary": "A glamping site in Karuizawa with a sauna.", "markdown": "Forest Glamp. 1泊 ¥30,000〜。サウナ付き。焚き火ができる。",
@@ -317,25 +243,6 @@ def test_page_read_gives_summary_points_and_what_they_say_that_we_dont(env, monk
 
 
 # ---------- events ----------
-
-def test_events_keep_dated_ones_in_the_window_with_a_post_by_date(env, monkeypatch):
-    found = {"success": True, "data": {"web": [
-        {"url": "https://tsumagoi.example/marathon", "title": "嬬恋キャベツマラソン 2026年11月21日", "description": "嬬恋村で開催"},
-        {"url": "https://karuizawa.example/lights", "title": "軽井沢 ウィンターイルミネーション", "description": "11月14日～2月28日 軽井沢で"},
-        {"url": "https://gunma.example/past", "title": "群馬 秋祭り 2026年10月3日", "description": "終了しました"},
-        {"url": "https://gunma.example/nodate", "title": "草津温泉 冬のイベント", "description": "詳細は公式サイトで"},
-    ]}}
-    fake = use(monkeypatch, [("POST", "/v2/search", [(200, found)])])
-    r = research.run("events", {"days": 30})
-    assert len(fake.calls) == 3 and "2026年11月" in fake.calls[0]["body"]["query"]
-    assert r["window"] == {"from": "2026-11-09", "to": "2026-12-09", "days": 30}
-    assert [e["url"] for e in r["events"]] == ["https://karuizawa.example/lights", "https://tsumagoi.example/marathon"]
-    marathon = r["events"][1]
-    assert marathon["dates"] == ["2026-11-21"] and marathon["postBy"] == "2026-11-18" and "嬬恋" in marathon["place"]
-    assert r["events"][0]["range"] == {"from": "2026-11-14", "to": "2027-02-28"}
-    assert [u["url"] for u in r["undated"]] == ["https://gunma.example/nodate"]
-    assert "https://gunma.example/past" not in r["sources"]
-
 
 def test_events_search_where_the_project_is_not_japan_by_default(env, monkeypatch):
     """A public user's project in Berlin searched Japanese words in Japan's results (country was always JP)."""
@@ -390,7 +297,7 @@ def test_links_finds_broken_ones_in_planned_posts_and_the_profile_kit(env, monke
         {"id": 5, "slug": "view-1107", "network": "facebook", "status": "scheduled", "url": "https://shy.example/p"},
     ])
     monkeypatch.setattr(research, "profile_kit", lambda: {"networks": {"tiktok": {"bio": "山", "link": "https://ok.example/?utm_source=tiktok"},
-                                                                       "x": {"link": "https://x.com/tsumagoicamp"}}})
+                                                                       "x": {"link": "https://x.com/cafekumo"}}})
     fake = use(monkeypatch, [
         ("HEAD", "ok.example", [(200, b"")]),
         ("HEAD", "gone.example", [(404, b"")]),
@@ -404,7 +311,7 @@ def test_links_finds_broken_ones_in_planned_posts_and_the_profile_kit(env, monke
     assert by["https://gone.example/old"]["status"] == "broken" and by["https://gone.example/old"]["usedIn"] == ["post #3 (fire-1107 on x, planned)"]
     assert by["https://ok.example/events?utm_source=x"]["status"] == "ok"
     assert by["https://shy.example/p"]["status"] == "ok" and "Firecrawl" in by["https://shy.example/p"]["why"]
-    assert by["https://x.com/tsumagoicamp"]["status"] == "blocked", "X is never sent to Firecrawl (paid provider)"
+    assert by["https://x.com/cafekumo"]["status"] == "blocked", "X is never sent to Firecrawl (paid provider)"
     assert [c["body"]["url"] for c in fake.find("/v2/scrape")] == ["https://shy.example/p"]
     assert r["summary"].startswith("1 of 5 links are broken: https://gone.example/old (page not found, in post #3")
     assert r["broken"][0]["url"] == "https://gone.example/old" and set(r["sources"]) == set(by)
@@ -459,6 +366,7 @@ def test_the_studio_key_wins_over_a_machine_wide_one(tmp_path, monkeypatch):
     assert research.api_key() == "fc-studioown11111111", "the key saved in Settings (.env) wins, read fresh"
 
 
+@pytest.mark.ranch  # the ranch workspace's approved facts (overlay)
 def test_the_approved_facts_come_from_the_studio_copy():
     f = research.approved_facts()
     assert f["facts"]["altitude_m"]["value"] == 1444
@@ -467,6 +375,7 @@ def test_the_approved_facts_come_from_the_studio_copy():
     assert f["booking"].endswith("/reserve") and "parking" in f["inclusions"]
 
 
+@pytest.mark.ranch  # the ranch workspace's approved facts (overlay)
 def test_the_reviewer_knows_the_car_park_quiet_hours_and_winter_facts():
     """39 booked reels were flagged for true words (5 vehicles a night, laugh until 22:00, below freezing in winter):
     the reviewer was never given those facts."""
@@ -478,13 +387,17 @@ def test_the_reviewer_knows_the_car_park_quiet_hours_and_winter_facts():
     assert "5 vehicles" in text and "22 o'clock" in text and "below freezing" in text
 
 
-def test_the_places_own_pages_are_not_trends():
+def test_the_places_own_pages_are_not_trends(monkeypatch):
+    """By its own names (here Cafe Kumo's); the ranch workspace's own names are checked in test_ranch_research.py."""
+    import re
+
+    monkeypatch.setattr(research, "OWN_NAMES", re.compile("Cafe Kumo|カフェ雲", re.I))
     body = {"data": {"web": [
-        {"url": "https://www.instagram.com/p/abc/", "title": "東京新聞に載りました", "description": "嬬恋牧場Work&Campを取り上げていただきました。"},
-        {"url": "https://www.youtube.com/watch?v=x", "title": "Autumn at 1444 m: Tsumagoi Work&Camp from the air", "description": "A drone flight."},
-        {"url": "https://example.com/glamping", "title": "群馬 グランピング15選", "description": "標高の高い施設。"},
+        {"url": "https://www.instagram.com/p/abc/", "title": "東京新聞に載りました", "description": "カフェ雲を取り上げていただきました。"},
+        {"url": "https://www.youtube.com/watch?v=x", "title": "A rainy lunch at Cafe Kumo", "description": "A short film."},
+        {"url": "https://example.com/lunch", "title": "千代田区 ランチ15選", "description": "窓際の席がある店。"},
     ]}}
-    assert [i["url"] for i in research._items(body, "ja", 30)] == ["https://example.com/glamping"]
+    assert [i["url"] for i in research._items(body, "ja", 30)] == ["https://example.com/lunch"]
 
 
 def test_the_link_check_never_reaches_this_computer_by_name_or_redirect(monkeypatch):

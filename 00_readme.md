@@ -16,4 +16,4 @@ Working files (catalog, proxies, renders, audio, reel project files) live in `ST
 
 Approved reels are copied, one folder per network, to `STUDIO_READY` (default `STUDIO_DATA/ready`). Posting stays with a person.
 
-The original Tsumagoi Work&Camp workspace keeps its own files (the "ranch overlay") in a private repository; see `py/studio/config.py` (`STUDIO_RANCH`).
+The author's original workspace keeps its own files (the "ranch overlay") in a private repository; see `py/studio/config.py` (`STUDIO_RANCH`).

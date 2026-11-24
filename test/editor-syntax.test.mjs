@@ -6,8 +6,10 @@ import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { assemblePage } from "../server/ui.mjs";
+import { fileURLToPath } from "node:url";
 
-const html = readFileSync(new URL("../server/editor.html", import.meta.url), "utf8");
+const html = assemblePage(fileURLToPath(new URL("..", import.meta.url)));
 const inline = [...html.matchAll(/<script(?![^>]*\bsrc=)([^>]*)>([\s\S]*?)<\/script>/g)].map(([, attrs, body]) => ({ attrs, body }));
 const isData = (attrs) => /type=["']?application\/(ld\+)?json/.test(attrs);
 

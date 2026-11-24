@@ -43,6 +43,9 @@ import { setStartup, startupState } from "../scripts/autostart.mjs";
 import qrcode from "qrcode-generator";
 import { defaultProjectsDir, isRanch, ranchOverlay } from "../shared/ranch.mjs";
 import { createStore as problemStore, findProblems, isNumbersJob, numbersJobProblem, readErrors } from "./problems.mjs";
+import { createTileProxy, DEFAULT_TILE_URL, validTemplate } from "./tiles.mjs";
+import { createUsage, featureIds, keepNetworksOnUpgrade, madeBefore, readLevel, tierOf, writeLevel } from "./uiprefs.mjs";
+import { assemblePage, pageFiles } from "./ui.mjs";
 import { approvalRefusal, authFailLine, authLimiter, clientIp, insideRoots, isSlug, overHttps, pathKey, proxyPeer, strayPath, NET_RX, parseRange, readJson, refusal, rejectOptions, serverMode, SLUG_RX, tokenAttempt, tokenCookie, tokenOk, trustRules } from "./trust.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -56,8 +59,8 @@ const PORT = /^\d{4,5}$/.test(process.env.STUDIO_PORT || "") ? Number(process.en
 /* What this process is serving. If the files change on disk later, /api/health says the server is stale. */
 // The server's own code: a change here needs a restart. The page (editor.html) is read fresh on every load, so a change
 // there only needs open pages to reload: it has its own fingerprint (pageBuild), which the page watches.
-const SERVED = [SELF, ...["health.mjs", "helper.mjs", "trust.mjs", "chrome-bridge.mjs", "dropbox.mjs", "swap.mjs", "autoplan.mjs", "problems.mjs"].map((f) => join(ROOT, "server", f))];
-const PAGE = join(ROOT, "server", "editor.html");
+const SERVED = [SELF, ...["health.mjs", "helper.mjs", "trust.mjs", "chrome-bridge.mjs", "dropbox.mjs", "swap.mjs", "autoplan.mjs", "problems.mjs", "tiles.mjs", "uiprefs.mjs", "ui.mjs"].map((f) => join(ROOT, "server", f))];
+// The page: server/editor.html (the shell) and its parts in server/ui, joined by server/ui.mjs on every load.
 const BUILD = buildId(SERVED);
 const STARTED = Date.now();
 /* Who made this and which version it is: package.json is the one source (shown in the header and About). */
@@ -146,6 +149,11 @@ const TOOLS_DIR = pick("STUDIO_TOOLS", join(DATA, "bin"));
 const FFMPEG = resolveTool("ffmpeg", { env: { STUDIO_FFMPEG: pick("STUDIO_FFMPEG", "") }, toolsDir: TOOLS_DIR }).path
   || join(TOOLS_DIR, process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
 const RENDERS = join(DATA, "renders");
+/* Map tiles for Footage › Where it was filmed (server/tiles.mjs): OpenStreetMap unless STUDIO_TILE_URL names another
+   provider ({z}/{x}/{y}); STUDIO_TILE_CREDIT is that provider's attribution line. Kept in DATA/tiles. */
+const TILE_URL = validTemplate(pick("STUDIO_TILE_URL", "")) ? pick("STUDIO_TILE_URL", "") : DEFAULT_TILE_URL;
+const TILE_CREDIT = TILE_URL === DEFAULT_TILE_URL ? "" : String(pick("STUDIO_TILE_CREDIT", "")).replace(/[<>\u0000-\u001f]/g, "").slice(0, 120);
+const tiles = createTileProxy({ dir: join(DATA, "tiles"), template: TILE_URL, userAgent: `LazycowStudio/${PKG.version} (+https://github.com/kensaurus/lazycow-studio)` });
 /* Collected footage lands under imports/ (a trusted footage source the watcher already scans). */
 const COLLECT_INBOX = join(DATA, "imports", "collected");
 let dropQuiet = null;
@@ -412,8 +420,10 @@ function createWorkspace(b) {
   for (const d of [data, join(data, "drafts"), join(data, "ready"), join(data, "projects"), source]) mkdirSync(d, { recursive: true });
   const tz = /^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+){0,2}$/.test(b.tz || "") ? b.tz : AUDIENCE_TZ;
   // A blank profile kit and every network off but the ones asked for: a new brand starts quiet.
-  const nets = Array.isArray(b.networks) ? b.networks.filter((n) => NET_RX.test(n)) : [];
-  const all = JSON.parse(readFileSync(join(ROOT, "shared", "channels.json"), "utf8")).channels.map((c) => c.id);
+  // None chosen: the common networks (BL-116: YouTube Shorts, TikTok, Instagram, Facebook, X, LinkedIn), the rest off.
+  const spec = JSON.parse(readFileSync(join(ROOT, "shared", "channels.json"), "utf8")).channels, all = spec.map((c) => c.id);
+  const asked = Array.isArray(b.networks) ? b.networks.filter((n) => NET_RX.test(n)) : [];
+  const nets = asked.length ? asked : spec.filter((c) => tierOf(c) === "common").map((c) => c.id);
   writeFileSync(join(data, "networks.json"), JSON.stringify({ on: nets, off: all.filter((n) => !nets.includes(n)), accounts: {} }, null, 2));
   writeFileSync(join(data, "profiles.json"), JSON.stringify({ displayName: name, handle: "", networks: {} }, null, 2));
   const entry = { id, name, color: WS_COLORS.includes(b.color) ? b.color : WS_COLORS[(w.list.length + 1) % WS_COLORS.length], created: new Date().toISOString(),
@@ -466,10 +476,15 @@ function channelsView() {
   const spec = JSON.parse(readFileSync(join(ROOT, "shared", "channels.json"), "utf8"));
   const own = join(DATA, "networks.json");
   const o = existsSync(own) ? JSON.parse(readFileSync(own, "utf8")) : {};
+  // A project that never chose its networks (no networks.json, not the ranch): the common ones on, the rest off
+  // (BL-116, the same rule as py/studio/reels.py _own_networks).
+  const unset = !RANCH && !existsSync(own);
   for (const c of spec.channels) {
     // Whose account: the ranch's own (ranchWho) only in the ranch workspace; any other project sees "Your channel".
     if (RANCH && c.ranchWho) c.who = c.ranchWho;
     delete c.ranchWho;
+    c.tier = tierOf(c);
+    if (unset) { if (c.tier === "common") delete c.off; else c.off = true; }
     if ((o.off || []).includes(c.id)) c.off = true;
     else if ((o.on || []).includes(c.id)) delete c.off;
     if (o.accounts?.[c.id]) c.account = String(o.accounts[c.id]).slice(0, 80);
@@ -979,6 +994,57 @@ function syncLlmEnv() {
 const OVERLAY = ranchOverlay(ROOT, pick("STUDIO_RANCH", ""));
 const PROJECTS_DIR = pick("STUDIO_PROJECTS", defaultProjectsDir(ROOT, DATA, OVERLAY));
 const RANCH = isRanch(ROOT, PROJECTS_DIR, OVERLAY);
+// A booked post's calendar file name: the ranch's own prefix from its overlay (shared/ranch/brand.json), else Lazycow's (py/studio/posting.py).
+const ICS_PREFIX = (() => { if (!RANCH) return "lazycow-post"; try { return JSON.parse(readFileSync(join(ROOT, "shared", "ranch", "brand.json"), "utf8")).calendarUid || "lazycow-post"; } catch { return "lazycow-post"; } })();
+/* Simple or full, and the private usage counts (server/uiprefs.mjs, BL-114 and BL-120). The ids come from the page's
+   FEATURES registry (editor.html), read once here: a page id or `page:action` outside it is refused. */
+const UI_FILE = join(DATA, "ui.json");
+const UI_IDS = (() => { try { return featureIds(assemblePage(ROOT)); } catch { return new Set(); } })();
+// A look-only studio (STUDIO_QUIET) on another studio's data folder counts and switches in memory only.
+const USAGE = createUsage(join(DATA, "usage.json"), UI_IDS, { persist: !QUIET });
+let uiQuietLevel = null;
+process.on("exit", () => { try { USAGE.flush(); } catch { /* read-only folder: the counts of this run are lost */ } });
+// An upgrade never switches off a network an existing project posted to (BL-116): see keepNetworksOnUpgrade.
+const keepNets = (posted = false) => {
+  try { keepNetworksOnUpgrade({ dataDir: DATA, projectsDir: PROJECTS_DIR, channels: JSON.parse(readFileSync(join(ROOT, "shared", "channels.json"), "utf8")).channels, ranch: RANCH, posted }); }
+  catch (e) { console.warn("keeping this project's networks:", e.message); }
+};
+if (!QUIET && !RANCH) {
+  keepNets();  // reels, photo posts or a long-video plan on disk
+  // Booked and posted rows live in the database: ask the engine once it is up (a few tries while it starts).
+  const again = async (tries = 0) => {
+    if (existsSync(join(DATA, "networks.json"))) return;
+    try {
+      const rows = await ask({ cmd: "posts" });
+      if ((Array.isArray(rows) ? rows : rows?.posts || []).some((p) => p && p.network !== "all")) keepNets(true);
+    } catch { if (tries < 5) setTimeout(() => again(tries + 1), 30_000); }
+  };
+  setTimeout(() => again(), 15_000);
+}
+/** A project that has made something (reels, photo posts, long videos or posts) keeps every tool; a new one starts simple. */
+async function uiDefaultLevel() {
+  if (RANCH) return "full";
+  try { if (madeBefore(DATA, PROJECTS_DIR)) return "full"; } catch { /* unreadable: ask the posts below */ }
+  try { if ((vlogsView().parts || []).length) return "full"; } catch { /* no long videos */ }
+  try {
+    const rows = await Promise.race([ask({ cmd: "posts" }), new Promise((ok) => setTimeout(() => ok(null), 3000))]);
+    if (rows === null) return null;  // the engine is still starting: undecided, so nothing is saved yet
+    if ((Array.isArray(rows) ? rows : rows?.posts || []).length) return "full";
+  } catch { /* no posts */ }
+  return "simple";
+}
+async function uiView() {
+  let saved = uiQuietLevel || readLevel(UI_FILE);
+  if (!saved) {
+    const level = await uiDefaultLevel();
+    // A new project's "simple" is kept, so making the first reel does not suddenly show every tool; "full" is not
+    // written (it only grows from here).
+    if (level === "simple" && !QUIET) { try { saved = writeLevel(UI_FILE, "simple", false); } catch { saved = { level, chosen: false }; } }
+    else if (level === "simple") saved = uiQuietLevel = { level, chosen: false };
+    else saved = { level: level || "full", chosen: false };
+  }
+  return { level: saved.level, defaulted: !saved.chosen, usage: USAGE.view() };
+}
 const aiRuns = new Map();
 function ai(action, input = {}) {
   const key = action + " " + JSON.stringify(input);
@@ -1980,7 +2046,7 @@ function healthView() {
   let version = "";
   try { version = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version; } catch { /* optional */ }
   return {
-    ok: true, build: BUILD, current, stale: current !== BUILD, pageBuild: buildId([PAGE]), version, started: new Date(STARTED).toISOString(), restartPending,
+    ok: true, build: BUILD, current, stale: current !== BUILD, pageBuild: buildId(pageFiles(ROOT)), version, started: new Date(STARTED).toISOString(), restartPending,
     pinned: PINNED,  // a studio started for one project (STUDIO_PROJECT): the main studio offers "Open its studio" for it
     queue: { running: running ? running.slug : null, queued: queue.length },
     machine: { threads: facts.threads, cpu: facts.cpuModel, ramGb: Math.round(facts.ramGb), platform: facts.platform },
@@ -2206,7 +2272,7 @@ const server = createServer(async (req, res) => {
   if (why) return send(res, 403, { error: "the studio only answers its own page on this machine" });
   try {
     if (req.method === "GET" && url.pathname === "/") {
-      return sendText(res, 200, readFileSync(join(ROOT, "server", "editor.html"), "utf8"), { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-studio-build": BUILD });
+      return sendText(res, 200, assemblePage(ROOT), { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-studio-build": BUILD });
     }
     /* The Lazycow icon set (server/brand): favicons, app icons, the mascot, and the web app manifest. */
     if (req.method === "GET" && (url.pathname === "/favicon.svg" || url.pathname === "/favicon.ico" || url.pathname.startsWith("/brand/"))) {
@@ -2421,6 +2487,19 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "GET" && url.pathname === "/api/channels") {
       return send(res, 200, channelsView());
+    }
+    /* Simple or full (BL-114) and the private usage counts (BL-120): kept in this project's data folder, never sent on. */
+    if (req.method === "GET" && url.pathname === "/api/ui") return send(res, 200, await uiView());
+    if (req.method === "POST" && url.pathname === "/api/ui") {
+      const b = await body(req);
+      if (!["simple", "full"].includes(b.level)) return send(res, 400, { error: "level: simple or full" });
+      if (QUIET) uiQuietLevel = { level: b.level, chosen: true }; else writeLevel(UI_FILE, b.level, true);
+      return send(res, 200, await uiView());
+    }
+    if (req.method === "POST" && url.pathname === "/api/ui/usage") {
+      const b = await body(req);
+      if (!USAGE.hit(b.id)) return send(res, 400, { error: "id: a page or action from the page's feature list" });
+      return send(res, 200, { ok: true });
     }
     /* Per-network playbooks (shared/playbooks.json, from docs/research/2026-11-09-channel-playbooks.md):
        format, caption, hashtags, best time, profile and comment rules, shown on Accounts and in the post panel. */
@@ -3055,6 +3134,21 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/footage/cameras") {
       return send(res, 200, jobView(startTask("cameras", "cameras", ["footage", "cameras"])));
     }
+    /* The map's tiles, through the studio and kept on disk (server/tiles.mjs: zoom 3-17, only what a view asks for). */
+    const tileAt = req.method === "GET" && /^\/api\/tiles\/(\d{1,2})\/(\d{1,6})\/(\d{1,6})\.png$/.exec(url.pathname);
+    if (tileAt) {
+      const t = await tiles.get(+tileAt[1], +tileAt[2], +tileAt[3]);
+      res.writeHead(t.status, { ...t.headers, "content-length": t.body.length });
+      return res.end(t.body);
+    }
+    /* Place names for the map (py/studio/places.py): a person pressed "Get place names"; GeoNames' file for the world
+       ("world") or one country (a two-letter code) is downloaded into DATA/places as a job. */
+    if (req.method === "POST" && url.pathname === "/api/places/download") {
+      const b = await body(req);
+      const which = String(b.which || "world");
+      if (which !== "world" && !/^[A-Z]{2}$/.test(which)) return send(res, 400, { error: "which: world or a two-letter country code" });
+      return send(res, 200, jobView(startTask("places", "places", ["places", "download", which])));
+    }
     if (req.method === "GET" && url.pathname === "/api/themes") {
       return send(res, 200, await ask({ cmd: "themes" }));
     }
@@ -3103,8 +3197,10 @@ const server = createServer(async (req, res) => {
       const pick = (o) => Object.fromEntries(Object.entries(o || {}).map(([k, v]) => [k, { label: v.label, ja: v.ja, what: v.what }]));
       return send(res, 200, { media: MEDIA, mezz: join(ROOT, "public", "mezz"), data: DATA, audienceTz: AUDIENCE_TZ, workspace: WORKSPACE, looks: pick(names.looks), recipes: pick(names.recipes),
         // What Settings › Use with Claude or Cursor shows: this computer's real paths, never the token itself.
-        // The Tsumagoi workspace (its reels in ./projects, with the ranch overlay) uses ranch words; any other project does not.
+        // The ranch workspace (its reels in ./projects, with the ranch overlay) uses ranch words; any other project does not.
         ranch: RANCH,
+        // The map's tile provider credit: empty = OpenStreetMap's own line (the page writes it).
+        tiles: { credit: TILE_CREDIT },
         connect: { node: process.execPath, mcp: join(ROOT, "server", "mcp.mjs"), port: PORT, token: !!API_TOKEN, api: "/api/openapi.yaml", docs: "docs/mcp.md" } });
     }
     /* The HTTP API's own description (OpenAPI 3.1), for tools and people who call the studio from a script. */
@@ -3768,7 +3864,7 @@ const server = createServer(async (req, res) => {
       if (!Number.isInteger(id)) return send(res, 400, "id", "text/plain");
       const r = await py(["posts", "ics", String(id)]);
       if (r.code !== 0) return send(res, 404, lastError(r.err) || "no such plan", "text/plain");
-      res.writeHead(200, { "content-type": "text/calendar; charset=utf-8", "content-disposition": `attachment; filename="tsumagoi-post-${id}.ics"` });
+      res.writeHead(200, { "content-type": "text/calendar; charset=utf-8", "content-disposition": `attachment; filename="${ICS_PREFIX}-${id}.ics"` });
       return res.end(r.out);
     }
     if (req.method === "POST" && url.pathname.startsWith("/api/")) {

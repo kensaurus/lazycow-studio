@@ -12,7 +12,7 @@ import { Story, storyFrames, type StoryProps } from "./Story";
 import { Vlog, VlogThumb, vlogFrames, type ThumbProps, type VlogProps } from "./Vlog";
 import { Post, emptyPost } from "./Post";
 
-const emptyStory: StoryProps = { shots9x16: [], shots16x9: [], beats: [], handle: "@tsumagoicamp", bed: null };
+const emptyStory: StoryProps = { shots9x16: [], shots16x9: [], beats: [], handle: "@cafe.kumo", bed: null };
 
 const aspects = ["9x16", "4x5", "16x9"] as const;
 

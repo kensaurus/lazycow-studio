@@ -307,7 +307,7 @@ def test_post_with_a_signed_in_session_uses_dpop_for_the_server_and_a_permit_for
     reel = tmp_path / "r.mp4"
     reel.write_bytes(b"x" * 64)
 
-    out = bluesky.post(reel, "嬬恋 #camp")
+    out = bluesky.post(reel, "Cafe Kumo #cafekumo")
 
     assert not fake.find("createSession")  # no app password involved
     for c in fake.find("getServiceAuth") + fake.find("createRecord"):
@@ -320,7 +320,7 @@ def test_post_with_a_signed_in_session_uses_dpop_for_the_server_and_a_permit_for
 # ---------- Connect with Facebook ----------
 
 APP_ID, APP_SECRET = "1234567890123456", "0123456789abcdef0123456789abcdef"
-PAGE = {"id": "998877665544", "name": "嬬恋牧場Work&Camp", "access_token": "EAAGpage", "tasks": ["CREATE_CONTENT"]}
+PAGE = {"id": "998877665544", "name": "Cafe Kumo", "access_token": "EAAGpage", "tasks": ["CREATE_CONTENT"]}
 PERMS = {"data": [{"permission": p, "status": "granted"} for p in facebook.NEEDED]}
 
 

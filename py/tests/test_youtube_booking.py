@@ -12,7 +12,7 @@ from studio import posting, youtube
 VID = "abcDEF12345"
 STATUS = {"privacyStatus": "private", "publishAt": "2026-12-30T10:00:00Z", "selfDeclaredMadeForKids": False, "embeddable": True,
           "license": "youtube", "publicStatsViewable": True, "containsSyntheticMedia": False, "uploadStatus": "processed", "madeForKids": False}
-SNIPPET = {"title": "不便だからこそ、この尾根が見える。｜嬬恋牧場Work&Camp", "description": "lines\n\n#tsumagoicamp", "tags": ["嬬恋", "tsumagoicamp"],
+SNIPPET = {"title": "雨だからこそ、窓際が空いている。｜Cafe Kumo", "description": "lines\n\n#cafekumo", "tags": ["cafekumo", "lunch"],
            "categoryId": "19", "defaultLanguage": "ja", "defaultAudioLanguage": "ja", "channelId": "UCx", "thumbnails": {}}
 
 
@@ -107,17 +107,21 @@ def test_move_takes_only_a_short_scheduled_on_youtube(yt):
 
 def test_a_new_title_keeps_description_tags_and_languages(yt):
     fake = yt(FakeYouTube())
-    out = youtube.retitle(VID, "外灯がないからこそ、夜は焚き火のまわりで。｜嬬恋牧場Work&Camp")
+    out = youtube.retitle(VID, "静かだからこそ、よく話せる。｜Cafe Kumo")
     part, body = fake.puts[0]
-    assert part == "snippet" and body["snippet"]["title"].startswith("外灯がないからこそ")
+    assert part == "snippet" and body["snippet"]["title"].startswith("静かだからこそ")
     for k in ("description", "tags", "categoryId", "defaultLanguage", "defaultAudioLanguage"):
         assert body["snippet"][k] == SNIPPET[k]
     assert "channelId" not in body["snippet"] and out["was"] == SNIPPET["title"]
 
 
-def test_a_title_that_breaks_the_copy_rules_or_youtubes_limits_is_never_sent(yt):
+def test_a_title_that_breaks_the_copy_rules_or_youtubes_limits_is_never_sent(yt, monkeypatch):
+    """Any workspace's copy rules (here Cafe Kumo's); the ranch workspace's own are in test_ranch_youtube_booking.py."""
+    import studio.brand
+
+    monkeypatch.setattr(studio.brand, "copy_rules", lambda: {"banned": ["最安値"], "noPrices": True, "registered": "Cafe Kumo", "bare": "Kumo"})
     fake = yt(FakeYouTube())
-    for bad in ("嬬恋のキャンプ場から", "標高1,444mの牧場で", "", "x" * 101, "a <b> title"):
+    for bad in ("最安値のランチ", "ランチ ¥1,200", "Kumoの朝", "", "x" * 101, "a <b> title"):
         with pytest.raises((ValueError, RuntimeError)):
             youtube.retitle(VID, bad)
     assert not fake.puts
@@ -130,12 +134,12 @@ def test_retitle_also_sets_the_reels_own_title_so_a_reupload_keeps_it(yt, monkey
     import studio.projects
     import studio.reels
 
-    slug, old, new = "yt-retitle-a", SNIPPET["title"], "外灯がないからこそ、夜は焚き火のまわりで。｜嬬恋牧場Work&Camp"
+    slug, old, new = "yt-retitle-a", SNIPPET["title"], "静かだからこそ、よく話せる。｜Cafe Kumo"
     monkeypatch.setattr(studio.projects, "DIR", tmp_path / "projects")
     monkeypatch.setattr(studio.reels, "DRAFTS", tmp_path / "drafts")
     monkeypatch.setattr(studio.config, "READY", tmp_path / "ready")
     monkeypatch.setattr(youtube, "DATA", tmp_path / "data")
-    studio.projects.save({"slug": slug, "yt_title": old, "tags": ["#嬬恋"], "beats": []})
+    studio.projects.save({"slug": slug, "yt_title": old, "tags": ["#cafekumo"], "beats": []})
     post = f"TITLE: {old}\n\nDESCRIPTION:\nlines\n"
     for folder in (tmp_path / "drafts" / slug, tmp_path / "ready" / f"20261110_{slug}"):
         (folder / "youtube-shorts").mkdir(parents=True)
@@ -172,5 +176,5 @@ def test_a_video_the_studio_did_not_upload_changes_only_on_youtube(yt, monkeypat
     monkeypatch.setattr(studio.projects, "DIR", tmp_path / "projects")
     yt(FakeYouTube())
     monkeypatch.setattr(youtube, "posts", lambda: [])
-    out = youtube.retitle(VID, "浅間山の一日、約10時間を31秒で｜嬬恋牧場Work&Camp")
+    out = youtube.retitle(VID, "カフェの一日、約10時間を31秒で｜Cafe Kumo")
     assert out["slug"] is None and out["local"] == [] and not (tmp_path / "projects").exists()

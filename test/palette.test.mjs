@@ -7,8 +7,10 @@
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { assemblePage } from "../server/ui.mjs";
+import { fileURLToPath } from "node:url";
 
-const html = readFileSync(new URL("../server/editor.html", import.meta.url), "utf8");
+const html = assemblePage(fileURLToPath(new URL("..", import.meta.url)));
 
 test("the palette follows the WAI-ARIA combobox pattern", () => {
   for (const s of ['role="combobox"', 'aria-controls="palList"', 'aria-autocomplete="list"', 'role="listbox"', 'role="option"', "aria-activedescendant", 'aria-modal="true"']) {

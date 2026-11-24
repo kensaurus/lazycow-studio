@@ -453,7 +453,7 @@ paths:
       tags: [System]
       operationId: getBrand
       summary: Whose reels these are (py/studio/brand.py) - name, link, hashtags, home place and copy rules.
-      description: The Tsumagoi workspace's values are fixed (`editable` false); a project made in the studio sets its own.
+      description: The ranch workspace's values are fixed (`editable` false); a project made in the studio sets its own.
       responses:
         "200":
           description: Brand.
@@ -474,7 +474,7 @@ paths:
     post:
       tags: [System]
       operationId: saveBrand
-      summary: Save this project's brand (not available in the Tsumagoi workspace). Only the fields sent change.
+      summary: Save this project's brand (not available in the ranch workspace). Only the fields sent change.
       requestBody:
         required: true
         content:
@@ -1180,7 +1180,7 @@ paths:
       tags: [Footage]
       operationId: getFootagePlaces
       summary: Where the footage was filmed, grouped on a ~100 m grid, with the home place (cached 10 minutes).
-      description: "Read only. Library files with a GPS position (EXIF, or a drone's flight log) are grouped on a 0.001 degree grid; each group gives the grid point, never a file's own position. Files without a position are only counted."
+      description: "Read only. Library files with a GPS position (EXIF, a video's ISO 6709 tag, or a drone's flight log) are grouped on a 0.001 degree grid; each group gives the grid point, never a file's own position. A file with none may carry a position estimated from a GPS file filmed within 90 minutes on the same day (py/studio/gps.py); those count as `est`. Files without either are only counted. Place names come from GeoNames files a person downloaded (POST /api/places/download); without them `place` is absent."
       parameters:
         - name: fresh
           in: query
@@ -1212,9 +1212,56 @@ paths:
                         km: { type: number, nullable: true, description: Distance from the home place. }
                         home: { type: boolean, description: Inside the home place's radius. }
                         ids: { type: array, items: { type: integer }, description: The library ids in this group (the page filters by them). }
-                  placed: { type: integer }
+                        real: { type: integer, description: Files placed by their own GPS. }
+                        est: { type: integer, description: Files placed by an estimate from a GPS file filmed close in time. }
+                        first: { type: string, nullable: true, description: First day filmed (YYYY-MM-DD). }
+                        last: { type: string, nullable: true, description: Last day filmed (YYYY-MM-DD). }
+                        gap: { type: array, nullable: true, items: { type: integer }, description: "[closest, furthest] minutes between an estimated file and the GPS file it came from." }
+                        one: { type: object, description: "For a group's estimate: {gap: signed minutes (GPS file minus this file), kind: photo|video}." }
+                        place: { type: object, description: "{name, nameJa, admin, adminJa, country, kind, km, feature: {name, nameJa, kind, km} | null}, when place names are downloaded." }
+                  placed: { type: integer, description: Files with their own GPS position. }
+                  estimated: { type: integer, description: Files with an estimated position. }
                   unplaced: { type: integer }
                   gridM: { type: integer }
+                  gps:
+                    type: object
+                    description: "Per device: {device, files, real, estimated, none, googlePhotos (none that came through a Google Photos import, which strips locations)}, and the same totals."
+                  names:
+                    type: object
+                    description: "Place-name files present: {world, countries, admin, bytes, suggest (a country code worth offering, or null), mb (known download sizes)}."
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/places/download:
+    post:
+      tags: [Footage]
+      operationId: downloadPlaceNames
+      summary: Download GeoNames place names for the map (job key `places`); only ever when a person presses the button.
+      description: "`world` fetches cities1000.zip (~11 MB, towns of 1,000+ people) and admin1CodesASCII.txt from download.geonames.org; a two-letter country code (JP, ~5 MB) fetches that country's file (villages, mountains, lakes). Unpacked into <data>/places; the length is checked and an incomplete or wrong file is refused. GeoNames data is CC BY 4.0, credited on the map."
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { which: { type: string, description: "world, or a two-letter country code such as JP", example: world } } }
+      responses:
+        "200": { $ref: "#/components/responses/JobView" }
+        "400": { description: "which is neither world nor a two-letter country code." }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/tiles/{z}/{x}/{y}.png:
+    get:
+      tags: [Footage]
+      operationId: getMapTile
+      summary: One map tile for the Footage map, fetched through the studio and kept on disk.
+      description: "Only tiles a view asks for (no prefetch), zoom 3-17, at most two downloads at a time, sent with `User-Agent: LazycowStudio/<version> (+https://github.com/kensaurus/lazycow-studio)`. Kept in <data>/tiles for the tile server's Cache-Control / Expires, never less than 7 days (OpenStreetMap's tile policy); offline, the kept copy is served however old. STUDIO_TILE_URL picks another provider ({z}/{x}/{y}, optional {s}); STUDIO_TILE_CREDIT is its attribution line."
+      parameters:
+        - { name: z, in: path, required: true, schema: { type: integer, minimum: 3, maximum: 17 } }
+        - { name: x, in: path, required: true, schema: { type: integer, minimum: 0 } }
+        - { name: y, in: path, required: true, schema: { type: integer, minimum: 0 } }
+      responses:
+        "200":
+          description: "The tile (header x-tile: cache, fetched, revalidated or stale)."
+          content: { image/png: { schema: { type: string, format: binary } } }
+        "400": { description: Zoom outside 3-17, or a tile outside the world. }
+        "404": { description: The tile server has no such tile. }
+        "502": { description: The tile server could not be reached and no copy is kept. }
         "403": { $ref: "#/components/responses/Forbidden" }
   /api/footage/cameras:
     post:
@@ -1496,6 +1543,84 @@ paths:
                         upload: { type: string }
                         "off": { type: boolean }
                         account: { type: string }
+                        tier:
+                          type: string
+                          enum: [common, more]
+                          description: "common: on by default in a new project and listed first on Settings › Accounts; more: folded under More networks. A channel without one in channels.json is common only if it is YouTube Shorts, TikTok, Instagram, Facebook, X or LinkedIn."
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/ui:
+    get:
+      tags: [System]
+      operationId: getUiLevel
+      summary: "How much of the studio this project shows (simple or full) and the private usage counts."
+      description: |
+        Kept in the project's data folder: `ui.json` (the level) and `usage.json` (the counts). Never sent anywhere.
+        Until a person chooses, a project that has made something (reels, long videos or posts), and the owner's ranch
+        project, is `full`; a new one is `simple`, and that choice is saved so making the first reel does not change it.
+        A look-only studio (STUDIO_QUIET=1) keeps both in memory.
+      responses:
+        "200":
+          description: The level and the counts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [level, defaulted, usage]
+                properties:
+                  level: { type: string, enum: [simple, full] }
+                  defaulted: { type: boolean, description: "true until a person chose the level (POST /api/ui)." }
+                  usage:
+                    type: object
+                    description: "Per feature id (a page from the page's FEATURES list, or page:action for approve, book and make reels)."
+                    additionalProperties:
+                      type: object
+                      properties:
+                        n: { type: integer, minimum: 0 }
+                        last: { type: string, format: date-time, nullable: true }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [System]
+      operationId: setUiLevel
+      summary: "Choose simple (the everyday tools) or full (every tool) for this project."
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [level]
+              properties:
+                level: { type: string, enum: [simple, full] }
+      responses:
+        "200":
+          description: The level and counts after the change (same shape as GET /api/ui).
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/ui/usage:
+    post:
+      tags: [System]
+      operationId: countUiUsage
+      summary: "Count one use of a page or key action (private: kept in this project's usage.json, never sent anywhere)."
+      description: "The page sends this when a page or tool opens and when a reel is approved, a post is booked or reels are made. Writes are batched (at most one every 5 seconds)."
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string, example: "review:approve", description: "A FEATURES id from server/editor.html (home, reels, words, resnext…), or page:action (review:approve, posting:book, reels:make). Anything else answers 400." }
+      responses:
+        "200":
+          description: Counted.
+          content:
+            application/json: { schema: { type: object, properties: { ok: { type: boolean } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /api/channels/set:
     post:

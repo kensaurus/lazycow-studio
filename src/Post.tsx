@@ -24,7 +24,7 @@ export type PostProps = {
      number looks, and a layout variant each look reads its own way. */
   photoPalette?: string[]; facts?: { big: string; unit: string; ja: string; en: string }[]; variant?: number;
   /* Where the post is from, for the looks that print a place (a masthead, a postmark, a boarding pass). The ranch
-     workspace passes TSUMAGOI / 嬬恋 / 1,444 / GUNMA · JAPAN; any other brand its own name and no altitude or region. */
+     workspace passes its own place, altitude and region (its overlay); any other brand its own name and no altitude or region. */
   place?: string; placeJa?: string; placeLong?: string; alt?: string; region?: string; origin?: { code: string; ja: string };
   ticket?: { seat: string; gate: string; cls: string; code?: string };
 };

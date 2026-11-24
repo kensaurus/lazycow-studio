@@ -24,7 +24,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from studio.config import DATA, RANCH, ROOT, SOURCE, ffmpeg_bin
+from studio.config import DATA, RANCH, RANCH_BRAND, RANCH_DRIVE, ROOT, SOURCE, ffmpeg_bin, ranch_data
 from studio.guard import assert_copy
 from studio.ingest import is_output
 from studio.remotion import _loud, _remotion
@@ -33,64 +33,18 @@ from studio.shot import is_360, render_shot
 from studio.sphere import move_for
 from studio.verify import verify_master
 
-DRAFTS = Path(os.environ.get("STUDIO_DRAFTS", str(SOURCE / "tsumagoi-video-edit-sns" / "drafts" / "20261107" if RANCH else DATA / "drafts")))
+DRAFTS = Path(os.environ.get("STUDIO_DRAFTS", str(RANCH_DRIVE / "drafts" / RANCH_BRAND.get("draftsDay", "") if RANCH_DRIVE else DATA / "drafts")))
 # Apps where the poster usually adds trending audio: they also get the picture with clip sound only.
 NO_MUSIC_COPY = ("instagram", "tiktok")
-SITE = "https://tsumagoi.kensaur.us/"
-POSTS = {
-    "view": {
-        "ja": "不便だからこそ、景色がいい。\n標高1,444m、いちばん近い民家まで道のりで約10km。デッキの前は草原、その先に山の尾根。",
-        "en": "Hard to reach. That is why the view is this good.\n1,444 m up, about 10 km by road to the nearest homes.",
-        "price_ja": "フィールドだけ：大人1人目 ¥5,200／泊・2人目から1名 ¥2,200。駐車込み。",
-        "linkedin": "標高1,444m、いちばん近い民家まで道のりで約10km。\n山まるごとの貸切は一律料金です。〜30名で日帰り¥120,000／テント泊¥180,000、31〜50名で¥180,000／¥250,000。\n\n不便だからこそ、景色がいい。デッキの前は草原、その先に山の尾根。会社のオフサイトを、この景色の前で。\n\nイベントは50名まで — 山の水インフラに正直な上限です。",
-        "path": "events",
-    },
-    "fire": {
-        "ja": "お店がないからこそ、同じ火を囲む。\nレストランも店員もいません。共用キッチンで自分で作って、デッキの焚き火台へ。",
-        "en": "No restaurant. So you sit around one fire.\nYou cook in the shared kitchen and bring it to the fire on the deck.",
-        "price_ja": "ぜんぶ込みキャンプ：大人1人目 ¥7,200／泊・2人目から1名 ¥4,200。駐車込み。",
-        "linkedin": "レストランも店員もいない会場です。\n貸切は〜30名で日帰り¥120,000／テント泊¥180,000、31〜50名で¥180,000／¥250,000。お食事は主催者手配（配達可能な2社をご紹介します）。\n\nお店がないからこそ、同じ火を囲む。共用キッチンで自分たちで作って、デッキの焚き火台へ。チームの夜は、そこで決まります。",
-        "path": "events",
-    },
-    "winter": {
-        "ja": "山で働く。冬でも、夜通しでも。\n外は氷点下。中は、こたつと光回線。寝るのは、自分の車かテント。",
-        "en": "Work in the mountains. Even in winter. Even all night.\nBelow zero outside. A kotatsu and fibre inside. You sleep in your own car or a tent.",
-        "price_ja": "ぜんぶ込みキャンプ：大人1人目 ¥7,200／泊・2人目から1名 ¥4,200。こたつラウンジは24時間、シャワー・ジムまで込み。",
-        "linkedin": "標高1,444m、100Mbpsの光回線。\n冬の夜は氷点下です。中は、こたつと光回線。\n\n山で働く。冬でも、夜通しでも。寝るのは、自分の車かテント。\n\n貸切は〜30名で日帰り¥120,000／テント泊¥180,000、31〜50名で¥180,000／¥250,000。冬のオフサイトのご相談を受け付けています。",
-        "path": "reserve",
-    },
-}
-
-# X is short JA with a link. Xiaohongshu is a draft in Simplified Chinese: CORE_LINE.zh and
-# SLEEP_LINE.zh are the site's own; every other zh line is a draft for a native speaker,
-# and RED forbids links, QR codes and other-platform IDs, so none appear.
-SHORT = {
-    "view": {
-        "x": "不便だからこそ、景色がいい。\n標高1,444m、いちばん近い民家まで道のりで約10km。",
-        "zh": "正因为不方便，风景才这么好。\n海拔1,444米，沿路到最近的民居大约10公里。露台前是草原，再往前是连绵的山脊。\n群马县嬬恋村・嬬恋牧场Work&Camp",
-    },
-    "fire": {
-        "x": "お店がないからこそ、同じ火を囲む。\n共用キッチンで自分で作って、デッキの焚き火台へ。",
-        "zh": "正因为没有餐厅，大家才围着同一团火。\n这里没有餐厅，也没有店员。在共用厨房自己动手做，再端到露台的火盆边。\n群马县嬬恋村・嬬恋牧场Work&Camp",
-    },
-    "winter": {
-        "x": "山で働く。冬でも、夜通しでも。\n寝るのは、自分の車かテント。",
-        "zh": "在山上工作。冬天也行，通宵也行。\n外面零度以下，里面有被炉和光纤网络。\n睡在自己的车里或帐篷里。\n群马县嬬恋村・嬬恋牧场Work&Camp",
-    },
-}
-ZH_TAGS = "#日本旅行 #群马 #嬬恋村 #日本自驾游 #日本露营"
-
-POSTS["field"] = {
-    "ja": "区画がないからこそ、好きな場所に張れる。\n区画のない、ひとつの草原。1日5組までだから、となりのテントが近すぎない。",
-    "en": "No marked pitches. So you pitch wherever you like.\nOne open field, at most 5 groups a night, so the next tent is never too close.",
-    "price_ja": "フィールドだけ：大人1人目 ¥5,200／泊・2人目から1名 ¥2,200。駐車込み。",
-    "linkedin": "区画のない、ひとつの草原を、チームで。\n山まるごとの貸切は一律料金です。〜30名で日帰り¥120,000／テント泊¥180,000、31〜50名で¥180,000／¥250,000。\n\n一般開放日は1日5組まで。貸切の日は、この草原がまるごとチームのものになります。\n\nイベントは50名まで — 山の水インフラに正直な上限です。",
-    "path": "reserve",
-}
-SHORT["field"] = {
-    "x": "区画がないからこそ、好きな場所に張れる。\n1日5組までだから、となりのテントが近すぎない。",
-    "zh": "正因为没有划分营位，可以在喜欢的地方搭帐篷。\n一整片没有分区的草原，每天最多5组，邻居的帐篷不会离得太近。\n群马县嬬恋村・嬬恋牧场Work&Camp",
-}
+# The ranch's house posts (shared/ranch/copy.json "reels", part of the ranch overlay): per house reel its post, prices,
+# LinkedIn text and link path; its X and Xiaohongshu lines (Simplified Chinese drafts for a native speaker: RED forbids
+# links, QR codes and other-platform IDs); its site and search words. A clone and any other project have none: their
+# posts are their own words and studio.brand's link and hashtags (_own_post_text).
+_RANCH: dict = ((ranch_data("copy", {}) or {}).get("reels") or {}) if RANCH else {}
+SITE: str = _RANCH.get("site", "")
+POSTS: dict = _RANCH.get("posts") or {}
+SHORT: dict = _RANCH.get("short") or {}
+ZH_TAGS: str = _RANCH.get("zhTags", "")
 
 GRID = 0.5  # every cut on a half-second grid (120 BPM)
 try:  # the ranch's house reels: part of the ranch overlay, so a public clone has none
@@ -103,10 +57,64 @@ from studio.config import channel_who, project_file  # noqa: E402  (a project ma
 CHANNEL_SPEC = json.loads(project_file("channels.json").read_text(encoding="utf-8"))
 
 
+# The networks most people post to (BL-116): a channel's "tier" in channels.json says common or more; one without a
+# tier is common only if it is one of these (the same rule as server/uiprefs.mjs tierOf).
+COMMON_NETWORKS = ("youtube-shorts", "tiktok", "instagram", "facebook", "x", "linkedin")
+
+
+def tier_of(c: dict) -> str:
+    """"common" or "more" for one channel of channels.json."""
+    t = c.get("tier")
+    return t if t in ("common", "more") else ("common" if c.get("id") in COMMON_NETWORKS else "more")
+
+
+def _made_before() -> bool:
+    """Has this project made anything: a reel (<projects>/<slug>.json), a photo post (a set in <data>/stills; "_"
+    folders are working space), a long-video plan (<data>/vlog-plan.json) or any booked or posted row? The same test as
+    server/uiprefs.mjs madeBefore + the server's posts check (keepNetworksOnUpgrade). Read only."""
+    import re as _re
+    import sqlite3
+
+    from studio.config import PROJECTS
+
+    def _any(folder, ok) -> bool:
+        try:
+            return any(ok(f.name) for f in folder.iterdir())
+        except OSError:
+            return False
+
+    if _any(PROJECTS, lambda n: bool(_re.fullmatch(r"[a-z0-9-]+\.json", n))):
+        return True
+    if _any(DATA / "stills", lambda n: not n.startswith(("_", "."))) or (DATA / "vlog-plan.json").is_file():
+        return True
+    try:
+        db = DATA / "catalog" / "catalog.sqlite"  # studio.db.catalog_path(), without creating folders
+        if not db.is_file():
+            return False
+        con = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True)
+        try:
+            return con.execute("SELECT 1 FROM posts WHERE network != 'all' LIMIT 1").fetchone() is not None
+        finally:
+            con.close()
+    except (sqlite3.Error, OSError, ImportError):
+        return False  # no posts table yet: nothing was booked
+
+
 def _own_networks(spec: dict) -> dict:
-    """This project's switches over the shared list: networks.json {"off": [...], "on": [...], "accounts": {id: "@handle"}}."""
+    """This project's switches over the shared list: networks.json {"off": [...], "on": [...], "accounts": {id: "@handle"}}.
+    A project that never chose (no networks.json) starts with the common networks on and the rest off; the ranch
+    workspace keeps the shared list as it is (server/review.mjs channelsView applies the same rule). A project that
+    already made something before 0.27 (_made_before) keeps the old rule (every channel not marked off) until the server
+    writes its networks.json on start (server/uiprefs.mjs keepNetworksOnUpgrade), so a run without the server changes
+    nothing."""
     own = DATA / "networks.json"
     if not own.is_file():
+        if not RANCH and not _made_before():
+            for c in spec["channels"]:
+                if tier_of(c) == "common":
+                    c.pop("off", None)
+                else:
+                    c["off"] = True
         return spec
     o = json.loads(own.read_text(encoding="utf-8"))
     for c in spec["channels"]:
@@ -499,21 +507,21 @@ def _fit(text: str, limit: int, measure=len) -> str:
     return tail
 
 
-# Hashtags people search on YouTube for a place like this (BL-057, PDCA 21 Nov): YouTube shows the first three above
-# the title, so they come first; the brand tag (#tsumagoicamp, which nobody searches) goes last. A reel's own topic
-# tags that people search come before the general ones that fill up to three.
-YT_SEARCH_TAGS = ("#キャンプ", "#車中泊", "#群馬キャンプ", "#ソロキャンプ", "#冬キャンプ", "#夜キャンプ", "#キャンプ飯", "#キャンプ場",
-                  "#焚き火", "#紅葉", "#絶景", "#雪", "#ワーケーション", "#リモートワーク", "#ドローン", "#浅間山", "#フリーサイト", "#デイキャンプ")
-YT_FILL_TAGS = ("#キャンプ", "#群馬キャンプ", "#車中泊")
+# Hashtags people search on YouTube for a place like the ranch (BL-057, PDCA 21 Nov, shared/ranch/copy.json): YouTube
+# shows the first three above the title, so they come first; the brand tag (which nobody searches) goes last. A reel's
+# own topic tags that people search come before the general ones that fill up to three.
+YT_SEARCH_TAGS: tuple = tuple(_RANCH.get("ytSearchTags") or ())
+YT_FILL_TAGS: tuple = tuple(_RANCH.get("ytFillTags") or ())
 # One question for the comments (0 comments on all 29 Shorts by 21 Nov) and the way to the 24-hour live, which
 # brought 4.9 subscribers per 1,000 views against the Shorts' 0.5.
-YT_QUESTION = "ここに泊まるなら、まず何をしたいですか？コメントで教えてください。"
+YT_QUESTION: str = _RANCH.get("ytQuestion", "")
 
 
-def yt_tags(tags: list[str], brand_tags: list[str] | tuple = ("#tsumagoicamp",)) -> list[str]:
+def yt_tags(tags: list[str], brand_tags: list[str] | tuple | None = None) -> list[str]:
     """The reel's hashtags in the order YouTube should see them: three searchable ones first (its own searchable topic
-    tags, then YT_FILL_TAGS), its other tags, the brand tag(s) last. Nothing is dropped from the reel's own tags."""
-    brand_set = set(brand_tags)
+    tags, then YT_FILL_TAGS), its other tags, the brand tag(s) last (default: the ranch's, from its overlay). Nothing is
+    dropped from the reel's own tags."""
+    brand_set = set(RANCH_BRAND.get("tags") or () if brand_tags is None else brand_tags)
     own = [t for t in dict.fromkeys(tags or []) if t not in brand_set]
     first = [t for t in own if t in YT_SEARCH_TAGS]
     first += [t for t in YT_FILL_TAGS if t not in first and t not in own][: max(0, 3 - len(first))]
@@ -527,21 +535,21 @@ def _live_line() -> str:
     return f"24時間ライブ配信中：https://www.youtube.com/{handle}/live" if handle.startswith("@") else ""
 
 
-# Words people type into TikTok search for a place like this (TikTok reads the caption for search).
-SEARCH_WORDS_JA = "群馬 キャンプ場・車中泊・嬬恋 絶景"
+# Words people type into TikTok search for the ranch (TikTok reads the caption for search); its overlay's.
+SEARCH_WORDS_JA: str = _RANCH.get("searchWordsJa", "")
 
 
 def _brand_handle() -> str:
-    """The account handle under the name on the end card: @tsumagoicamp in the ranch workspace, else the project's own."""
+    """The account handle under the name on the end card: the project's own (the ranch's from its overlay)."""
     from studio.brand import brand
 
     return brand()["handle"]
 
 
 def file_prefix() -> str:
-    """Delivered files start with whose they are: tsumagoi_ in the ranch workspace, else the project's name."""
-    if RANCH:
-        return "tsumagoi"
+    """Delivered files start with whose they are: the ranch's prefix in the ranch workspace, else the project's name."""
+    if RANCH and RANCH_BRAND.get("filePrefix"):
+        return RANCH_BRAND["filePrefix"]
     import re
     import unicodedata
 
@@ -553,7 +561,7 @@ def file_prefix() -> str:
 
 def _own_post_text(reel: dict, channel: str) -> str:
     """Post text for a project made in the studio: its own words, its link and hashtags, each network's shape.
-    Nothing from the ranch (no prices, no 「嬬恋牧場」で検索, no ranch link)."""
+    Nothing from the ranch (no prices, no ranch search line, no ranch link)."""
     from studio.brand import brand
 
     b = brand()
@@ -591,7 +599,7 @@ def _own_post_text(reel: dict, channel: str) -> str:
 
 
 def _post_text(reel: dict, channel: str) -> str:
-    if not RANCH:
+    if not RANCH or not _RANCH:  # the ranch's texts need its overlay's words; without them, the project's own
         return _own_post_text(reel, channel)
     post = post_of(reel)
     SHORT_ = {reel["slug"]: {"x": post.get("x", post["ja"].split("\n")[0]), "zh": post.get("zh", "")}}
@@ -609,7 +617,7 @@ def _post_text(reel: dict, channel: str) -> str:
         # About 150 characters, as the playbook says (idealChars): the reel's own lines, the search words, the tags.
         # No English block and no price list: 16 Nov, every TikTok post at 0 views carried ~400 characters that read
         # like an advert (JA + EN + prices). Prices stay on the site, Instagram, Facebook and Google Maps.
-        return f"{post['ja']}\n「嬬恋牧場」で検索。\n{SEARCH_WORDS_JA}\n\n{' '.join(reel['tags'][:5])}\n"
+        return f"{post['ja']}\n{_RANCH['searchLine']}\n{SEARCH_WORDS_JA}\n\n{' '.join(reel['tags'][:5])}\n"
     if channel == "threads":
         # Threads ranks by replies: the text is the hook and ends on a question; the link goes in the first reply.
         # One topic tag per post is what Threads reads (shared/playbooks.json "threads").
@@ -634,7 +642,7 @@ def _post_text(reel: dict, channel: str) -> str:
         # Google Business Profile post: short, the 予約 button carries the link.
         return f"{post['ja']}\n\n{post['price_ja']}\n\nボタン：予約 → {link}\n"
     if channel == "x":
-        tagline = "#嬬恋 #tsumagoicamp"  # X counts CJK as 2 and a URL as 23 (x_length, BL-072), 280 in all
+        tagline = _RANCH["xTagline"]  # X counts CJK as 2 and a URL as 23 (x_length, BL-072), 280 in all
         return _fit(f"{SHORT[reel['slug']]['x']}\n{link}", 280 - x_length(tagline) - 1, x_length) + "\n" + tagline + "\n"
     if channel == "xiaohongshu":
         zh_title = SHORT[reel["slug"]]["zh"].split("\n")[0]  # rednote titles hold 20 characters
@@ -647,33 +655,22 @@ def _post_text(reel: dict, channel: str) -> str:
         )
     if channel == "facebook":
         # Meta: captions with no link and at most five hashtags do best; the Page's Book button carries the link.
-        return f"{post['ja']}\n\n{post['en']}\n\n{post['price_ja']}\nご予約は「嬬恋牧場」で検索、またはページのリンクから。\n\n{' '.join(reel['tags'][:5])}\n"
+        return f"{post['ja']}\n\n{post['en']}\n\n{post['price_ja']}\n{_RANCH['facebookBook']}\n\n{' '.join(reel['tags'][:5])}\n"
     if channel == "youtube-shorts":
         # YouTube shows the first three hashtags above the title; over 60 voids them all (playbook "youtube-shorts").
-        # BL-057: searchable tags first and #tsumagoicamp last; a question for the comments and the way to the 24 h live.
+        # BL-057: searchable tags first and the brand tag last; a question for the comments and the way to the 24 h live.
         ordered = yt_tags(reel["tags"])
-        shown = [t for t in ordered[:3] if t != "#tsumagoicamp"] + [t for t in ordered if t == "#tsumagoicamp"]
+        brand_tag = (RANCH_BRAND.get("tags") or [""])[0]
+        shown = [t for t in ordered[:3] if t != brand_tag] + [t for t in ordered if t == brand_tag]
         ask = "\n".join(p for p in (YT_QUESTION, _live_line()) if p)
         return (f"TITLE: {reel['yt_title']}\n\nDESCRIPTION:\n{post['ja']}\n\n{ask}\n\n{post['price_ja']}\n{link}\n\n"
                 f"{' '.join(shown)}\n")
     if channel == "linkedin":
-        return f"{post['linkedin']}\n\n{SITE}events?utm_source=linkedin&utm_medium=social\n\n#嬬恋 #オフサイト\n"
+        return f"{post['linkedin']}\n\n{SITE}events?utm_source=linkedin&utm_medium=social\n\n{_RANCH['linkedinTags']}\n"
     if channel == "kensaurus":
-        return (
-            f"{post['en']}\n\nTsumagoi Work&Camp, Gunma. Cut on a local pipeline: ffmpeg grade, "
-            f"Remotion type, footage only from the ranch.\n{SITE}?utm_source=kensaurus&utm_medium=social\n"
-        )
+        return f"{post['en']}\n\n{_RANCH['kensaurusLine']}\n{SITE}?utm_source=kensaurus&utm_medium=social\n"
     if channel == "zenn":
-        return (
-            f"# {reel['title_ja']}：牧場の素材だけで、ローカルでリールを作る\n\n"
-            "下書きです。公開前に本人が確認します。\n\n"
-            "- 素材はGoogleドライブの写真・動画。GPSで牧場から2km以内のものだけを使う（0,0の仮の位置は不明として扱う）\n"
-            "- 色はffmpeg：クリップごとにレベルを測って揃え、Sカーブ・ハイライトをわずかに暖色に・ビネット・粒子\n"
-            "- 文字はRemotion：縦書きの明朝（Shippori Mincho）と英語のイタリック（Cormorant）。セーフゾーンはテストで固定\n"
-            "- 画面の言葉はサイトのSSOT（reversal-lines.ts / place-line.ts）からだけ。値段と事実の誤りはfact guardで止める\n"
-            "- 9:16・4:5・16:9を同じ構成から書き出し、チャンネルごとにフォルダを分ける\n\n"
-            f"{SITE}?utm_source=zenn&utm_medium=social\n"
-        )
+        return f"# {reel['title_ja']}{_RANCH['zennTitle']}\n\n" + _RANCH["zennBody"] + f"{SITE}?utm_source=zenn&utm_medium=social\n"
     if channel == "note":
         return f"# {reel['title_ja']}\n\n下書きです。公開前に本人が確認します。\n\n{post['ja']}\n\n{post['price_ja']}\n{SITE}{post['path']}?utm_source=note&utm_medium=social\n"
     raise KeyError(channel)

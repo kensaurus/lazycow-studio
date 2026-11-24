@@ -1698,7 +1698,7 @@ def _median(xs: list[float]) -> float | None:
 
 
 def opener(title: str) -> str:
-    """The first clause of a title, where the hook sits: 「不便だからこそ、尾根まで見渡せる。｜嬬恋牧場」 -> 不便だからこそ."""
+    """The first clause of a title, where the hook sits: 「静かだからこそ、よく話せる。｜Cafe Kumo」 -> 静かだからこそ."""
     head = re.split(r"[｜|]", str(title or ""), maxsplit=1)[0]
     return re.split(r"[。、,，.!?！？:：]", head, maxsplit=1)[0].strip()
 

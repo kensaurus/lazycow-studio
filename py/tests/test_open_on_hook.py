@@ -27,12 +27,15 @@ def test_keeps_the_order_when_the_opening_fits_or_nothing_does(monkeypatch):
 def test_draw_says_whether_a_headline_suits_the_opening(monkeypatch):
     import random
 
+    # A theme of the example business (examples/cafe-kumo), so the draw has a headline in any project.
+    monkeypatch.setitem(assemble.THEMES, "lunch", {"slots": ["a cafe table by a window", "bread on a wooden board"], "cues": [],
+                                                   "beats": [["hook", "雲の上で、\nランチを。", "Lunch above the clouds."]]})
     under = [[{"tod": "day", "season": "autumn", "tags": {"food", "kitchen"}}]]
     monkeypatch.setattr(wording, "picture_fits", lambda ja, shots: True)
-    assert wording.draw("office", [], random.Random(0), n_lines=0, tries=1, under=under)["hookFits"] is True
+    assert wording.draw("lunch", [], random.Random(0), n_lines=0, tries=1, under=under)["hookFits"] is True
     monkeypatch.setattr(wording, "picture_fits", lambda ja, shots: False)
-    assert wording.draw("office", [], random.Random(0), n_lines=0, tries=1, under=under)["hookFits"] is False
-    assert wording.draw("office", [], random.Random(0), n_lines=0, tries=1)["hookFits"] is True  # nothing to check against
+    assert wording.draw("lunch", [], random.Random(0), n_lines=0, tries=1, under=under)["hookFits"] is False
+    assert wording.draw("lunch", [], random.Random(0), n_lines=0, tries=1)["hookFits"] is True  # nothing to check against
 
 
 def test_the_kicker_label_also_suits_the_opening_shot(monkeypatch):
