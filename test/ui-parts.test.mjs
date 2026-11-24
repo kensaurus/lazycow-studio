@@ -28,11 +28,13 @@ test("every include names a part, and every part is included once, in name order
 });
 
 test("the joined page keeps the shell's shape: no include left, one main script holding every js part", () => {
-  const html = assemblePage(root);
+  // A Windows checkout may have CRLF line ends (git autocrlf): compare with LF everywhere, as the assembler accepts both.
+  const lf = (s) => s.replace(/\r\n/g, "\n");
+  const html = lf(assemblePage(root));
   assert.doesNotMatch(html, /<!--ui:/, "every include was replaced");
   const main = [...html.matchAll(/^<script>\n([\s\S]*?)^<\/script>$/gm)];
   assert.equal(main.length, 1, "one main <script>");
-  for (const p of parts("js")) assert.ok(main[0][1].includes(readFileSync(join(root, "server", "ui", p), "utf8")), p);
+  for (const p of parts("js")) assert.ok(main[0][1].includes(lf(readFileSync(join(root, "server", "ui", p), "utf8"))), p);
   assert.equal(pageFiles(root).length, 1 + includes(root).length, "the build id covers the shell and every part");
 });
 
