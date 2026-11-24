@@ -1,7 +1,7 @@
 """
 FILE: py/studio/looks.py
 PURPOSE: House 3D LUTs. Creative grade on Rec.709 footage, not a log convert.
-OVERVIEW: Tsumagoi film, Asama dusk, Clean. colour-science does the Lab shift.
+OVERVIEW: Meadow film (green-gold), Violet dusk (cool, a touch magenta), Clean. colour-science does the Lab shift.
 DEPENDENCIES: colour, numpy
 USAGE: write_luts(dir) -> list of cube paths
 NOTES: The owner picks from a still grid (studio looks --grid).
@@ -29,8 +29,8 @@ def _map_lab(rgb: np.ndarray, shift_a: float, shift_b: float, lift: float, contr
 
 
 LOOKS = {
-    "tsumagoi-film": dict(shift_a=-4.0, shift_b=6.0, lift=3.0, contrast=1.06),
-    "asama-dusk": dict(shift_a=2.0, shift_b=-3.0, lift=1.0, contrast=1.08),
+    "meadow-film": dict(shift_a=-4.0, shift_b=6.0, lift=3.0, contrast=1.06),
+    "violet-dusk": dict(shift_a=2.0, shift_b=-3.0, lift=1.0, contrast=1.08),
     "clean": dict(shift_a=0.0, shift_b=1.0, lift=0.5, contrast=1.02),
 }
 

@@ -110,7 +110,7 @@ test("a stalled network is not booked, and says why (BL-055)", () => {
 });
 
 test("the YouTube gate: 18 s or more first, no title again within 14 days, no opener again within 7 (BL-056)", () => {
-  assert.equal(openerOf("不便だからこそ、尾根まで見渡せる。｜嬬恋牧場"), "不便だからこそ");
+  assert.equal(openerOf("不便だからこそ、尾根まで見渡せる。｜Cafe Kumo"), "不便だからこそ");
   assert.deepEqual(YT_GATE, { minSec: 18, openerDays: 7, titleDays: 14 });
   const reels = [
     { slug: "a1-1111", headline: "短い一本。", seconds: 14, score: 95, networks: ["youtube"] },
@@ -208,11 +208,11 @@ test("with no slots the planner books as before: 19:00 everywhere, no test marks
 test("a new account name starts that network's since; the first name, the same name or clearing it does not", async () => {
   const { withAccount } = await import("../server/autoplan.mjs");
   const at = new Date("2026-11-24T10:00:00Z");
-  const first = withAccount({ accounts: {} }, "tiktok", "@tsumagoicamp", at);
-  assert.equal(first.accounts.tiktok, "@tsumagoicamp"); assert.equal(first.since, undefined, "a first name is not a change");
-  const same = withAccount(first, "tiktok", "TsumagoiCamp", at);
+  const first = withAccount({ accounts: {} }, "tiktok", "@cafekumo", at);
+  assert.equal(first.accounts.tiktok, "@cafekumo"); assert.equal(first.since, undefined, "a first name is not a change");
+  const same = withAccount(first, "tiktok", "CafeKumo", at);
   assert.equal(same.since, undefined, "the same handle, other case and no @");
-  const moved = withAccount(first, "tiktok", "@tsumagoi.camp", at);
+  const moved = withAccount(first, "tiktok", "@cafe.kumo", at);
   assert.deepEqual(moved.since, { tiktok: "2026-11-24T10:00:00.000Z" });
   assert.equal(first.since, undefined, "the input is not changed");
   const cleared = withAccount(moved, "tiktok", "", new Date("2026-11-25T00:00:00Z"));

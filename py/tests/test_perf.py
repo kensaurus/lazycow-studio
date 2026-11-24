@@ -234,7 +234,7 @@ def test_browser_readings_are_marked_browser_and_clear_needs_numbers(world):
 
 X_NOW = ("Post id,Date,Post text,Post Link,Impressions,Likes,Engagements,Bookmarks,Shares,New follows,Replies,Reposts,Profile visits,"
          "Detail Expands,URL Clicks,Hashtag Clicks,Permalink Clicks\n"
-         "1855000000000000001,\"Fri, Nov 14, 2026\",紅葉の嬬恋,https://x.com/example_owner/status/1855000000000000001,1234,20,55,3,2,1,4,5,6,7,8,0,1\n"
+         "1855000000000000001,\"Fri, Nov 14, 2026\",紅葉のCafe Kumo,https://x.com/example_owner/status/1855000000000000001,1234,20,55,3,2,1,4,5,6,7,8,0,1\n"
          "1855000000000000002,\"Sat, Nov 15, 2026\",something else,https://x.com/example_owner/status/1855000000000000002,99,1,2,0,0,0,0,0,0,0,0,0,0\n")
 
 
@@ -640,7 +640,7 @@ def test_reach_counts_only_the_account_in_use_now(monkeypatch):
     day = lambda d: (now - timedelta(days=d)).isoformat()  # noqa: E731
     posts = [{"id": i, "slug": f"s{i}", "network": "tiktok", "status": "posted", "at": day(d)} for i, d in [(1, 12), (2, 10), (3, 8)]]
     posts += [{"id": 4, "slug": "s4", "network": "tiktok", "status": "dropped", "at": day(4),
-               "note": " · the old @tsumagoicamp TikTok (Singapore region) was deleted 24 Nov; book again on the new one"},
+               "note": " · the old @cafekumo TikTok (Singapore region) was deleted 24 Nov; book again on the new one"},
               {"id": 5, "slug": "s5", "network": "tiktok", "status": "posted", "at": day(1)},
               {"id": 6, "slug": "s6", "network": "x", "status": "dropped", "at": day(3), "note": "set aside by hand"},
               {"id": 7, "slug": "s7", "network": "x", "status": "posted", "at": day(9)}]
@@ -737,20 +737,20 @@ def _short(i, title, views, hours_ago=72, **kw):
 
 def test_insights_find_the_opening_that_broke_out_the_stalled_short_and_how_much_is_watched():
     """The channel on 18 Nov: 「〜からこそ」 openers at a median 943 views, the rest 183; nightfire-1109 at 8."""
-    shorts = [_short(1, "不便だからこそ、尾根まで見渡せる。｜嬬恋牧場", 1271, seconds=21, avgPct=54, avgS=11, subs=1),
-              _short(2, "区画がないからこそ、気の向くまま張れる。｜嬬恋牧場", 1101, seconds=22, avgPct=55, avgS=12),
-              _short(3, "お店がないからこそ、火をわけあう。｜嬬恋牧場", 948, seconds=24),
-              _short(4, "寒いからこそ、こたつがうれしい。｜嬬恋牧場", 943, seconds=18, avgPct=66, avgS=11),
-              _short(5, "区画がないからこそ、自由に広げられる。｜嬬恋牧場", 8, seconds=14, slug="nightfire-1109"),
-              _short(6, "遠いからこそ、騒げる｜嬬恋牧場", 267, seconds=16, avgPct=97, avgS=15),
-              _short(7, "不便だからこそ、草原の先に尾根が続く。｜嬬恋牧場", 146, seconds=14, avgPct=102, avgS=14),
-              _short(8, "車で来て、車で寝る。｜嬬恋牧場", 200, seconds=14, avgPct=117, avgS=16),
-              _short(9, "区画がないから、好きな場所に張る。｜嬬恋牧場", 178, seconds=14, avgPct=91, avgS=12),
-              _short(10, "紅葉の嬬恋｜標高1,444m｜嬬恋牧場", 183, seconds=14, avgPct=80, avgS=11),
-              _short(11, "仕事は浅く、つながりは深く。｜嬬恋牧場", 156, hours_ago=3),  # under a day: not judged yet
-              _short(12, "11月17日 · 標高1,444m 嬬恋｜嬬恋 標高1,444m #shorts", 5, slug=None),
-              _short(13, "11月16日 · 標高1,444m 嬬恋｜嬬恋 標高1,444m #shorts", 8, slug=None),
-              _short(14, "11月15日 · 標高1,444m 嬬恋｜嬬恋 標高1,444m #shorts", 14, slug=None, subs=0),
+    shorts = [_short(1, "不便だからこそ、尾根まで見渡せる。｜Cafe Kumo", 1271, seconds=21, avgPct=54, avgS=11, subs=1),
+              _short(2, "区画がないからこそ、気の向くまま張れる。｜Cafe Kumo", 1101, seconds=22, avgPct=55, avgS=12),
+              _short(3, "お店がないからこそ、火をわけあう。｜Cafe Kumo", 948, seconds=24),
+              _short(4, "寒いからこそ、こたつがうれしい。｜Cafe Kumo", 943, seconds=18, avgPct=66, avgS=11),
+              _short(5, "区画がないからこそ、自由に広げられる。｜Cafe Kumo", 8, seconds=14, slug="nightfire-1109"),
+              _short(6, "遠いからこそ、騒げる｜Cafe Kumo", 267, seconds=16, avgPct=97, avgS=15),
+              _short(7, "不便だからこそ、草原の先に尾根が続く。｜Cafe Kumo", 146, seconds=14, avgPct=102, avgS=14),
+              _short(8, "車で来て、車で寝る。｜Cafe Kumo", 200, seconds=14, avgPct=117, avgS=16),
+              _short(9, "区画がないから、好きな場所に張る。｜Cafe Kumo", 178, seconds=14, avgPct=91, avgS=12),
+              _short(10, "紅葉のCafe Kumo｜標高1,444m｜Cafe Kumo", 183, seconds=14, avgPct=80, avgS=11),
+              _short(11, "仕事は浅く、つながりは深く。｜Cafe Kumo", 156, hours_ago=3),  # under a day: not judged yet
+              _short(12, "11月17日 · 標高1,444m Cafe Kumo｜Cafe Kumo 標高1,444m #shorts", 5, slug=None),
+              _short(13, "11月16日 · 標高1,444m Cafe Kumo｜Cafe Kumo 標高1,444m #shorts", 8, slug=None),
+              _short(14, "11月15日 · 標高1,444m Cafe Kumo｜Cafe Kumo 標高1,444m #shorts", 14, slug=None, subs=0),
               _short(15, "【LIVE】浅間山ライブカメラ 24時間", 737, slug=None, kind="live", subs=8),
               _short(16, "private booked", 0, privacy="private")]
     out = perf.insights_from({"channels": [{"items": shorts}]}, [], [], [], {}, {"vid00000002": "2026-11-18"}, NOW)
@@ -762,7 +762,7 @@ def test_insights_find_the_opening_that_broke_out_the_stalled_short_and_how_much
     assert out["convert"]["live"]["subs"] == 8 and out["convert"]["shorts"]["subs"] == 1
     assert out["related"]["done"] == 1 and out["related"]["of"] == 11 and out["related"]["items"][0]["slug"] == "s11", "newest first"
     assert out["outside"] == {"n": 3, "median": 8, "studio": 234}, "(200 + 267) / 2, the studio's median"
-    assert perf.opener("寒いからこそ、こたつがうれしい。｜嬬恋牧場") == "寒いからこそ"
+    assert perf.opener("寒いからこそ、こたつがうれしい。｜Cafe Kumo") == "寒いからこそ"
     assert perf.hook_phrase([{"title": s["title"], "views": s["views"]} for s in shorts[:3]]) is None, "too few Shorts: no pattern"
 
 
@@ -801,7 +801,7 @@ def test_channel_totals_are_kept_once_a_day(tmp_path, monkeypatch):
     JST day goes to channel-history.jsonl; a second read the same day adds nothing; an errored channel is skipped."""
     monkeypatch.setattr(perf, "_channel_history_file", lambda: tmp_path / "channel-history.jsonl")
     monkeypatch.setattr(perf, "_now", lambda: NOW)
-    chans = [{"account": "main", "channel": "Tsumagoi Work&Camp", "subscribers": 18, "views": 9326, "videos": 31,
+    chans = [{"account": "main", "channel": "Cafe Kumo", "subscribers": 18, "views": 9326, "videos": 31,
               "byKind": {"short": {"views": 9236}, "live": {"views": 1837}}},
              {"account": "spare", "error": "sign-in refused"}]
     added = perf.record_channel_day(chans, NOW)

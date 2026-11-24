@@ -10,6 +10,25 @@ from studio.guard import problems
 from studio.reels import check_reel
 from studio.staging import LOOKS, RECIPES, day_mark, mark_for, number_lines, season_mark, staging
 
+# Themes of the example business (examples/cafe-kumo): a plain house reel and a countdown recipe, so the staging rules
+# are tested without any one project's own themes.
+KUMO_SLOTS = ["a cafe table by a window", "bread on a wooden board", "a chef cooking", "a cup of coffee", "a view of clouds",
+              "pouring coffee", "a pastry on a plate", "steam from a cup", "a window in morning light"]
+KUMO_BEATS = [["hook", "雲の上で、\nランチを。", "Lunch above the clouds."], ["line", "席は12だけ。", "Only twelve seats."],
+              ["line", "パンは毎朝焼きます。", "Bread baked every morning."], ["line", "豆は近所で焙煎。", "Beans roasted down the street."]]
+KUMO_HOUSE = {"slots": KUMO_SLOTS, "cues": [2, 4, 6], "beats": KUMO_BEATS}
+KUMO_REASONS = {**KUMO_HOUSE, "recipe": "countdown", "look": "punch", "style": "centre", "loop": True,
+                "kicker": {"ja": "雲の上の、3つの理由。", "en": "Three reasons to lunch above the clouds."}}
+
+
+@pytest.fixture
+def kumo_themes(monkeypatch):
+    monkeypatch.setitem(THEMES, "reasons", KUMO_REASONS)
+    monkeypatch.setitem(THEMES, "office", KUMO_HOUSE)
+    from studio import brand
+
+    monkeypatch.setattr(brand, "copy_rules", lambda: {"banned": ["食べ放題"], "noPrices": True, "registered": None, "bare": None})
+
 
 def test_marks_come_from_darkness_and_the_clock_in_japan_time():
     assert day_mark("night", "2026-10-31T03:00:00Z") == "夜"  # dark wins over the clock
@@ -25,14 +44,14 @@ def test_marks_come_from_darkness_and_the_clock_in_japan_time():
     assert mark_for("season", "night", "summer", None) == ("夏", "summer")
 
 
-def test_staging_takes_the_project_value_else_the_theme_default():
+def test_staging_takes_the_project_value_else_the_theme_default(kumo_themes):
     assert staging({"theme": "reasons"}) == {"look": "punch", "recipe": "countdown", "kicker": THEMES["reasons"]["kicker"], "loop": True}
     assert staging({"theme": "reasons", "look": "film", "loop": False})["look"] == "film"
     assert staging({"theme": "reasons", "look": None})["look"] is None  # a person chose the plain picture
     assert staging({"theme": "office"}) == {"look": None, "recipe": None, "kicker": None, "loop": False}  # house reel unchanged
     assert staging({"look": "glitter", "recipe": "nope"})["look"] is None
     with pytest.raises(ValueError):
-        staging({"kicker": {"ja": "キャンプ場の夜", "en": "x"}})  # the kicker passes the same fact guard
+        staging({"kicker": {"ja": "食べ放題の夜", "en": "x"}})  # the kicker passes the same fact guard
 
 
 def test_countdown_numbers_the_lines_down_to_one():
@@ -52,6 +71,7 @@ def test_timeline_runs_morning_to_night_after_the_opening():
     assert order == [0, 4, 2, 5, 3, 1]  # the opening stays; unmarked counts as midday
 
 
+@pytest.mark.ranch  # the ranch's own recipe themes (its overlay)
 def test_every_recipe_theme_names_a_real_look_and_recipe_and_only_approved_words():
     staged = {k: t for k, t in THEMES.items() if t.get("look") or t.get("recipe")}
     assert {t.get("recipe") for t in staged.values()} >= set(RECIPES)
@@ -76,14 +96,14 @@ def test_a_timeline_headline_is_never_cut_short_by_reordered_cues():
     marks = [("夕", "")] + [("朝", "")] * 2 + [("昼", "")] * 2 + [("夜", "")] * 4
     chosen = [{"sec": s, "n": n, "mark": m} for n, (s, m) in enumerate(zip([1.5, 2.0, 2.0, 3.0, 3.0, 3.0, 2.0, 3.0, 3.0], marks))]
     chosen = A.morning_to_night(chosen)
-    beats = A._beats({**THEMES["day"], "cues": []}, chosen)
+    beats = A._beats({**KUMO_HOUSE, "recipe": "timeline", "cues": []}, chosen)
     assert beats[0]["endSec"] - beats[0]["startSec"] >= 3.0
     reel = {"shots": [{"src": f"a{i}.mp4", "sec": c["sec"]} for i, c in enumerate(chosen)], "beats": beats}
     assert check_reel(reel) == []
 
 
 def test_a_countdown_reel_still_passes_the_editorial_rules():
-    theme = THEMES["reasons"]
+    theme = KUMO_REASONS
     chosen = [{"sec": s, "n": n} for n, s in enumerate([2.0, 1.5, 1.0, 1.5, 1.5, 1.0, 1.5, 2.0, 3.0])]
     beats = number_lines(_beats(theme, chosen))
     reel = {"shots": [{"src": f"a{i}.mp4", "sec": c["sec"]} for i, c in enumerate(chosen)], "beats": beats}

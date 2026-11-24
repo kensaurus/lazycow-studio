@@ -2,7 +2,7 @@
 // videos, never outside its folder; a sent file lands in <inbox>/<date>_<name>/ and the studio is told once.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -100,7 +100,11 @@ test("two uploads with the same name at once keep both files whole, and the stud
 
 test("the drop box page names the open project, escaped, and never the ranch by default", () => {
   const plain = dropPage("");
-  assert.doesNotMatch(plain, /牧場|ranch/i);
+  assert.doesNotMatch(plain, /ranch/i);
+  // The owner's brand words (the ranch overlay's markers, when this checkout has it) never show on the neutral page.
+  const brand = new URL("../shared/ranch/brand.json", import.meta.url);
+  const markers = existsSync(brand) ? JSON.parse(readFileSync(brand, "utf8")).markers || [] : [];
+  for (const m of markers) assert.ok(!plain.includes(m), `the page names ${m}`);
   assert.match(plain, /このパソコン/);
   assert.match(plain, /this computer/);
   assert.doesNotMatch(plain + dropPage("Kawa Inn"), /\{PLACE|\{USE/);

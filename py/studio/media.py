@@ -85,7 +85,7 @@ def probe_video(path: Path) -> dict:
         "-v",
         "error",
         "-show_entries",
-        "format=duration:format_tags=creation_time:stream=codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate",
+        "format=duration:format_tags:stream=codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate",
         "-of",
         "json",
         str(path),
@@ -100,7 +100,12 @@ def probe_video(path: Path) -> dict:
     num, _, den = rate.partition("/")
     fps = float(num) / float(den) if den and float(den) else 0.0
     tags = (data.get("format") or {}).get("tags") or {}
+    from studio.gps import gps_from_tags
+
+    fix = gps_from_tags(tags)  # a phone's or camera's own position (ISO 6709), when it wrote one
     return {
+        "lat": fix[0] if fix else None,
+        "lon": fix[1] if fix else None,
         "codec": video.get("codec_name"),
         "width": video.get("width"),
         "height": video.get("height"),
@@ -202,12 +207,10 @@ def device_of(path: Path) -> str:
 
 
 def parse_srt(path: Path) -> list[dict]:
-    text = path.read_text(encoding="utf-8", errors="replace")
-    rows = []
-    for index, match in enumerate(SRT_ROW.finditer(text)):
-        lat, lon, alt = (float(match.group(i)) for i in (1, 2, 3))
-        rows.append({"t": index / 30, "lat": lat, "lon": lon, "rel_alt": alt})
-    return rows
+    """A DJI flight log's rows (studio.gps.srt_points reads every format seen: rel_alt, altitude, GPS(...))."""
+    from studio.gps import srt_points
+
+    return srt_points(path.read_text(encoding="utf-8", errors="replace"))
 
 
 def captured_from_name(path: Path) -> str | None:

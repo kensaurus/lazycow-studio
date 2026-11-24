@@ -21,7 +21,7 @@ def _jwt(scope: str) -> str:
 
 
 SESSION = {
-    "accessJwt": _jwt("com.atproto.appPass"), "refreshJwt": "r", "handle": "tsumagoi.bsky.social", "did": "did:plc:abc",
+    "accessJwt": _jwt("com.atproto.appPass"), "refreshJwt": "r", "handle": "cafekumo.bsky.social", "did": "did:plc:abc",
     "didDoc": {"id": "did:plc:abc", "service": [{"id": "#atproto_pds", "type": "AtprotoPersonalDataServer", "serviceEndpoint": PDS}]},
 }
 
@@ -76,12 +76,12 @@ def test_bluesky_connect_stores_the_app_password_encrypted_and_reports_connected
     monkeypatch.setattr(bluesky, "_call", fake)
     assert bluesky.status() == {"connected": False, "account": None, "error": None}
 
-    out = bluesky.connect({"handle": "@Tsumagoi", "app_password": "abcd-efgh-ijkl-mnop"})
+    out = bluesky.connect({"handle": "@CafeKumo","app_password": "abcd-efgh-ijkl-mnop"})
 
-    assert out == {"connected": True, "account": "@tsumagoi.bsky.social", "error": None}
+    assert out == {"connected": True, "account": "@cafekumo.bsky.social", "error": None}
     sent = json.loads(fake.calls[0]["data"])
     assert fake.calls[0]["url"] == "https://bsky.social/xrpc/com.atproto.server.createSession"
-    assert sent == {"identifier": "tsumagoi.bsky.social", "password": "abcd-efgh-ijkl-mnop"}
+    assert sent == {"identifier": "cafekumo.bsky.social", "password": "abcd-efgh-ijkl-mnop"}
     raw = (secrets / "bluesky.bin").read_bytes()
     if sys.platform == "win32":
         assert b"abcd-efgh-ijkl-mnop" not in raw
@@ -94,9 +94,9 @@ def test_bluesky_bad_credentials_raise_value_error_and_store_nothing(secrets, mo
     fake = Fake([("POST", "createSession", [(401, {"error": "AuthenticationRequired", "message": "Invalid identifier or password"})])])
     monkeypatch.setattr(bluesky, "_call", fake)
     with pytest.raises(ValueError, match="did not accept"):
-        bluesky.connect({"handle": "tsumagoi.bsky.social", "app_password": "abcd-efgh-ijkl-mnop"})
+        bluesky.connect({"handle": "cafekumo.bsky.social", "app_password": "abcd-efgh-ijkl-mnop"})
     with pytest.raises(ValueError, match="not an app password"):
-        bluesky.connect({"handle": "tsumagoi.bsky.social", "app_password": "my real password"})
+        bluesky.connect({"handle": "cafekumo.bsky.social", "app_password": "my real password"})
     assert len(fake.calls) == 1  # the account-password shape never left the machine
     with pytest.raises(ValueError):
         bluesky.connect({"handle": "", "app_password": "abcd-efgh-ijkl-mnop"})
@@ -104,13 +104,13 @@ def test_bluesky_bad_credentials_raise_value_error_and_store_nothing(secrets, mo
     full = dict(SESSION, accessJwt=_jwt("com.atproto.access"))
     monkeypatch.setattr(bluesky, "_call", Fake([("POST", "createSession", [(200, full)])]))
     with pytest.raises(ValueError, match="account password"):
-        bluesky.connect({"handle": "tsumagoi.bsky.social", "app_password": "abcd-efgh-ijkl-mnop"})
+        bluesky.connect({"handle": "cafekumo.bsky.social", "app_password": "abcd-efgh-ijkl-mnop"})
     assert not (secrets / "bluesky.bin").exists()
 
 
 def _connected_bluesky(monkeypatch):
     monkeypatch.setattr(bluesky, "_call", Fake([("POST", "createSession", [(200, SESSION)])]))
-    bluesky.connect({"handle": "tsumagoi.bsky.social", "app_password": "abcd-efgh-ijkl-mnop"})
+    bluesky.connect({"handle": "cafekumo.bsky.social", "app_password": "abcd-efgh-ijkl-mnop"})
 
 
 def test_bluesky_post_uploads_polls_then_creates_the_record(secrets, reel, monkeypatch):
@@ -130,7 +130,7 @@ def test_bluesky_post_uploads_polls_then_creates_the_record(secrets, reel, monke
     monkeypatch.setattr(bluesky, "_call", fake)
     monkeypatch.setattr(bluesky, "_wait", lambda s: None)
     monkeypatch.setattr(bluesky, "_aspect", lambda v: {"width": 1080, "height": 1920})
-    text = "標高1,444mの草原で焚き火 https://tsumagoi.jp/reserve? #嬬恋 #camp"
+    text = "窓際の席でお昼 https://cafe-kumo.example/reserve? #ランチ #lunch"
 
     out = bluesky.post(reel, text)
 
@@ -160,13 +160,13 @@ def test_bluesky_post_uploads_polls_then_creates_the_record(secrets, reel, monke
     raw = text.encode("utf-8")
     links = [f for f in rec["facets"] if f["features"][0]["$type"] == "app.bsky.richtext.facet#link"]
     tags = [f for f in rec["facets"] if f["features"][0]["$type"] == "app.bsky.richtext.facet#tag"]
-    assert len(links) == 1 and links[0]["features"][0]["uri"] == "https://tsumagoi.jp/reserve"
+    assert len(links) == 1 and links[0]["features"][0]["uri"] == "https://cafe-kumo.example/reserve"
     i = links[0]["index"]
-    assert raw[i["byteStart"]:i["byteEnd"]].decode() == "https://tsumagoi.jp/reserve"  # trailing "?" left out
-    assert [f["features"][0]["tag"] for f in tags] == ["嬬恋", "camp"]
-    assert raw[tags[0]["index"]["byteStart"]:tags[0]["index"]["byteEnd"]].decode() == "#嬬恋"
+    assert raw[i["byteStart"]:i["byteEnd"]].decode() == "https://cafe-kumo.example/reserve"  # trailing "?" left out
+    assert [f["features"][0]["tag"] for f in tags] == ["ランチ", "lunch"]
+    assert raw[tags[0]["index"]["byteStart"]:tags[0]["index"]["byteEnd"]].decode() == "#ランチ"
 
-    assert out == {"url": "https://bsky.app/profile/tsumagoi.bsky.social/post/3lbsk2post",
+    assert out == {"url": "https://bsky.app/profile/cafekumo.bsky.social/post/3lbsk2post",
                    "remote_id": "at://did:plc:abc/app.bsky.feed.post/3lbsk2post", "scheduled": False}
     assert bluesky.can_schedule is False
 
@@ -209,7 +209,7 @@ def test_bluesky_will_not_post_hours_before_the_planned_time(secrets, reel, monk
 
 # ---------- Facebook ----------
 
-PAGE = {"id": "1234567890", "name": "嬬恋牧場Work&Camp", "access_token": "EAAGpagetoken", "tasks": ["CREATE_CONTENT", "MANAGE"]}
+PAGE = {"id": "1234567890", "name": "Cafe Kumo", "access_token": "EAAGpagetoken", "tasks": ["CREATE_CONTENT", "MANAGE"]}
 ALL_PERMS = {"data": [{"permission": p, "status": "granted"} for p in ("pages_show_list", "pages_read_engagement", "pages_manage_posts", "public_profile")]}
 NOT_USER = {"error": {"message": "(#100) Tried accessing nonexisting field (accounts) on node type (Page)", "code": 100}}
 
@@ -226,7 +226,7 @@ def test_facebook_connect_with_a_page_token_stores_it_encrypted(secrets, monkeyp
     fake = Fake([("GET", "/v27.0/me/accounts?", [(400, NOT_USER)]), ("GET", "/v27.0/me?", [(200, {"id": PAGE["id"], "name": PAGE["name"]})])])
     monkeypatch.setattr(facebook, "_call", fake)
     out = facebook.connect({"token": " EAAGsecretpagetoken ", "page_id": " 1234567890 "})
-    assert out == {"connected": True, "account": "嬬恋牧場Work&Camp", "error": None}
+    assert out == {"connected": True, "account": "Cafe Kumo", "error": None}
     assert urllib.parse.urlsplit(fake.calls[0]["url"]).netloc == "graph.facebook.com"
     raw = (secrets / "facebook.bin").read_bytes()
     if sys.platform == "win32":
@@ -251,11 +251,11 @@ def test_facebook_says_which_permission_is_missing(secrets, monkeypatch):
 
 
 def test_facebook_explains_an_app_id_typed_as_the_page_id(secrets, monkeypatch):
-    routes = _user_token_routes() + [("GET", "/v27.0/1000000000000001?", [(200, {"name": "Tsumagoi CAPI", "id": "1000000000000001", "metadata": {"type": "application"}})])]
+    routes = _user_token_routes() + [("GET", "/v27.0/1000000000000001?", [(200, {"name": "Cafe Kumo CAPI", "id": "1000000000000001", "metadata": {"type": "application"}})])]
     monkeypatch.setattr(facebook, "_call", Fake(routes))
     with pytest.raises(ValueError) as err:
         facebook.connect({"token": "EAAGusertoken", "page_id": "1000000000000001"})
-    assert "is your Meta app (Tsumagoi CAPI), not a Page" in str(err.value) and "1234567890" in str(err.value)
+    assert "is your Meta app (Cafe Kumo CAPI), not a Page" in str(err.value) and "1234567890" in str(err.value)
 
 
 def test_facebook_asks_which_page_when_there_are_several(secrets, monkeypatch):
@@ -272,7 +272,7 @@ def test_facebook_bad_input_and_bad_tokens_say_what_to_do(secrets, monkeypatch):
     with pytest.raises(ValueError, match="did not accept that token.*Generate Access Token again"):
         facebook.connect({"token": "EAAGbad"})
     with pytest.raises(ValueError, match="only digits"):
-        facebook.connect({"token": "EAAG", "page_id": "tsumagoi"})
+        facebook.connect({"token": "EAAG", "page_id": "cafekumo"})
     with pytest.raises(ValueError, match="starts with EAA"):
         facebook.connect({"token": ""})
     with pytest.raises(ValueError, match="32 letters"):
@@ -282,7 +282,7 @@ def test_facebook_bad_input_and_bad_tokens_say_what_to_do(secrets, monkeypatch):
 
 def test_facebook_app_secret_makes_the_token_last(secrets, monkeypatch):
     fake = Fake(_user_token_routes() + [
-        ("GET", "/v27.0/app?", [(200, {"id": "1000000000000001", "name": "Tsumagoi CAPI"})]),
+        ("GET", "/v27.0/app?", [(200, {"id": "1000000000000001", "name": "Cafe Kumo CAPI"})]),
         ("GET", "/v27.0/oauth/access_token?", [(200, {"access_token": "EAAGlonglived", "token_type": "bearer"})]),
     ])
     monkeypatch.setattr(facebook, "_call", fake)
@@ -320,7 +320,7 @@ def test_facebook_post_schedules_on_facebook_when_at_is_given(secrets, reel, mon
     monkeypatch.setattr(facebook, "_call", fake)
     at = (datetime.now() + timedelta(days=1)).replace(microsecond=0)
 
-    out = facebook.post(reel, "焚き火の夜 #嬬恋", at=at)
+    out = facebook.post(reel, "雨の日のランチ #ランチ", at=at)
 
     start, finish = _forms(fake)
     assert start == {"upload_phase": "start", "access_token": "EAAGpagetoken"}
@@ -331,7 +331,7 @@ def test_facebook_post_schedules_on_facebook_when_at_is_given(secrets, reel, mon
     assert finish["upload_phase"] == "finish" and finish["video_id"] == "777000111"
     assert finish["video_state"] == "SCHEDULED"
     assert finish["scheduled_publish_time"] == str(int(at.astimezone().timestamp()))
-    assert finish["description"] == "焚き火の夜 #嬬恋"
+    assert finish["description"] == "雨の日のランチ #ランチ"
     assert all("EAAG" not in c["url"] for c in fake.calls if c["method"] == "POST")  # token never in a POST URL
     assert out == {"url": "https://www.facebook.com/reel/777000111", "remote_id": "777000111", "scheduled": True}
 

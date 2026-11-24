@@ -1,6 +1,6 @@
 /**
  * FILE: shared/ranch.mjs
- * PURPOSE: Is this checkout the owner's Tsumagoi Work&Camp workspace (the "ranch"), or a clean clone?
+ * PURPOSE: Is this checkout the owner's own workspace (the "ranch"), or a clean clone?
  * OVERVIEW: Same rule as py/studio/config.py ranch_overlay() / is_ranch(). STUDIO_RANCH=1 or 0 decides when set;
  *           otherwise the ranch overlay's marker (shared/reels.json, the ranch's reel plan) must be present. The owner's
  *           private checkout has it; a public clone does not, so it starts brand-neutral and keeps its reels in

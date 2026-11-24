@@ -32,7 +32,7 @@ import time
 from collections import Counter
 from pathlib import Path
 
-from studio.config import PROJECTS, RANCH, ROOT
+from studio.config import PROJECTS, RANCH, ROOT, ranch_data
 from studio.guard import assert_copy, problems
 
 # The ranch workspace keeps its bank in shared/ (reviewed in git); a project made in the studio, beside its reels.
@@ -53,15 +53,10 @@ TOPICS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "sleep": (("寝る",), ("tent", "car", "van", "bed")),
 }
 
-# Approved website lines the themes do not use yet (verbatim from the website repo, src/constants). Each keeps its
-# source so the owner can check it. Screen line breaks only; no word changed.
-SITE_LINES: list[dict] = [
-    {"kind": "hook", "ja": "山の24時間ラウンジ。\n寝るのは、自分の車かテント。", "en": "A 24-hour lounge on the mountain. You sleep in your own car or a tent.", "source": "place-line.ts PLACE_LINE"},
-    {"kind": "hook", "ja": "平日、\n紅葉の中で働く", "en": "Weekdays, working among the autumn leaves", "source": "autumn-leaves-copy.ts weekdayTitle", "months": [10, 11]},
-    {"kind": "line", "ja": "昼は紅葉、夜は焚き火。\nそのあとは、あったかいラウンジへ。", "en": "Autumn leaves by day, the fire by night, then the warm lounge.", "source": "autumn-leaves-copy.ts AUTUMN_EVENT_LINE.night", "months": [10, 11]},
-    {"kind": "line", "ja": "紅葉の午後に、手を動かす。\n冷えてきたら、あったかいラウンジへ。", "en": "An afternoon of making things among the autumn leaves; when it turns cold, the warm lounge.", "source": "autumn-leaves-copy.ts AUTUMN_EVENT_LINE.day", "months": [10, 11]},
-    {"kind": "hook", "ja": "仕事は浅く、つながりは深く。\n東京の逆を、山で。", "en": "Work shallower. Connect deeper. The opposite of Tokyo.", "source": "place-line.ts POSITIONING_PILLARS.connect"},
-]
+# The ranch website's approved lines the themes do not use yet, verbatim with their source (shared/ranch/copy.json
+# "wording", part of the ranch overlay). A clone and any other project have none.
+_RANCH: dict = ((ranch_data("copy", {}) or {}).get("wording") or {}) if RANCH else {}
+SITE_LINES: list[dict] = list(_RANCH.get("siteLines") or [])
 
 
 def _key(ja: str) -> str:
@@ -103,7 +98,7 @@ def bank() -> list[dict]:
     for name, theme in THEMES.items():
         for kind, ja, en in theme["beats"]:
             add(kind, ja, en, f"theme {name}", name)
-    if RANCH:  # the ranch website's approved lines belong to the Tsumagoi workspace only
+    if RANCH:  # the ranch website's approved lines belong to the ranch workspace only
         for kind, ja, en in VENUE_LINES:
             add(kind, ja, en, "venue lines")
         for s in SITE_LINES:
@@ -613,23 +608,16 @@ def reword(slug: str, seed: int | None = None, save_it: bool = True) -> dict:
             "post": project["posts"].get("ja", ""), "posts": project["posts"], "tags": project["tags"], "words": project["words"]}
 
 
-SUGGEST_SYSTEM = (
-    "You write on-screen lines for short vertical videos of a mountain campsite and workation place in Japan. "
-    "Use ONLY facts stated in the approved copy you are given: never add a number, a place, an amenity, a feeling the copy "
-    "does not support, a price, or a promise about the sky. Never write 天の川, 満天, 何もない, or the bare word 牧場. "
-    "House style: calm, plain, Shippori Mincho; a headline (hook) is 8-22 Japanese characters, often the owner's form "
-    "「〜からこそ、〜」 or a short fact; a proof line is 8-24 characters, one checkable fact. Put a screen line break "
-    "as \\n where a reader would pause (at most 2 rows). Each needs a plain English version. Do not repeat or lightly "
-    "reword the lines in `already` (they are in use). Reply JSON only: "
-    "{\"lines\":[{\"kind\":\"hook|line\",\"ja\":\"...\",\"en\":\"...\",\"from\":\"the approved sentence it rests on\"}]}"
-)
+# The ranch's house brief for the line-writer (shared/ranch/copy.json "wording", part of the ranch overlay); "" in a
+# clone, where every project gets the brief suggest_system() builds from its own name and rules.
+SUGGEST_SYSTEM: str = _RANCH.get("suggestSystem", "")
 
 
 def suggest_system() -> str:
     """The line-writer's brief: the ranch's house rules, or this project's name and its own banned words."""
     from studio.brand import RANCH, brand, copy_rules
 
-    if RANCH:
+    if RANCH and SUGGEST_SYSTEM:
         return SUGGEST_SYSTEM
     name, rules = brand()["name"] or "a small business", copy_rules()
     never = ", ".join(rules["banned"][:40])

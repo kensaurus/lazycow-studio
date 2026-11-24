@@ -130,7 +130,7 @@ def test_loudness_is_read_from_a_clip_with_japanese_in_its_name_and_tags(tmp_pat
     from studio.sound import trim_loudness
 
     ff = str(ffmpeg_bin())
-    clip = tmp_path / "嬬恋の焚き火.mp4"
+    clip = tmp_path / "雲カフェの焚き火.mp4"
     subprocess.run([ff, "-y", "-f", "lavfi", "-i", "testsrc2=size=320x568:rate=30:duration=4", "-f", "lavfi", "-i", "anoisesrc=d=4:c=pink:a=0.5",
                     "-shortest", "-metadata", "title=焚き火の音", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(clip)],
                    check=True, capture_output=True, timeout=60)

@@ -39,12 +39,12 @@ test("X's action bar label gives replies, reposts, likes, bookmarks and views, i
 
 test("post objects are found in a site's own data, with counts one level down and rates as percentages", () => {
   const tiktok = { data: { item_list: [
-    { item_id: "7570000000000000001", create_time: 1762941600, desc: "不便だからこそ、景色がいい。 #嬬恋", statistics: { play_count: 1500, digg_count: 80, comment_count: 3, share_count: 4, collect_count: 9 }, finish_rate: 0.185 },
+    { item_id: "7570000000000000001", create_time: 1762941600, desc: "不便だからこそ、景色がいい。 #cafekumo", statistics: { play_count: 1500, digg_count: 80, comment_count: 3, share_count: 4, collect_count: 9 }, finish_rate: 0.185 },
     { item_id: "7570000000000000002", create_time: 1762855200, desc: "別の動画", statistics: { play_count: 99 } },
   ] }, extra: { now: 1 } };
   const found = postObjects(tiktok);
   assert.equal(found.length, 2);
-  assert.deepEqual(found[0], { id: "7570000000000000001", time: 1762941600000, text: "不便だからこそ、景色がいい。 #嬬恋",
+  assert.deepEqual(found[0], { id: "7570000000000000001", time: 1762941600000, text: "不便だからこそ、景色がいい。 #cafekumo",
     numbers: { views: 1500, likes: 80, comments: 3, shares: 4, saves: 9, completion_pct: 18.5 } });
   assert.deepEqual(postObjects({ pin: { id: "550494754478797558", impression_count: "1.2K", save_count: 3 } })[0].numbers, { saves: 3, reach: 1200 });
   // TikTok Studio's list as it really is (2026-11-09): counts as strings, favorite_count = saves, and the time that
@@ -119,9 +119,9 @@ const manifest = {
   slug: "autumn", title: "不便だからこそ、景色がいい。",
   channels: [
     { name: "x", dir: join(DIR, "x"), videos: [{ file: "a_1068x1900.mp4" }, { file: "a_1920x1080.mp4" }],
-      post: "不便だからこそ。\nhttps://t.example/e?utm_source=threads&utm_medium=social\n#嬬恋 #tsumagoicamp\n" },
+      post: "不便だからこそ。\nhttps://t.example/e?utm_source=threads&utm_medium=social\n#lunch #cafekumo\n" },
     { name: "tiktok", dir: join(DIR, "tiktok"), videos: [{ file: "a_1080x1920_no-music.mp4" }, { file: "a_1080x1920.mp4" }],
-      post: "一行目\n二行目\n\n#tsumagoicamp #嬬恋 #紅葉\n" },
+      post: "一行目\n二行目\n\n#cafekumo #lunch #紅葉\n" },
     { name: "gbp", dir: join(DIR, "gbp"), files: ["cover_1080x1920.jpg", "cover_1200x900.jpg", "post.txt", "a.mp4"], videos: [{ file: "a.mp4" }],
       post: "一行目\n\nフィールドだけ：¥5,200。\n\nボタン：予約 → https://t.example/events?utm_source=gbp&utm_medium=social\n" },
   ],
@@ -141,7 +141,7 @@ test("postFor takes the music cut, tags the link for the network, and turns the 
 });
 
 test("splitTags separates trailing hashtag lines for TikTok", () => {
-  assert.deepEqual(splitTags("一行目\n二行目\n\n#tsumagoicamp #嬬恋 #紅葉\n"), { body: "一行目\n二行目", tags: ["#tsumagoicamp", "#嬬恋", "#紅葉"] });
+  assert.deepEqual(splitTags("一行目\n二行目\n\n#cafekumo #lunch #紅葉\n"), { body: "一行目\n二行目", tags: ["#cafekumo", "#lunch", "#紅葉"] });
   assert.deepEqual(splitTags("no tags here"), { body: "no tags here", tags: [] });
 });
 
@@ -304,7 +304,7 @@ test("LINE: a message delivered a minute after its booked time is that booking's
 
 test("a Google Maps post counts as out when its first line is on the listing's From the owner (carstay-1108, 13 Nov)", async () => {
   const { ownerPostSeen } = await import("../server/helper.mjs");
-  const listing = "Tsumagoi Work&Camp\n5.0 (15)\nFrom the owner\n車で来て、車で寝る。\nそれだけの日のため\n5 hours ago\nBook";
+  const listing = "Cafe Kumo\n5.0 (15)\nFrom the owner\n車で来て、車で寝る。\nそれだけの日のため\n5 hours ago\nBook";
   assert.equal(ownerPostSeen(listing, "車で来て、車で寝る。それだけの日のために、ここへ。"), true);
   assert.equal(ownerPostSeen(listing, "暗いからこそ、空を仰ぐ。"), false, "another post's words");
   assert.equal(ownerPostSeen(listing, "  "), false, "no words: never a match");
@@ -350,18 +350,20 @@ test("pinterest: books through the helper, at most 9 days ahead", () => {
 });
 
 test("pinterest: TITLE / DESCRIPTION / LINK split out of post.txt", () => {
-  const t = "TITLE: 寒いからこそ、こたつがうれしい。｜嬬恋牧場Work&Camp\n\nDESCRIPTION:\n一行目\n二行目\n\nLINK: https://tsumagoi.kensaur.us/events?utm_source=pinterest&utm_medium=social\n";
+  const t = "TITLE: 寒いからこそ、こたつがうれしい。｜Cafe Kumo\n\nDESCRIPTION:\n一行目\n二行目\n\nLINK: https://cafe-kumo.example/events?utm_source=pinterest&utm_medium=social\n";
   const p = pinterestParts(t);
-  assert.equal(p.title, "寒いからこそ、こたつがうれしい。｜嬬恋牧場Work&Camp");
+  assert.equal(p.title, "寒いからこそ、こたつがうれしい。｜Cafe Kumo");
   assert.equal(p.description, "一行目\n二行目");
-  assert.equal(p.link, "https://tsumagoi.kensaur.us/events?utm_source=pinterest&utm_medium=social");
+  assert.equal(p.link, "https://cafe-kumo.example/events?utm_source=pinterest&utm_medium=social");
   assert.equal([...pinterestParts(`TITLE: ${"あ".repeat(150)}`).title].length, 100);
 });
 
-test("pinterest: board by the reel's theme", () => {
-  assert.equal(pinterestBoard("I:/x/pinterest/tsumagoi_fire-1108-3_1080x1920.mp4"), PINTEREST_BOARDS.night);
-  assert.equal(pinterestBoard("office-1108"), PINTEREST_BOARDS.work);
-  assert.equal(pinterestBoard("carstay-1109-ridge"), PINTEREST_BOARDS.camp);
+// The owner's own boards are checked in test/ranch-helper.test.mjs, with the ranch overlay.
+test("pinterest: board by the reel's theme, any owner prefix dropped; none without boards", () => {
+  assert.equal(pinterestBoard("I:/x/pinterest/cafe-kumo_fire-1108-3_1080x1920.mp4"), PINTEREST_BOARDS.night || "");
+  assert.equal(pinterestBoard("fire-1108-3"), PINTEREST_BOARDS.night || "");
+  assert.equal(pinterestBoard("office-1108"), PINTEREST_BOARDS.work || "");
+  assert.equal(pinterestBoard("carstay-1109-ridge"), PINTEREST_BOARDS.camp || "");
 });
 
 test("pinterest: date in the field's own order, time 12 h or 24 h as shown", () => {

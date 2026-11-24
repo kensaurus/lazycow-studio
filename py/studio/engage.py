@@ -44,23 +44,30 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from studio.config import DATA
+from studio.config import DATA, RANCH, ranch_data
 
 PUBLIC = "https://public.api.bsky.app/xrpc"
 APPVIEW = "did:web:api.bsky.app#bsky_appview"
 UA = "LazycowStudio"
-# What the ranch's audience talks about. One search each per refresh. Plain words, not hashtags: a word also finds the
+# What the ranch's audience talks about (shared/ranch/copy.json "engage", part of the ranch overlay). One search each
+# per refresh. Plain words, not hashtags: a word also finds the
 # hashtag, and Japanese Bluesky tags little (24 Nov: "#車中泊" found 0 posts in 48 h, "#キャンプ" 40, 37 of them one shop's ads).
 # "#星空" stays a hashtag: the plain word is mostly illustrations and games, the tag is night-sky photographers.
-TOPICS = ["キャンプ", "冬キャンプ", "ソロキャンプ", "車中泊", "焚き火", "#星空", "ワーケーション", "リモートワーク",
-          "嬬恋", "浅間山", "群馬 キャンプ"]
+# Any other project searches its own hashtags and place names (_own_topics).
+_RANCH: dict = ((ranch_data("copy", {}) or {}).get("engage") or {}) if RANCH else {}
+TOPICS: list[str] = list(_RANCH.get("topics") or [])
 # Words of the ranch's world (an outdoor night, cold, mountains, working away). How many a post uses is its relevance:
 # it counts for more than likes, so a family's first night in a tent beats a popular drawing that mentions a campfire.
-NICHE = ("キャンプ", "テント", "タープ", "焚き火", "焚火", "薪", "寝袋", "シュラフ", "車中泊", "デイキャンプ", "ソロ", "野営",
-         "星空", "星", "夜空", "天の川", "流れ星", "冬", "雪", "霜", "氷点下", "寒", "山", "登山", "高原", "紅葉", "冠雪", "浅間",
-         "嬬恋", "群馬", "軽井沢", "草津", "ワーケーション", "リモートワーク", "テレワーク", "在宅", "温泉", "ドライブ", "ツーリング",
-         "アウトドア", "ギア", "ランタン", "コーヒー", "景色", "絶景", "草原", "牧場", "キャンプ飯", "焼き芋", "朝焼け", "夕焼け", "湯たんぽ",
-         "℃", "道具", "設営", "撤収", "サイト", "森", "湖", "自然", "釣り", "サウナ", "BBQ", "バーベキュー", "ハンモック")
+# Any other project's niche is its own topic words.
+NICHE: tuple = tuple(_RANCH.get("niche") or ())
+
+
+def _own_topics() -> list[str]:
+    """Another project's topics: its own hashtags (as plain words) and its home place's names (studio.brand)."""
+    from studio.brand import brand, home_place
+
+    words = [t.lstrip("#") for t in brand()["tags"]] + list((home_place() or {}).get("names") or [])
+    return [w for w in dict.fromkeys(w.strip() for w in words) if w][:10]
 # Not the niche even though a topic word is in it: drawings and AI pictures, games, pro sports camps, crowdfunding, a meme.
 OFFTOPIC = re.compile(r"#(oc|AIイラスト|AIart|aiart|イラスト|お絵描き|息抜きお絵描き|絵描きさんと繋がりたい|VRChat|ポケ森|NIKKE)\b"
                       r"|AIイラスト|【GPT|CAMPFIRE|キャンプファイヤー|プロ野球|秋季キャンプ|春季キャンプ|球団|ここをキャンプ地"
@@ -391,7 +398,7 @@ def _cache_write(data: dict) -> None:
 def gather(now: datetime | None = None, topics: list[str] | None = None) -> dict:
     """One refresh: search each topic, read the best authors' profiles, filter and rank."""
     now = now or datetime.now(timezone.utc)
-    topics = topics or TOPICS
+    topics = topics or TOPICS or _own_topics()
     r = Reader()
     since = (now - timedelta(hours=WINDOW_H)).isoformat(timespec="seconds").replace("+00:00", "Z")
     results: dict[str, dict] = {}

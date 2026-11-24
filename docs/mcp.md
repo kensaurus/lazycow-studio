@@ -15,7 +15,7 @@ If the studio is not running, every tool answers: "Lazycow Studio is not running
 
 ![Claude Code asks "what is waiting for my review?"; the lazycow server lists the reels and says approving stays with a person](img/tour/07-agent.webp)
 
-*A real answer from the author's own studio (the Tsumagoi Work&Camp project): one question, the `list_reels` tool, and an answer that ends with "Approving has to be done by you in the studio".*
+*A real answer from the author's own studio (the author's own business project): one question, the `list_reels` tool, and an answer that ends with "Approving has to be done by you in the studio".*
 
 ## What the agent can do
 

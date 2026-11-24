@@ -6,7 +6,7 @@ OVERVIEW: A project has the same shape as a reel in reel_specs.py plus its own p
           `python -m studio reels --build <slug>` renders it like any house reel.
 DEPENDENCIES: studio.config
 USAGE: all_projects(), load(slug), save(project)
-NOTES: Files live in tsumagoi-studio/projects/<slug>.json and are reviewable in git.
+NOTES: Files live in config.PROJECTS/<slug>.json (<data>/projects; the ranch workspace's in ./projects, reviewable in git).
 """
 from __future__ import annotations
 

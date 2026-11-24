@@ -21,6 +21,8 @@ NOTES: Each step that fails returns a plain sentence with what to do, never a st
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { defaultProjectsDir, isRanch, ranchOverlay } from "../shared/ranch.mjs";
 import { ChromeBridge, chromeExecutable, chromeWindows, closeChromeWindows, EXTENSION_STORE, findExtensionProfile, openInChrome } from "./chrome-bridge.mjs";
 
 /* Where to sign in, and the cookie a signed-in visitor carries (only its presence is read, never its value). */
@@ -657,7 +659,7 @@ export const THEME_DAYS_ALL = 3;
    within openerDays, goes after the others (the short one furthest back: its evidence is the strongest); the same
    title within titleDays is never booked. */
 export const YT_GATE = { minSec: 18, openerDays: 7, titleDays: 14 };
-/** The first clause of a title, where the hook sits (as py/studio/perf.py opener): 「不便だからこそ、尾根まで。｜嬬恋牧場」 -> 不便だからこそ. */
+/** The first clause of a title, where the hook sits (as py/studio/perf.py opener): 「静かだからこそ、よく話せる。｜Cafe Kumo」 -> 静かだからこそ. */
 export const openerOf = (title) => String(title || "").split(/[｜|]/)[0].split(/[。、,，.!?！？:：]/)[0].trim();
 export const themeOf = (slug) => String(slug || "").split("-")[0];
 /* BL-102 / BL-070: the learner could not tell hours apart because 48 of 57 posts went out at 18-20 JST (24 Nov). A
@@ -846,7 +848,7 @@ async function scheduleX(page, { file, text, at, timeZone, rehearse, step }) {
 }
 
 /* ---------- TikTok: https://www.tiktok.com/tiktokstudio/upload (Japanese UI) ---------- */
-/* A new TikTok account asks twice, once each (24 Nov 2026, @tsumagoi.camp): "コンテンツの自動チェックをオンにしますか？"
+/* A new TikTok account asks twice, once each (24 Nov 2026, the owner's new account): "コンテンツの自動チェックをオンにしますか？"
    over the upload page (its overlay swallowed the helper's clicks: "locator.click: Timeout"), and "投稿予約用に動画を
    保存しますか？" when 投稿予約する is first picked (no date box until it is allowed). Both are answered yes: the checks
    warn about music and reach before a post, and scheduling needs the video kept. */
@@ -896,7 +898,7 @@ async function scheduleTikTok(page, { file, text, at, timeZone, rehearse, step }
   const { body, tags } = splitTags(text);
   const editor = page.locator(".public-DraftEditor-content").first();
   // Clear the file name TikTok puts in the description. Draft.js keeps its own selection: a DOM range was ignored and
-  // Backspace took one letter, so two posts went out as "tsumagoi_focus-1109_1080x192山で働く…" (13 Nov). Select all
+  // Backspace took one letter, so two posts went out as "<prefix>_focus-1109_1080x192山で働く…" (13 Nov). Select all
   // with the keyboard, which the editor follows, and clear until it is empty.
   for (let i = 0; i < 4; i++) {
     await editor.click();
@@ -1292,21 +1294,28 @@ async function scheduleLinkedIn(page, { file, text, at, extra, timeZone, rehears
 }
 /* ---------- Pinterest: https://www.pinterest.com/pin-creation-tool/ ----------
    Only a business account has "Publish at a later date" (24 Nov 2026: the owner's personal account had none; the
-   ranch posts from the business profile @tsumagoicamp). The reel's pinterest/post.txt holds TITLE:, DESCRIPTION: and
+   ranch posts from its business profile). The reel's pinterest/post.txt holds TITLE:, DESCRIPTION: and
    LINK:. Video → title → description → link → board (by theme) → the switch → date and time in this computer's clock
    → the top button must read "Schedule" before it is pressed. Pinterest holds a booking up to 30 days ahead. */
-export const PINTEREST_BOARDS = {
-  night: "星空と焚き火｜標高1,444m",
-  work: "山でワーケーション｜嬬恋",
-  camp: "群馬・嬬恋 冬キャンプと車中泊",
-};
-/** The board a reel goes to, from the theme its slug starts with (fire-1108-3 → night). */
+/* The ranch's boards by theme family (shared/ranch/copy.json "helper", part of the ranch overlay, never exported), read
+   only in the ranch workspace (the same rule as server/review.mjs: shared/ranch.mjs). Any other project, and a clone, has
+   none: the board search is left empty and Pinterest's first board is picked, unless extra.board names one. */
+export const PINTEREST_BOARDS = (() => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const overlay = ranchOverlay(root, process.env.STUDIO_RANCH || "");
+  const projects = process.env.STUDIO_PROJECTS || defaultProjectsDir(root, process.env.STUDIO_DATA || join(root, "data"), overlay);
+  if (!isRanch(root, projects, overlay)) return {};
+  try { return JSON.parse(readFileSync(join(root, "shared", "ranch", "copy.json"), "utf8")).helper?.pinterestBoards || {}; }
+  catch { return {}; }
+})();
+/** The board a reel goes to, from the theme its slug starts with (fire-1108-3 → night). A delivered file's name starts
+ *  with whose it is (<prefix>_<slug>_<w>x<h>.mp4): the prefix is dropped first. "" when there is no board for it. */
 export function pinterestBoard(slugOrFile) {
-  const slug = String(slugOrFile || "").split(/[\\/]/).pop().replace(/^tsumagoi_/, "");
+  const slug = String(slugOrFile || "").split(/[\\/]/).pop().replace(/^[^_]+_(?=[^_]+_\d+x\d+)/, "");
   const theme = (slug.match(/^[a-z]+/) || [""])[0];
-  if (/^(fire|nightfire|lookup|warm|night|star)/.test(theme)) return PINTEREST_BOARDS.night;
-  if (/^(office|focus|connect|work)/.test(theme)) return PINTEREST_BOARDS.work;
-  return PINTEREST_BOARDS.camp;
+  if (/^(fire|nightfire|lookup|warm|night|star)/.test(theme)) return PINTEREST_BOARDS.night || "";
+  if (/^(office|focus|connect|work)/.test(theme)) return PINTEREST_BOARDS.work || "";
+  return PINTEREST_BOARDS.camp || "";
 }
 /** TITLE: / DESCRIPTION: / LINK: out of a pinterest post.txt (a plain text is all description). */
 export function pinterestParts(text) {

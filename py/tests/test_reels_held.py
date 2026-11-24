@@ -78,12 +78,12 @@ def test_a_draft_copy_that_cannot_be_deleted_is_moved_aside_so_the_new_one_can_b
     from studio import held
 
     monkeypatch.setattr("time.sleep", lambda s: None)
-    old = tmp_path / "tsumagoi_x_1920x1080.mp4"
+    old = tmp_path / "cafekumo_x_1920x1080.mp4"
     old.write_bytes(b"old")
     monkeypatch.setattr(Path, "unlink", lambda self, missing_ok=False: (_ for _ in ()).throw(PermissionError(5, "Access is denied")))
     held.remove(old)
     assert not old.exists() and list(tmp_path.glob("*.mp4")) == []  # the folder's video list no longer sees it
-    assert len(list(tmp_path.glob("tsumagoi_x_1920x1080.mp4.old-*"))) == 1
+    assert len(list(tmp_path.glob("cafekumo_x_1920x1080.mp4.old-*"))) == 1
 
 
 def test_one_network_whose_old_copy_is_locked_does_not_stop_the_others(monkeypatch, tmp_path, capsys):

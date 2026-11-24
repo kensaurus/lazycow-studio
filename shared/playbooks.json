@@ -19,7 +19,7 @@
         "linkInCaption": false,
         "avoid": ["URLs in the description (not clickable on Shorts)", "More than 60 hashtags (all ignored)", "Unrelated or misleading tags", "Unlicensed music"]
       },
-      "hashtags": { "min": 3, "max": 5, "mix": "1 broad, 1 niche, 1 local", "examples": ["#嬬恋", "#キャンプ", "#車中泊", "#群馬キャンプ"] },
+      "hashtags": { "min": 3, "max": 5, "mix": "1 broad, 1 niche, 1 local", "examples": ["#地名", "#キャンプ", "#車中泊", "#地名キャンプ"] },
       "times": { "bestJst": ["19:00", "21:00"], "cadencePerWeek": 7 },
       "profile": {
         "nameMax": null,
@@ -46,11 +46,11 @@
         "maxChars": 4000,
         "idealChars": 150,
         "languages": ["ja", "en"],
-        "cta": "「嬬恋牧場」で検索 / プロフィールから",
+        "cta": "「店名」で検索 / プロフィールから",
         "linkInCaption": false,
         "avoid": ["URLs (not clickable)", "Bio links before business registration/verification", "Reposts with other apps' watermarks", "Non-Commercial-Library music on a business account", "Misleading claims"]
       },
-      "hashtags": { "min": 3, "max": 5, "mix": "broad + niche + local + brand; put search words in the caption too", "examples": ["#キャンプ", "#車中泊", "#群馬キャンプ", "#嬬恋", "#tsumagoicamp"] },
+      "hashtags": { "min": 3, "max": 5, "mix": "broad + niche + local + brand; put search words in the caption too", "examples": ["#キャンプ", "#車中泊", "#地名キャンプ", "#地名", "#店名"] },
       "times": { "bestJst": ["19:00", "21:00"], "cadencePerWeek": 7 },
       "profile": {
         "nameMax": null,
@@ -81,7 +81,7 @@
         "linkInCaption": true,
         "avoid": ["Japanese counts 2 per char (140 max)", "Every URL counts 23", "More than 2 hashtags"]
       },
-      "hashtags": { "min": 1, "max": 2, "mix": "1 local + 1 topic", "examples": ["#嬬恋", "#キャンプ"] },
+      "hashtags": { "min": 1, "max": 2, "mix": "1 local + 1 topic", "examples": ["#地名", "#キャンプ"] },
       "times": { "bestJst": ["12:00", "19:00"], "cadencePerWeek": 7 },
       "profile": {
         "nameMax": null,
@@ -112,7 +112,7 @@
         "linkInCaption": false,
         "avoid": ["Links in the caption", "More than 5 hashtags", "Long hashtag-heavy captions", "Captions unrelated to the video", "ALL CAPS", "Reels under 10 s"]
       },
-      "hashtags": { "min": 0, "max": 3, "mix": "local + topic", "examples": ["#嬬恋", "#群馬", "#キャンプ"] },
+      "hashtags": { "min": 0, "max": 3, "mix": "local + topic", "examples": ["#地名", "#県名", "#キャンプ"] },
       "times": { "bestJst": ["12:00", "19:00"], "cadencePerWeek": 5 },
       "profile": {
         "nameMax": null,
@@ -269,7 +269,7 @@
         "linkInCaption": true,
         "avoid": ["Publishing before checking (published posts cannot be edited)", "Unlabelled AI-made media (tick AIで生成したコンテンツ)", "Other networks' IDs [unverified]"]
       },
-      "hashtags": { "min": 0, "max": 2, "mix": "local [unverified effect]", "examples": ["#嬬恋", "#キャンプ"] },
+      "hashtags": { "min": 0, "max": 2, "mix": "local [unverified effect]", "examples": ["#地名", "#キャンプ"] },
       "times": { "bestJst": ["19:00", "21:00"], "cadencePerWeek": 7 },
       "profile": {
         "nameMax": null,
@@ -331,7 +331,7 @@
         "linkInCaption": true,
         "avoid": ["Titles over 40 chars of key words (only ~40 show)", "Hashtag blocks instead of keywords", "Text outside the safe zone"]
       },
-      "hashtags": { "min": 0, "max": 2, "mix": "keywords in title + description instead", "examples": ["群馬 キャンプ場", "Japan camping", "#嬬恋"] },
+      "hashtags": { "min": 0, "max": 2, "mix": "keywords in title + description instead", "examples": ["地名 キャンプ場", "Japan camping", "#地名"] },
       "times": { "bestJst": ["21:00"], "cadencePerWeek": 5 },
       "profile": {
         "nameMax": null,
@@ -362,14 +362,14 @@
         "linkInCaption": false,
         "avoid": ["Links, QR codes, other apps' watermarks", "WeChat/LINE/IG IDs, phone, e-mail (notes, comments, profile)", "'Search us on…' or 'book on our site' wording", "Superlatives 最/第一/最佳 (广告法 §9)", "Exaggerated titles or covers", "Unlabelled AI content", "Titles over 20 chars [unverified]"]
       },
-      "hashtags": { "min": 5, "max": 10, "mix": "broad travel + Japan region + niche (露营/车中泊) + place", "examples": ["#日本旅行", "#日本露营", "#日本自驾游", "#群马", "#嬬恋村", "#轻井泽周边", "#日本小众景点"] },
+      "hashtags": { "min": 5, "max": 10, "mix": "broad travel + Japan region + niche (露营/车中泊) + place", "examples": ["#日本旅行", "#日本露营", "#日本自驾游", "#地名", "#日本小众景点"] },
       "times": { "bestJst": ["21:00", "22:00"], "cadencePerWeek": 3 },
       "profile": {
         "nameMax": null,
         "bioMax": null,
         "linkSlot": "None (no links or IDs allowed)",
         "pin": "Pin the access / price guide note [unverified]",
-        "tips": ["专业号 verification ¥600/yr, ~3 working days", "Overseas-company eligibility [unverified]", "Use the Chinese name 嬬恋牧场 so people can search maps", "Native speaker checks every note"]
+        "tips": ["专业号 verification ¥600/yr, ~3 working days", "Overseas-company eligibility [unverified]", "Use your place's Chinese name so people can search maps", "Native speaker checks every note"]
       },
       "community": {
         "replyWithinHours": 24,

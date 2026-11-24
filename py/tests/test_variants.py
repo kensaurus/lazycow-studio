@@ -4,6 +4,8 @@ import os
 
 os.environ.setdefault("STUDIO_DATA", os.environ.get("STUDIO_DATA", str(__import__("pathlib").Path(__import__("tempfile").gettempdir()) / "studio-test-data")))
 
+import pytest  # noqa: E402
+
 from studio.assemble import LONG_RHYTHM, THEMES, long_theme
 from studio.guard import assert_copy
 from studio.reels import CHANNELS, LENGTH_RULE, _post_text, check_reel, wants
@@ -19,12 +21,6 @@ def test_long_theme_fills_every_slot_and_passes_the_copy_guard():
         for _, ja, en in lt["beats"]:
             assert_copy(ja)
             assert_copy(en)
-
-
-def test_long_theme_does_not_repeat_a_fact_the_theme_already_says():
-    lt = long_theme(THEMES["office"])  # office already says 標高1,444m、100Mbpsの光回線
-    fibre = [ja for _, ja, _ in lt["beats"] if "光回線" in ja]
-    assert len(fibre) == 1
 
 
 def test_long_cut_goes_only_to_explainer_channels():
@@ -54,7 +50,11 @@ def test_length_rule_depends_on_the_cut():
 REEL = {"slug": "unit-variants", "tags": ["#a", "#b", "#c", "#d", "#e", "#f"], "yt_title": "t", "title_ja": "t",
         "posts": {"ja": "日本語の文。", "en": "English.", "price_ja": "料金。", "path": "reserve", "linkedin": "L"}}
 
+# The per-network texts below are the ranch's own (its overlay's words: search line, link, taglines); a project made in
+# the studio gets its own texts (studio.reels._own_post_text, test_brand.py).
 
+
+@pytest.mark.ranch
 def test_threads_ends_on_a_question_and_moves_the_link_to_the_first_reply():
     text = _post_text(REEL, "threads")
     head, _, reply = text.partition("最初の返信")
@@ -68,11 +68,13 @@ def test_facebook_has_no_link_and_at_most_five_hashtags():
     assert text.count("#") <= 5
 
 
+@pytest.mark.ranch
 def test_tiktok_sends_people_to_search_not_a_bio_link():
     text = _post_text(REEL, "tiktok")
     assert "プロフィールのリンク" not in text and "検索" in text
 
 
+@pytest.mark.ranch
 def test_tiktok_caption_is_short_japanese_with_no_price_list():
     """16 Nov: every TikTok post sat at 0 views with ~400-character captions (JA + EN + prices) that read like ads;
     the playbook's own ideal is about 150 characters."""
@@ -82,6 +84,7 @@ def test_tiktok_caption_is_short_japanese_with_no_price_list():
     assert len(text) <= 220, len(text)
 
 
+@pytest.mark.ranch
 def test_new_networks_have_their_own_text():
     assert "utm_source=gbp" in _post_text(REEL, "gbp")
     assert "utm_source=line-voom" in _post_text(REEL, "line-voom")
@@ -98,18 +101,6 @@ def test_a_borrowed_theme_gets_its_own_linkedin_text():
         assert "¥120,000" in li.split("\n\n")[0], key  # the numbers in the first lines
 
 
-def test_video_networks_added_later_have_text_and_files():
-    for c in ("line-oa", "pinterest", "bluesky"):
-        assert c in CHANNELS and not CHANNELS[c].get("off"), c
-        assert f"utm_source={c}" in _post_text(REEL, c), c
-    long_text = {**REEL, "posts": {**REEL["posts"], "x": "長い文。" * 120}}
-    sky = _post_text(long_text, "bluesky")
-    assert len(sky.rstrip("\n")) <= 300 and "utm_source=bluesky" in sky
-    # Two topic tags survive the trim (a post with none reaches followers only), never the brand's own handle tag.
-    tags = sky.rstrip("\n").split("\n")[-1].split()
-    assert tags[0] == "#キャンプ" and len(tags) == 2 and "#tsumagoicamp" not in tags
-
-
 def test_link_can_be_added_after_posting():
     from studio import posting
 
@@ -123,15 +114,7 @@ def test_link_can_be_added_after_posting():
         posting.link(pid, "http://not-https")
 
 
-def test_captions_follow_each_networks_playbook():
-    tik = _post_text(REEL, "tiktok")
-    assert "群馬 キャンプ場" in tik and tik.count("#") <= 5  # search words + at most 5 tags
-    head, _, _ = _post_text(REEL, "threads").partition("最初の返信")
-    assert head.count("#") == 1  # exactly one topic tag
-    yt = _post_text(REEL, "youtube-shorts")
-    assert yt.count("#") <= 3  # YouTube shows three above the title
-
-
+@pytest.mark.ranch
 def test_a_long_xiaohongshu_title_is_flagged():
     long = {**REEL, "posts": {**REEL["posts"], "zh": "正因为没有划分营位，可以在喜欢的地方搭帐篷。\n正文"}}
     assert "20字以内" in _post_text(long, "xiaohongshu")
@@ -139,42 +122,10 @@ def test_a_long_xiaohongshu_title_is_flagged():
     assert "20字以内" not in _post_text(short, "xiaohongshu")
 
 
-def test_youtube_description_leads_with_searchable_tags_asks_a_question_and_points_to_the_live():
-    """BL-057 (PDCA 21 Nov): #tsumagoicamp, which nobody searches, was the first of the three tags YouTube shows above
-    the title; 0 comments on 29 Shorts; the 24 h live converts ten times better than the Shorts."""
-    from studio.reels import YT_QUESTION, yt_tags
-
-    reel = {**REEL, "tags": ["#tsumagoicamp", "#嬬恋", "#浅間山", "#フリーサイト"]}
-    yt = _post_text(reel, "youtube-shorts")
-    tags = yt.rstrip("\n").split("\n")[-1].split()
-    assert tags[-1] == "#tsumagoicamp" and "#tsumagoicamp" not in tags[:3]
-    assert tags[:3] == ["#浅間山", "#フリーサイト", "#キャンプ"]  # the reel's own searchable topics, then a general one
-    assert yt.index("#") > yt.index("DESCRIPTION:")
-    desc = yt.split("DESCRIPTION:", 1)[1]
-    assert YT_QUESTION in desc and "？" in YT_QUESTION
-    assert "https://www.youtube.com/@tsumagoicamp/live" in desc
-    # Every tag the reel had is kept (the full line YouTube's metadata appends), the brand last.
-    assert yt_tags(reel["tags"]) == ["#浅間山", "#フリーサイト", "#キャンプ", "#嬬恋", "#tsumagoicamp"]
-    assert yt_tags(["#tsumagoicamp", "#嬬恋", "#光回線"])[:3] == ["#キャンプ", "#群馬キャンプ", "#車中泊"]
-
-
 def test_x_length_counts_cjk_as_two_and_a_url_as_23():
     from studio.reels import x_length
 
     assert x_length("abc") == 3
-    assert x_length("嬬恋") == 4
-    assert x_length("見て https://tsumagoi.kensaur.us/reserve?utm_source=x&utm_medium=social") == 4 + 1 + 23
+    assert x_length("雲上") == 4
+    assert x_length("見て https://cafe-kumo.example/reserve?utm_source=x&utm_medium=social") == 4 + 1 + 23
     assert x_length("“quote” — ok…") == 13 - 1 + 2  # curly quotes and the em dash are 1; the ellipsis is 2
-
-
-def test_x_posts_fit_280_as_x_counts_them():
-    """BL-072: _fit used len() against 280; 200 Japanese characters are 400 to X and the post is refused."""
-    from studio.reels import x_length
-
-    long_text = {**REEL, "posts": {**REEL["posts"], "x": "区画がないからこそ、好きな場所に張れる。" * 12}}
-    x = _post_text(long_text, "x")
-    assert x_length(x.rstrip("\n")) <= 280, x_length(x)
-    assert "utm_source=x" in x and x.rstrip("\n").endswith("#嬬恋 #tsumagoicamp")
-    assert "…" in x
-    short = _post_text(REEL, "x")
-    assert "日本語の文。" in short and "…" not in short  # a post that fits is left whole

@@ -749,7 +749,7 @@ def test_research_writing_goes_to_the_picked_llm_provider_priced_and_charged(pen
     monkeypatch.setattr(research, "_call", http)
     ai.select({"capability": "llm", "provider": "gemini", "model": "gemini-3.8-flash"})
     got = research._llm("system", "user", purpose="research")
-    assert got == {"angles": [{"title": "紅葉の嬬恋", "why": "Autumn pages", "sources": ["https://news.example.jp/a"]}]}, "a fenced JSON answer is read"
+    assert got == {"angles": [{"title": "紅葉のCafe Kumo", "why": "Autumn pages", "sources": ["https://news.example.jp/a"]}]}, "a fenced JSON answer is read"
     c = calls[0]
     assert c["url"] == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions" and c["headers"]["authorization"] == f"Bearer {GM}"
     assert c["body"]["model"] == "gemini-3.8-flash" and c["body"]["reasoning_effort"] == "low" and "response_format" not in c["body"]

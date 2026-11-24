@@ -115,7 +115,7 @@ def make_reel(root: Path, slug="day-test", monkeypatch=None):
                          {"src": "a/small.mp4", "sec": 2.5, "role": "auto: fire (match 0.2)"}],
                "beats": [{"kind": "hook", "ja": "山にこもって、\nどこまで進むか。", "en": "Go up.", "startSec": 0.1, "endSec": 3.4},
                          {"kind": "line", "ja": "標高1,444m、\n100Mbpsの光回線。", "en": "Fibre.", "startSec": 3.7, "endSec": 7.4},
-                         {"kind": "end", "ja": "嬬恋牧場Work&Camp", "en": "Tsumagoi Work&Camp", "startSec": 7.5, "endSec": 7.5}]}
+                         {"kind": "end", "ja": "Cafe Kumo", "en": "Cafe Kumo", "startSec": 7.5, "endSec": 7.5}]}
     projects.save(project)
     picks = {"a/clip.mp4|3.0|None": {"start": 4.0, "is360": False}, "a/small.mp4|2.5|None": {"start": 1.0, "is360": False}}
     (root / "mezz" / slug).mkdir(parents=True, exist_ok=True)

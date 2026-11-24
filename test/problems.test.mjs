@@ -218,8 +218,8 @@ test("YouTube's dead sign-in (invalid_grant) is red with the Testing-mode cause;
 
 test("a Facebook sign-in that stopped working is one red problem, covering Instagram Stories; a never-connected network is not", () => {
   const connections = {
-    facebook: { connected: false, account: "Tsumagoi Work&Camp", error: "the token expired" },
-    "instagram-story": { connected: false, account: "@tsumagoicamp", error: "the stored Facebook token expired" },
+    facebook: { connected: false, account: "Cafe Kumo", error: "the token expired" },
+    "instagram-story": { connected: false, account: "@cafe.kumo", error: "the stored Facebook token expired" },
     bluesky: { connected: false, account: null, error: null },
   };
   const found = findProblems({ connections, posts: [{ id: 9, slug: "a", network: "instagram-story", status: "queued", at: "2026-11-20T12:00+09:00" }],
@@ -243,7 +243,7 @@ test("readErrors reads the collector's files, and drops an error older than the 
   state({ youtube: { error: grant, code: "auth", at: "2026-11-24T04:10:42Z" } });
   chan("2026-11-24T03:10:47Z", [{ account: "main", error: grant }]);
   assert.equal(readErrors(dir).youtube.code, "auth");
-  chan("2026-11-24T05:00:00Z", [{ account: "main", channel: "Tsumagoi", items: [] }]);  // a later channel read worked
+  chan("2026-11-24T05:00:00Z", [{ account: "main", channel: "Cafe Kumo", items: [] }]);  // a later channel read worked
   assert.equal(readErrors(dir).youtube, undefined);
   chan("2026-11-24T05:00:00Z", [{ account: "main", error: grant }]);                   // only the channel read knows
   state({});

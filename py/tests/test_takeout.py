@@ -14,15 +14,19 @@ def _photo(path: Path, colour) -> bytes:
     return path.read_bytes()
 
 
-def test_takeout_zip_is_unpacked_located_and_deduped(tmp_path):
+def test_takeout_zip_is_unpacked_located_and_deduped(tmp_path, monkeypatch):
+    from studio import brand
+
+    # The example business's home place (Cafe Kumo), so "near" is tested without any one project's own point.
+    monkeypatch.setattr(brand, "home_place", lambda: {"lat": 35.0116, "lon": 135.7681, "radiusKm": 2, "awayEvents": [], "names": ["kumo"]})
     drive = tmp_path / "Takeout"
     drive.mkdir()
     ranch = _photo(tmp_path / "a.jpg", (200, 120, 40))
     away = _photo(tmp_path / "b.jpg", (20, 120, 200))
     with zipfile.ZipFile(drive / "takeout-20261107T000000Z-001.zip", "w") as z:
-        z.writestr("Takeout/Google Photos/嬬恋/PXL_1.jpg", ranch)
-        z.writestr("Takeout/Google Photos/嬬恋/PXL_1.jpg.supplemental-metadata.json", json.dumps(
-            {"title": "PXL_1.jpg", "geoData": {"latitude": 36.5893, "longitude": 138.5096}, "photoTakenTime": {"timestamp": "1792800000"}}))
+        z.writestr("Takeout/Google Photos/Cafe Kumo/PXL_1.jpg", ranch)
+        z.writestr("Takeout/Google Photos/Cafe Kumo/PXL_1.jpg.supplemental-metadata.json", json.dumps(
+            {"title": "PXL_1.jpg", "geoData": {"latitude": 35.0116, "longitude": 135.7681}, "photoTakenTime": {"timestamp": "1792800000"}}))
         z.writestr("Takeout/Google Photos/Trip/PXL_2.jpg", away)
         z.writestr("Takeout/Google Photos/Trip/PXL_2.jpg.json", json.dumps(
             {"title": "PXL_2.jpg", "geoData": {"latitude": 35.68, "longitude": 139.76}}))

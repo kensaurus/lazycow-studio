@@ -57,7 +57,7 @@ NAME = "Bluesky"
 HOW = ("In the Bluesky app open Settings › Privacy and security › App passwords, add one called "
        "Lazycow Studio, and paste it here with your handle (never your account password).")
 FIELDS = [
-    {"key": "handle", "label": "Handle", "secret": False, "placeholder": "tsumagoi.bsky.social"},
+    {"key": "handle", "label": "Handle", "secret": False, "placeholder": "cafekumo.bsky.social"},
     {"key": "app_password", "label": "App password", "secret": True, "placeholder": "xxxx-xxxx-xxxx-xxxx"},
 ]
 can_schedule = False
@@ -160,7 +160,7 @@ def _xrpc_error(status: int, body: bytes) -> str:
 def _normal_handle(raw: str) -> str:
     h = (raw or "").strip().lstrip("@").strip()
     if h and "@" not in h and "." not in h and not h.startswith("did:"):
-        h += ".bsky.social"  # "tsumagoi" means tsumagoi.bsky.social
+        h += ".bsky.social"  # "cafekumo" means cafekumo.bsky.social
     return h.lower() if "@" not in h else h
 
 
@@ -201,7 +201,7 @@ def connect(fields: dict) -> dict:
     handle = _normal_handle(str(fields.get("handle") or ""))
     password = str(fields.get("app_password") or "").strip().lower()
     if not handle:
-        raise ValueError("Enter your Bluesky handle, for example tsumagoi.bsky.social")
+        raise ValueError("Enter your Bluesky handle, for example cafekumo.bsky.social")
     if not password:
         raise ValueError("Enter an app password from Settings › Privacy and security › App passwords")
     if not APP_PASSWORD.match(password):

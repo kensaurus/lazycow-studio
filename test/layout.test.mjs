@@ -30,9 +30,9 @@ test("every format keeps a two-line caption inside the safe box", () => {
   }
 });
 
-test("fact guard rejects a price and a bare ranch word", () => {
+// The owner's brand rules (a bare ranch word, the registered name) are in test/ranch-layout.test.mjs, with the overlay.
+test("fact guard rejects a price, with or without a brand", () => {
   assert.deepEqual(copyProblems("デッキに、夕方。"), []);
   assert.ok(copyProblems("大人 ¥2600").includes("price"));
-  assert.ok(copyProblems("牧場の夕方").includes("bare-bokujo"));
-  assert.deepEqual(copyProblems("嬬恋牧場Work&Camp"), []);
+  assert.deepEqual(copyProblems("Cafe Kumo"), []);
 });

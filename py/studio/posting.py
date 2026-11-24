@@ -285,13 +285,15 @@ def ics(post_id: int) -> str:
     fmt = "%Y%m%dT%H%M%SZ"
     stamp = datetime.now(timezone.utc).strftime(fmt)
     title = f"Post {row['slug']} on {row['network']}"
-    from studio.config import RANCH, READY
+    from studio.config import RANCH, RANCH_BRAND, READY, STUDIO_NAME
 
-    where = "Drive tsumagoi-video-edit-sns › ready" if RANCH else str(READY)
+    drive = RANCH_BRAND.get("driveFolder") if RANCH else None
+    where = f"Drive {drive} › ready" if drive else str(READY)
+    uid = (RANCH and RANCH_BRAND.get("calendarUid")) or "lazycow-post"
     body = f"Files and post text: {where} › {row['slug']} › {row['network']}. Then press Mark posted in Lazycow Studio."
     return "\r\n".join([
-        "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Tsumagoi Studio//posting plan//EN", "BEGIN:VEVENT",
-        f"UID:tsumagoi-post-{row['id']}@studio.local", f"DTSTAMP:{stamp}", f"DTSTART:{start.strftime(fmt)}", f"DTEND:{end.strftime(fmt)}",
+        "BEGIN:VCALENDAR", "VERSION:2.0", f"PRODID:-//{STUDIO_NAME}//posting plan//EN", "BEGIN:VEVENT",
+        f"UID:{uid}-{row['id']}@studio.local", f"DTSTAMP:{stamp}", f"DTSTART:{start.strftime(fmt)}", f"DTEND:{end.strftime(fmt)}",
         f"SUMMARY:{_esc(title)}", f"DESCRIPTION:{_esc(body)}",
         "BEGIN:VALARM", "ACTION:DISPLAY", f"DESCRIPTION:{_esc(title)}", "TRIGGER:-PT10M", "END:VALARM",
         "END:VEVENT", "END:VCALENDAR", "",

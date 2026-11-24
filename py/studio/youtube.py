@@ -1,12 +1,12 @@
 """
 FILE: py/studio/youtube.py
-PURPOSE: Connect the Tsumagoi YouTube channel once, then upload or schedule a reel's Short.
+PURPOSE: Connect the project's YouTube channel once, then upload or schedule a reel's Short.
 OVERVIEW: OAuth for an installed app (PKCE, loopback redirect to the studio), a stored
           refresh token, a resumable upload of the reel's youtube-shorts file with its
           approved title and description, and a read of what is on the channel.
           Every upload is written to the `posts` table, so one reel is never sent twice
-          by accident and the home page can show what went out. Bilingual playlists
-          (PLAYLISTS) are created on demand; public and scheduled videos are sorted into
+          by accident and the home page can show what went out. The ranch's bilingual playlists
+          (PLAYLISTS, from its overlay; none in any other project) are created on demand; public and scheduled videos are sorted into
           them by reel theme or title words, and a new upload joins its playlists.
 DEPENDENCIES: Python stdlib (urllib, ctypes on Windows), certifi, studio.config, studio.posting, studio.reels
 USAGE: python -m studio youtube status | auth-url | exchange --code C --state S |
@@ -39,7 +39,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-from studio.config import DATA, ROOT
+from studio.config import DATA, RANCH, ROOT, ranch_data
 from studio.posting import aware, booked, posts, record, settle, with_offset
 
 REDIRECT = "http://127.0.0.1:4317/oauth/youtube"  # the default; a Desktop client accepts any loopback port (redirect_uri())
@@ -60,23 +60,11 @@ def redirect_uri(port: int | str | None = None) -> str:
     return f"http://127.0.0.1:{p}/oauth/youtube"
 MANAGE = "https://www.googleapis.com/auth/youtube"  # playlists need it; upload and read do not
 
-# Bilingual playlists. A studio reel goes by its theme; any other video by words in its title.
-PLAYLISTS = [
-    {"key": "aerial", "title": "空撮 | Aerial views", "themes": ["aerial"], "words": ["from the air", "空撮", "drone", "ドローン"],
-     "description": "標高1,444mの嬬恋牧場Work&Campを空から。\nTsumagoi Work&Camp at 1,444 m, from the air."},
-    {"key": "autumn", "title": "紅葉と秋 | Autumn", "themes": ["autumn"], "words": ["autumn", "秋", "紅葉", "maple"],
-     "description": "嬬恋高原の秋と紅葉。\nAutumn colours around Tsumagoi Work&Camp."},
-    {"key": "winter", "title": "雪と冬 | Winter", "themes": ["warm", "winter"], "words": ["snow", "winter", "雪", "冬"],
-     "description": "雪の嬬恋牧場、冬のキャンプと車中泊。\nSnow and winter at Tsumagoi Work&Camp."},
-    {"key": "spring", "title": "春と夏 | Spring and summer", "themes": [], "words": ["spring", "summer", "春", "夏"],
-     "description": "嬬恋高原の春と夏。\nSpring and summer on the Tsumagoi highland."},
-    {"key": "fire", "title": "焚き火とごはん | Fire and food", "themes": ["fire"], "words": ["fire", "bbq", "lunch", "pizza", "焚き火", "お昼", "ピザ", "ごはん"],
-     "description": "共用キッチンとデッキの焚き火台。\nThe shared kitchen and the fire on the deck."},
-    {"key": "work", "title": "山で働く | Work in the mountains", "themes": ["office", "focus", "connect"], "words": ["desk", "lounge", "laptop", "office", "デスク", "こたつ", "ワーケーション"],
-     "description": "標高1,444m、100Mbpsの光回線で働く。\nWork at 1,444 m on 100 Mbps fibre."},
-    {"key": "field", "title": "フィールドと車中泊 | Field and car stay", "themes": ["field", "carstay", "loud", "lookup", "view"], "words": ["tent", "field", "car", "kite", "テント", "車中泊", "凧", "フィールド"],
-     "description": "区画のない草原、テント、車中泊。\nOne open field, tents and car stays."},
-]
+# The ranch's bilingual playlists (shared/ranch/copy.json "youtube", part of the ranch overlay). A studio reel goes by
+# its theme; any other video by words in its title. Any other project, and a clone, has none: their descriptions would
+# name another place.
+_RANCH: dict = (ranch_data("copy", {}) or {}).get("youtube") or {}
+PLAYLISTS: list[dict] = list(_RANCH.get("playlists") or []) if RANCH else []
 AUTH = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN = "https://oauth2.googleapis.com/token"
 API = "https://www.googleapis.com/youtube/v3"
@@ -571,15 +559,15 @@ def metadata(slug: str) -> dict:
         if line:
             # A bed studio.ai made for this reel is credited as AI-made, never as CC0.
             credit = line.replace(".wav", "").replace(".mp3", "") + (" (AI-generated music)" if "AI-GENERATED" in licence else " (CC0)")
-    parts = [desc, "群馬県吾妻郡嬬恋村・嬬恋牧場Work&Camp"]
+    place = _RANCH.get("placeLine") if RANCH else ""  # the ranch's address line; no other project gets it
+    parts = [desc, *([place] if place else [])]
     if credit:
         parts.append(credit)
     if tags:
-        from studio.config import RANCH
         from studio.reels import yt_tags
 
-        parts.append(" ".join(yt_tags(tags) if RANCH else tags))  # BL-057: searchable first, #tsumagoicamp last
-    words = [t.lstrip("#") for t in tags] + ["嬬恋牧場Work&Camp", "嬬恋", "群馬"]
+        parts.append(" ".join(yt_tags(tags) if RANCH else tags))  # BL-057: searchable first, the brand tag last
+    words = [t.lstrip("#") for t in tags] + (list(_RANCH.get("words") or []) if RANCH else [])
     return {
         "title": title[:100],
         "description": "\n\n".join(parts)[:4900],

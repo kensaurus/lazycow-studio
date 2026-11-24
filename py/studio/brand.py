@@ -2,9 +2,10 @@
 FILE: py/studio/brand.py
 PURPOSE: Whose reels these are: the name on the end card, the link and hashtags in posts, the home place footage
          must come from, and the rules every line of copy must pass. One answer per project.
-OVERVIEW: This repository is the Tsumagoi Work&Camp workspace (README). Its main project (config.RANCH) keeps the
-          ranch's values exactly as they always were: spec.json's ranch point and banned words, 嬬恋牧場Work&Camp,
-          #tsumagoicamp and the ranch site. A project made in the studio is any brand and starts neutral: no home
+OVERVIEW: The owner's private checkout is also the ranch workspace (docs/ranch-workspace.md, not exported). Its main
+          project (config.RANCH) keeps the ranch's values exactly as they always were, read from its overlay
+          (shared/ranch/brand.json: its name, hashtag, handle, site, home point, banned words and registered name).
+          A clone has no overlay. A project made in the studio is any brand and starts neutral: no home
           place (all of its footage counts), no ranch words, links or hashtags, no copy rules but its own. It reads
           <data>/brand.json, written from the studio (POST /api/brand):
             {"name": "Cafe Kumo", "nameEn": "", "link": "https://...", "tags": ["#cafekumo"],
@@ -20,13 +21,13 @@ import json
 import os
 import re
 
-from studio.config import DATA, RANCH, ROOT, SPEC
+from studio.config import DATA, RANCH, RANCH_BRAND, ROOT, SPEC
 
 __all__ = ["RANCH", "brand", "home_place", "copy_rules", "save_brand", "end_card", "BRAND_FILE"]
 
 BRAND_FILE = DATA / "brand.json"
-RANCH_NAME = "嬬恋牧場Work&Camp"
-RANCH_LINK = "https://tsumagoi.kensaur.us/"
+RANCH_NAME: str = RANCH_BRAND.get("name", "")
+RANCH_LINK: str = RANCH_BRAND.get("link", "")
 HASHTAG = re.compile(r"^#[^\s#]{1,60}$")
 
 
@@ -50,9 +51,9 @@ def _profile_name() -> str:
 def brand() -> dict:
     """{name, nameEn, link, tags, ranch}. The ranch's own for the main project; else this project's brand.json,
     falling back to the project's name. Never another brand's link or hashtags."""
-    if RANCH:
-        return {"name": RANCH_NAME, "nameEn": "Tsumagoi Work&Camp", "link": RANCH_LINK, "tags": ["#tsumagoicamp"], "handle": "@tsumagoicamp",
-                "ranch": True}
+    if RANCH and RANCH_BRAND:
+        return {"name": RANCH_NAME, "nameEn": RANCH_BRAND.get("nameEn", ""), "link": RANCH_LINK, "tags": list(RANCH_BRAND.get("tags") or []),
+                "handle": RANCH_BRAND.get("handle", ""), "ranch": True}
     own = _own()
     name = str(own.get("name") or _profile_name() or os.environ.get("STUDIO_WORKSPACE") or "").strip()[:60]
     link = str(own.get("link") or "").strip()
@@ -79,9 +80,10 @@ def _profile_handle() -> str:
 def home_place() -> dict | None:
     """Where footage must have been shot to be used: {lat, lon, radiusKm, awayEvents, names}, or None when the project
     has no home place (then every clip it has counts). The ranch: spec.json's point and its owner-declared away events."""
-    if RANCH:
+    if RANCH and RANCH_BRAND:
         r = SPEC["ranch"]
-        return {"lat": r["lat"], "lon": r["lon"], "radiusKm": r["radiusKm"], "awayEvents": list(r.get("awayEvents", [])), "names": ["tsumagoi", "嬬恋"]}
+        return {"lat": r["lat"], "lon": r["lon"], "radiusKm": r["radiusKm"], "awayEvents": list(r.get("awayEvents", [])),
+                "names": list(RANCH_BRAND.get("placeNames") or [])}
     p = _own().get("place")
     if not isinstance(p, dict):
         return None
@@ -97,13 +99,15 @@ def home_place() -> dict | None:
 
 
 def copy_rules() -> dict:
-    """{banned: [phrases], noPrices: bool, registered: name or None}. The ranch: spec.json's facts (no prices on screen,
-    牧場 only inside the registered name). Any other project: only what its brand.json asks for."""
-    if RANCH:
-        return {"banned": list(SPEC["bannedSubstrings"]), "noPrices": True, "registered": RANCH_NAME}
+    """{banned: [phrases], noPrices: bool, registered: name or None, bare: word or None}. The ranch: its overlay's facts
+    (no prices on screen, its banned phrases, and its bare word allowed only inside its registered name). Any other
+    project: only what its brand.json asks for."""
+    if RANCH and RANCH_BRAND:
+        return {"banned": list(SPEC["bannedSubstrings"]), "noPrices": True, "registered": RANCH_BRAND.get("registered") or RANCH_NAME,
+                "bare": RANCH_BRAND.get("bareWord") or None}
     own = _own()
     banned = [str(b).strip() for b in (own.get("banned") or []) if str(b).strip()][:200]
-    return {"banned": banned, "noPrices": bool(own.get("noPrices")), "registered": None}
+    return {"banned": banned, "noPrices": bool(own.get("noPrices")), "registered": None, "bare": None}
 
 
 def end_card() -> tuple[str, str]:
@@ -113,9 +117,9 @@ def end_card() -> tuple[str, str]:
 
 
 def save_brand(fields: dict) -> dict:
-    """Write this project's brand.json from the studio's form. The ranch's values live in code and spec.json."""
-    if RANCH:
-        raise ValueError("brand: the Tsumagoi workspace's name, links and rules are fixed in shared/spec.json and studio/brand.py")
+    """Write this project's brand.json from the studio's form. The ranch's values live in its overlay."""
+    if RANCH and RANCH_BRAND:
+        raise ValueError("brand: the ranch workspace's name, links and rules are fixed in its overlay (shared/ranch/brand.json)")
     cur = _own()
     out = dict(cur)
     if "name" in fields:

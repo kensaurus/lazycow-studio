@@ -30,3 +30,15 @@ test("every environment variable the code reads is documented in .env.example", 
   assert.ok(used.size > 20, `only found ${used.size} variables: the patterns above no longer match the code`);
   assert.deepEqual([...used].filter((k) => !listed.has(k)).sort(), [], "read by the code but missing from .env.example");
 });
+
+// BL-119: docs/self-host.md › Advanced settings has one line for every variable in .env.example, and no line for one
+// that is not there (a renamed variable would leave a stale row).
+test("every .env.example variable has a line in docs/self-host.md › Advanced settings", () => {
+  const listed = [...readFileSync(join(ROOT, ".env.example"), "utf8").matchAll(/^([A-Z][A-Z0-9_]+)=/gm)].map((m) => m[1]);
+  const doc = readFileSync(join(ROOT, "docs", "self-host.md"), "utf8");
+  const start = doc.indexOf("## Advanced settings"), end = doc.indexOf("\n## ", start + 1);
+  assert.ok(start > 0, "docs/self-host.md has no Advanced settings section");
+  const rows = new Set([...doc.slice(start, end < 0 ? undefined : end).matchAll(/^\| `([A-Z][A-Z0-9_]+)` \| \S/gm)].map((m) => m[1]));
+  assert.deepEqual(listed.filter((k) => !rows.has(k)), [], "in .env.example but not in the table");
+  assert.deepEqual([...rows].filter((k) => !listed.includes(k)), [], "in the table but not in .env.example");
+});

@@ -40,14 +40,14 @@ function fakeStudio() {
     "POST /api/publish": (b) => ({ slug: `post-${b.slug}-${b.network}`, kind: "post", status: "running", pct: 4, label: "starting", position: 0 }),
     "POST /api/helper/schedule": (b) => ({ slug: `helper-${b.slug}-${b.network}`, kind: "helper", status: "queued", pct: 0, label: "waiting for the helper", position: 0 }),
     "POST /api/research/ideas": (b) => ({ summary: `2 recent pages about ${b.topic || "the default topic"}.`, items: [{ title: "紅葉", url: "https://a.example/1" }],
-      angles: [{ title: "紅葉の嬬恋", why: "trending", sources: ["https://a.example/1"], from: "template" }], hashtags: [], keywords: [],
+      angles: [{ title: "紅葉のランチ", why: "trending", sources: ["https://a.example/1"], from: "template" }], hashtags: [], keywords: [],
       sources: ["https://a.example/1", "https://b.example/2"], note: "Suggestions for a person.", cached: true, cost: { firecrawlCalls: 0, fromCache: 2, credits: 0 } }),
-    "POST /api/research/site-check": () => ({ summary: "Checked 2 pages of tsumagoi.kensaur.us: 1 facts match, 1 differ, 0 not stated on the website.",
-      facts: [{ fact: "field_first_yen", status: "mismatch", message: "Field only: first adult per night: the website says ¥5,500; your copy says ¥5,200 (the view post).", source: "https://tsumagoi.kensaur.us/" }],
+    "POST /api/research/site-check": () => ({ summary: "Checked 2 pages of cafe-kumo.example: 1 facts match, 1 differ, 0 not stated on the website.",
+      facts: [{ fact: "field_first_yen", status: "mismatch", message: "Field only: first adult per night: the website says ¥5,500; your copy says ¥5,200 (the view post).", source: "https://cafe-kumo.example/" }],
       mismatches: ["Field only: first adult per night: the website says ¥5,500; your copy says ¥5,200 (the view post)."], inclusions: [], booking: {},
-      sources: ["https://tsumagoi.kensaur.us/", "https://tsumagoi.kensaur.us/reserve"], cached: false, cost: { firecrawlCalls: 2, fromCache: 0, credits: 10 } }),
+      sources: ["https://cafe-kumo.example/", "https://cafe-kumo.example/reserve"], cached: false, cost: { firecrawlCalls: 2, fromCache: 0, credits: 10 } }),
     "POST /api/research/page": () => ({ summary: "A glamping site.", title: "Glamp", sellingPoints: ["sauna"], theySayWeDont: ["sauna"], sources: ["https://glamp.example/"] }),
-    "POST /api/research/events": () => ({ summary: "1 events near Tsumagoi.", window: {}, events: [{ title: "Marathon", url: "https://ev.example/1", dates: ["2026-11-21"] }], undated: [], sources: ["https://ev.example/1"] }),
+    "POST /api/research/events": () => ({ summary: "1 events near Kumo-cho.", window: {}, events: [{ title: "Marathon", url: "https://ev.example/1", dates: ["2026-11-21"] }], undated: [], sources: ["https://ev.example/1"] }),
     "POST /api/research/links": () => ({ summary: "All 3 links that could be checked load.", broken: [], unsure: [], checked: 3, sources: ["https://ok.example/"] }),
     "POST /api/ai/estimate": (b) => {
       const big = b.tools.includes("living") && b.slug === "pricey-1";
@@ -257,7 +257,7 @@ test("mcp: research tools are read-only, go through the studio, and cite their s
 
     const check = await c.tool("research_site_check");
     assert.match(check.content[0].text, /Differs:\n- Field only: first adult per night: the website says ¥5,500; your copy says ¥5,200/);
-    assert.match(check.content[0].text, /- https:\/\/tsumagoi\.kensaur\.us\/reserve/);
+    assert.match(check.content[0].text, /- https:\/\/cafe-kumo\.example\/reserve/);
     for (const [name, args] of [["research_page", { url: "https://glamp.example/" }], ["research_events", { days: 30 }], ["research_links", {}]]) {
       const r = await c.tool(name, args);
       assert.equal(r.isError, false, `${name}: ${r.content[0].text}`);

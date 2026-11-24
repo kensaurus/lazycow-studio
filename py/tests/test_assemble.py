@@ -7,8 +7,17 @@ def _chosen(secs, slots=None):
     return [{"sec": s, "n": n} for n, s in zip(slots or range(len(secs)), secs)]
 
 
+# A nine-shot theme of the example business (examples/cafe-kumo), so the timing rules are tested without any one
+# project's own themes.
+KUMO = {"slots": ["a cafe table by a window", "bread on a wooden board", "a chef cooking", "a cup of coffee", "a view of clouds",
+                  "pouring coffee", "a pastry on a plate", "steam from a cup", "a window in morning light"],
+        "cues": [2, 4, 6],
+        "beats": [["hook", "雲の上で、\nランチを。", "Lunch above the clouds."], ["line", "席は12だけ。", "Only twelve seats."],
+                  ["line", "パンは毎朝焼きます。", "Bread baked every morning."], ["line", "豆は近所で焙煎。", "Beans roasted down the street."]]}
+
+
 def test_lines_start_on_their_cue_shot():
-    theme = THEMES["office"]  # cues on slots 2, 4, 6
+    theme = KUMO  # cues on slots 2, 4, 6
     chosen = _chosen([2.0, 1.5, 1.0, 1.5, 1.5, 1.0, 1.5, 2.0, 3.0])
     beats = _beats(theme, chosen)
     starts = [0, 2.0, 3.5, 4.5, 6.0, 7.5, 8.5, 10.0, 12.0]
@@ -20,7 +29,7 @@ def test_lines_start_on_their_cue_shot():
 
 
 def test_a_skipped_slot_moves_the_cue_to_the_next_shot():
-    theme = THEMES["office"]
+    theme = KUMO
     chosen = _chosen([2.0, 1.5, 1.5, 1.5, 1.0, 2.0, 3.0], slots=[0, 1, 3, 4, 5, 6, 8])
     lines = [b for b in _beats(theme, chosen) if b["kind"] == "line"]
     assert round(lines[0]["startSec"] - 0.1, 2) == 3.5  # slot 2 missing: slot 3's shot
@@ -53,7 +62,7 @@ def test_words_go_to_the_quiet_side_of_the_picture():
 
 
 def test_too_few_shots_fall_back_to_even_spacing_and_still_pass_the_rules():
-    theme = THEMES["carstay"]
+    theme = {**KUMO, "cues": [2, 5, 7]}
     chosen = _chosen([2.0, 2.0, 2.0, 3.0], slots=[0, 1, 2, 8])
     beats = _beats(theme, chosen)
     reel = {"shots": [{"src": f"a{i}.mp4", "sec": c["sec"]} for i, c in enumerate(chosen)], "beats": beats}

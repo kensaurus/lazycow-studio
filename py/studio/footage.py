@@ -186,24 +186,40 @@ def cluster_places(rows: list[dict], home: dict | None) -> dict:
     def snap(x: float) -> float:
         return round(round(x / PLACE_GRID) * PLACE_GRID, 3)
 
+    from studio.gps import valid
+
     groups: dict[tuple[float, float], dict] = {}
     for r in rows:
-        lat, lon = r.get("lat"), r.get("lon")
-        if lat is None or lon is None or (abs(lat) < 0.01 and abs(lon) < 0.01):
-            continue
+        lat, lon, est = r.get("lat"), r.get("lon"), False
+        if not valid(lat, lon):
+            # no position of its own: an estimate from a GPS file filmed close in time (studio.gps), shown hollow
+            lat, lon, est = r.get("est_lat"), r.get("est_lon"), True
+            if not valid(lat, lon):
+                continue
         k = (snap(lat), snap(lon))
-        g = groups.setdefault(k, {"lat": k[0], "lon": k[1], "clips": 0, "videos": 0, "unused": 0, "ids": []})
+        g = groups.setdefault(k, {"lat": k[0], "lon": k[1], "clips": 0, "videos": 0, "unused": 0, "ids": [], "real": 0, "est": 0,
+                                  "first": None, "last": None, "gap": None})
         g["clips"] += 1
         g["videos"] += r.get("kind") == "video"
         g["unused"] += not r.get("used")
         g["ids"].append(r["id"])
+        g["est" if est else "real"] += 1
+        day = str(r.get("captured") or "")[:10]
+        if len(day) == 10:
+            g["first"] = min(g["first"] or day, day)
+            g["last"] = max(g["last"] or day, day)
+        if est and r.get("est_gap") is not None:  # the closest and furthest GPS file in time behind the estimates, minutes
+            a = abs(int(r["est_gap"]))
+            g["gap"] = [min(g["gap"][0], a), max(g["gap"][1], a)] if g["gap"] else [a, a]
+            g["one"] = {"gap": int(r["est_gap"]), "kind": r.get("est_kind")}  # read when the group holds one estimate
     out = sorted(groups.values(), key=lambda g: -g["clips"])
     for g in out:
         g["km"] = round(haversine_km(g["lat"], g["lon"], (home["lat"], home["lon"])), 1) if home else None
         g["home"] = bool(home) and g["km"] <= home["radiusKm"]
-    placed = sum(g["clips"] for g in out)
+    placed = sum(g["real"] for g in out)
+    estimated = sum(g["est"] for g in out)
     return {"home": {"lat": home["lat"], "lon": home["lon"], "radiusKm": home["radiusKm"]} if home else None,
-            "clusters": out, "placed": placed, "unplaced": len(rows) - placed, "gridM": 100}
+            "clusters": out, "placed": placed, "estimated": estimated, "unplaced": len(rows) - placed - estimated, "gridM": 100}
 
 
 def places() -> dict:
@@ -211,9 +227,31 @@ def places() -> dict:
     from studio.brand import home_place
     from studio.library import items
 
+    from studio import gps, places as names
+
     rows = [r for r in items("", {}, limit=100000) if not r.get("vetoed")]
     with connect() as con:
-        pos = {r["id"]: (r["lat"], r["lon"]) for r in con.execute("SELECT id, lat, lon FROM assets WHERE lat IS NOT NULL AND lon IS NOT NULL")}
-    flat = [{"id": r["id"], "lat": pos.get(r["id"], (None, None))[0], "lon": pos.get(r["id"], (None, None))[1], "kind": r["kind"],
-             "used": bool(r.get("usedIn") or r.get("inVlogs"))} for r in rows]
-    return cluster_places(flat, home_place())
+        gps.ensure_columns(con)
+        pos = {r["id"]: dict(r) for r in con.execute(
+            "SELECT a.id, a.lat, a.lon, a.est_lat, a.est_lon, a.est_gap_min, b.kind AS est_kind FROM assets a"
+            " LEFT JOIN assets b ON b.id = a.est_from WHERE a.lat IS NOT NULL OR a.est_lat IS NOT NULL")}
+        report = gps.report(con, {r["id"] for r in rows})  # the same files the dots count, so the line adds up
+    flat = []
+    for r in rows:
+        p = pos.get(r["id"], {})
+        flat.append({"id": r["id"], "lat": p.get("lat"), "lon": p.get("lon"), "est_lat": p.get("est_lat"), "est_lon": p.get("est_lon"),
+                     "est_gap": p.get("est_gap_min"), "est_kind": p.get("est_kind"), "kind": r["kind"], "captured": r.get("captured"),
+                     "used": bool(r.get("usedIn") or r.get("inVlogs"))})
+    home = home_place()
+    out = cluster_places(flat, home)
+    out["gps"] = report
+    # Place names, offline, only when a person downloaded the GeoNames files (studio.places); else the map shows distances.
+    idx = names.index()
+    if idx is not None:
+        for g in out["clusters"][:400]:
+            g["place"] = names.label(g["lat"], g["lon"], idx)
+        if out["home"]:
+            out["home"]["place"] = names.label(home["lat"], home["lon"], idx)
+    pts = ([(home["lat"], home["lon"])] if home else []) + [(g["lat"], g["lon"]) for g in out["clusters"][:20]]
+    out["names"] = {**names.status(), "suggest": names.suggest_country(pts, idx) if idx is not None else None, "mb": names.KNOWN_MB}
+    return out

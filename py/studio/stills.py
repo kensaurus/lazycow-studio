@@ -86,7 +86,7 @@ def place() -> dict:
 # ---------------------------------------------------------------- words
 
 def copy_problems(text: str) -> list[str]:
-    """What breaks the brand's copy rules in this text: banned words, prices, 牧場 outside the registered name."""
+    """What breaks the brand's copy rules in this text: banned words, prices, its bare word outside its registered name."""
     from studio.brand import copy_rules
 
     rules = copy_rules()
@@ -94,9 +94,9 @@ def copy_problems(text: str) -> list[str]:
     out = [f"banned word: {b}" for b in rules["banned"] if b and b.lower() in low]
     if rules["noPrices"] and PRICE_RX.search(text):
         out.append("a price")
-    reg = rules.get("registered")
-    if reg and "牧場" in text.replace(reg, ""):
-        out.append("牧場 outside the registered name")
+    reg, bare = rules.get("registered"), rules.get("bare")
+    if reg and bare and bare in text.replace(reg, ""):
+        out.append(f"{bare} outside the registered name")
     return out
 
 

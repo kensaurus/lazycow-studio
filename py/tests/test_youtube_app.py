@@ -9,7 +9,7 @@ import pytest
 
 from studio import youtube
 
-DESKTOP = {"installed": {"client_id": "123456-abc.apps.googleusercontent.com", "client_secret": "s3cret", "project_id": "tsumagoi-growth",
+DESKTOP = {"installed": {"client_id": "123456-abc.apps.googleusercontent.com", "client_secret": "s3cret", "project_id": "cafe-kumo-growth",
                          "auth_uri": "https://accounts.google.com/o/oauth2/auth", "token_uri": "https://oauth2.googleapis.com/token",
                          "redirect_uris": ["http://localhost"]}}
 
@@ -53,7 +53,7 @@ def test_the_app_file_is_checked_and_its_secret_is_never_reported(home):
     with pytest.raises(ValueError, match="client ID or secret"):
         youtube.set_app(json.dumps({"installed": {"client_id": "x", "client_secret": ""}}))
     info = youtube.set_app(json.dumps(DESKTOP))
-    assert info == {"set": True, "source": "file", "type": "desktop", "project": "tsumagoi-growth", "projectNumber": "123456", "shared": False}
+    assert info == {"set": True, "source": "file", "type": "desktop", "project": "cafe-kumo-growth", "projectNumber": "123456", "shared": False}
     assert "s3cret" not in json.dumps(info) and "s3cret" not in json.dumps(youtube.status())
     assert youtube.client() == ("123456-abc.apps.googleusercontent.com", "s3cret")
 
@@ -70,10 +70,10 @@ def test_a_new_app_drops_the_old_sign_in_and_forget_removes_both(home, monkeypat
 
 
 def test_a_channel_that_is_not_the_projects_is_refused(monkeypatch):
-    monkeypatch.setenv("STUDIO_YT_CHANNEL", "@tsumagoicamp")
+    monkeypatch.setenv("STUDIO_YT_CHANNEL", "@cafekumo")
     mine = {"id": "UCabc", "title": "A personal channel", "handle": "@example_owner"}
-    assert "this project posts to @tsumagoicamp" in youtube.channel_mismatch(mine)
-    assert youtube.channel_mismatch({"id": "UCxyz", "title": "Tsumagoi Work&Camp", "handle": "@tsumagoicamp"}) is None
+    assert "this project posts to @cafekumo" in youtube.channel_mismatch(mine)
+    assert youtube.channel_mismatch({"id": "UCxyz", "title": "Cafe Kumo", "handle": "@cafekumo"}) is None
     monkeypatch.setenv("STUDIO_YT_CHANNEL", "UCxyz")
     assert youtube.channel_mismatch({"id": "UCxyz", "title": "T", "handle": ""}) is None
     monkeypatch.delenv("STUDIO_YT_CHANNEL")

@@ -86,23 +86,23 @@ Request (all optional): `{ "topic": "冬キャンプ", "days": 30, "fresh": fals
 the open project's name and its home place's names (Settings › Keys & AI › This project). Where it searches follows the
 home place, as events do: a place in Japan gets a Japanese and an English search in Japan's results; elsewhere one English
 search in that country's results; no home place, one English search with no country. `days` 1–365 (default 30).
-Cost: 1 or 2 searches (web + news, 8 each) ≈ 4–8 credits. The example below is from the original Tsumagoi workspace,
-which keeps its own topic.
+Cost: 1 or 2 searches (web + news, 8 each) ≈ 4–8 credits. The example below is illustrative: the example business
+Cafe Kumo (`examples/cafe-kumo`) with Kichijoji (吉祥寺) as its home place.
 
 ```json
 {
-  "summary": "15 recent pages and articles about camp, workation and Tsumagoi from the last 30 days, 5 post angles.",
+  "summary": "15 recent pages and articles about lunch, cafes and Kichijoji from the last 30 days, 5 post angles.",
   "topic": null,
-  "queries": ["嬬恋村 キャンプ ワーケーション 群馬", "Tsumagoi Gunma camping workation"],
+  "queries": ["Cafe Kumo 吉祥寺 カフェ ランチ", "Cafe Kumo Kichijoji cafe lunch"],
   "days": 30,
   "items": [
-    { "title": "東京新聞の群馬版（11月6日）で、嬬恋牧場Work&Campを …", "url": "https://www.instagram.com/p/…/", "source": "instagram.com",
+    { "title": "東京新聞の武蔵野版（11月6日）で、Cafe Kumoを …", "url": "https://www.instagram.com/p/…/", "source": "instagram.com",
       "date": null, "snippet": "…", "kind": "web", "lang": "ja" }
   ],
-  "hashtags": [ { "tag": "#ワーケーション", "count": 3 } ],
-  "keywords": [ { "word": "標高", "count": 2 } ],
+  "hashtags": [ { "tag": "#吉祥寺ランチ", "count": 3 } ],
+  "keywords": [ { "word": "テラス席", "count": 2 } ],
   "angles": [
-    { "title": "「camp」 with the field reel", "why": "3 recent pages mention camp. The field reel already shows it with approved words: post it while people are looking.",
+    { "title": "「lunch」 with the counter reel", "why": "3 recent pages mention lunch. The counter reel already shows it with approved words: post it while people are looking.",
       "sources": ["https://…", "https://…"], "from": "template", "guard": [] }
   ],
   "sources": ["https://…"],
@@ -120,34 +120,35 @@ which keeps its own topic.
 ## POST /api/research/site-check — the website against our facts
 
 Request (all optional): `{ "url": "https://…", "fresh": false }`. Without `url`: the project's profile-kit link
-(`/api/profiles`, query stripped; here `https://tsumagoi.kensaur.us/`) and the booking page our posts link to
+(`/api/profiles`, query stripped; in the example below `https://cafe-kumo.example/`) and the booking page our posts link to
 (`/reserve`), plus the private-hire page the site links as 貸切 when our charter prices were not found yet (text only).
 With `url`: just that page. Cost: 5 credits per main page (Markdown + JSON), 1 for the extra page.
 
 "Our facts" are read from the approved copy: `studio.reels` POSTS / SHORT / REELS, `studio.assemble` THEMES, the
 venue and charter lines, `shared/reels.json` and the profile kit.
 
-Below, the first fact is from the real run on 2026-11-09 (all 15 matched); the `mismatch` row is illustrative.
+Below, the first fact has the shape of a real run on 2026-11-09 (all 15 matched), with the example site's address in
+place of the real one; the `mismatch` row is illustrative.
 
 ```json
 {
-  "summary": "Checked 3 pages of tsumagoi.kensaur.us: 15 facts match, 0 differ, 0 to check by eye, 0 not stated on the website.",
-  "site": "https://tsumagoi.kensaur.us/",
-  "pages": ["https://tsumagoi.kensaur.us/#reasons", "https://tsumagoi.kensaur.us/reserve", "https://tsumagoi.kensaur.us/charter#day"],
+  "summary": "Checked 3 pages of cafe-kumo.example: 15 facts match, 0 differ, 0 to check by eye, 0 not stated on the website.",
+  "site": "https://cafe-kumo.example/",
+  "pages": ["https://cafe-kumo.example/#reasons", "https://cafe-kumo.example/reserve", "https://cafe-kumo.example/charter#day"],
   "facts": [
     { "fact": "field_first_yen", "label": "Field only: first adult per night", "ours": 5200, "site": 5200,
-      "where": ["the view post", "the field post"], "source": "https://tsumagoi.kensaur.us/#reasons", "onPage": true,
+      "where": ["the view post", "the field post"], "source": "https://cafe-kumo.example/#reasons", "onPage": true,
       "status": "match", "message": "Field only: first adult per night: the website and your copy both say ¥5,200." },
     { "fact": "field_extra_yen", "label": "Field only: each extra person", "ours": 2200, "site": 5500, "where": ["the view post", "the field post"],
       "source": "https://…", "onPage": true, "status": "mismatch",
       "message": "Field only: each extra person: the website says ¥5,500; your copy says ¥2,200 (the view post and the field post)." }
   ],
   "inclusions": [ { "item": "parking", "status": "match", "message": "Both say parking." } ],
-  "booking": { "site": "https://tsumagoi.kensaur.us/reserve?tab=camping", "ours": "https://tsumagoi.kensaur.us/reserve", "status": "match",
-               "message": "Booking link: the website and your posts both use /reserve on tsumagoi.kensaur.us." },
+  "booking": { "site": "https://cafe-kumo.example/reserve?tab=lunch", "ours": "https://cafe-kumo.example/reserve", "status": "match",
+               "message": "Booking link: the website and your posts both use /reserve on cafe-kumo.example." },
   "mismatches": ["…the `message` of every fact with status mismatch…"],
   "otherPrices": [ { "label": "車中泊 (1台 2名込み)", "yen": 3500 } ],
-  "sources": ["https://tsumagoi.kensaur.us/#reasons", "https://tsumagoi.kensaur.us/reserve", "https://tsumagoi.kensaur.us/charter#day"],
+  "sources": ["https://cafe-kumo.example/#reasons", "https://cafe-kumo.example/reserve", "https://cafe-kumo.example/charter#day"],
   "note": "Numbers count only when the page text writes them …",
   "cached": false,
   "cost": { "firecrawlCalls": 1, "fromCache": 2, "credits": 1 }
@@ -203,20 +204,20 @@ because Firecrawl bills them through paid providers). Cost: about 5 credits (Mar
 Request (optional): `{ "days": 30, "fresh": false }` (`days` 1–90). One web search per home-place name (up to 3,
 Settings › Keys & AI › This project) naming the months in the window: in Japanese and Japan's results for a place in
 Japan, in English and that country's results elsewhere. Without a home place name it answers 400 with the sentence that
-says where to set one. Cost: ≈ 2 credits a search. The example below is from the original Tsumagoi workspace, which
-searches its own three areas.
+says where to set one. Cost: ≈ 2 credits a search. The example below is illustrative: Cafe Kumo with three home-place
+names (吉祥寺, 三鷹, 武蔵野).
 
 ```json
 {
-  "summary": "6 events near Tsumagoi, Karuizawa and Gunma between 2026-11-09 and 2026-12-09, and 7 pages to check for dates.",
+  "summary": "6 events near 吉祥寺, 三鷹 and 武蔵野 between 2026-11-09 and 2026-12-09, and 7 pages to check for dates.",
   "window": { "from": "2026-11-09", "to": "2026-12-09", "days": 30 },
-  "queries": ["嬬恋村 イベント 2026年11月 2026年12月", "…"],
+  "queries": ["吉祥寺 イベント 2026年11月 2026年12月", "…"],
   "events": [
-    { "title": "湯畑ツリー＆イルミネーション2026 - 草津温泉", "url": "https://www.kusatsu-onsen.ne.jp/event/2029.php", "source": "kusatsu-onsen.ne.jp",
-      "snippet": "…", "place": ["草津"], "dates": ["2026-11-21"], "range": null, "first": "2026-11-21", "postBy": "2026-11-18",
+    { "title": "井の頭公園 秋のイルミネーション2026", "url": "https://events.example/2029", "source": "events.example",
+      "snippet": "…", "place": ["吉祥寺"], "dates": ["2026-11-21"], "range": null, "first": "2026-11-21", "postBy": "2026-11-18",
       "why": "On 2026-11-21. Post a reel by 2026-11-18 while people plan the trip." }
   ],
-  "undated": [ { "title": "嬬恋村のイベント | (一社)嬬恋村観光協会", "url": "https://www.tsumagoi-kankou.jp/event", "place": ["嬬恋"], "dates": [], "range": null,
+  "undated": [ { "title": "武蔵野のイベント | 観光案内", "url": "https://visit.example/event", "place": ["武蔵野"], "dates": [], "range": null,
                  "why": "No date in the search text: open the page to check when it is." } ],
   "sources": ["https://…"],
   "note": "Dates come from the search text; confirm on the event page before you plan a post around one.",
@@ -246,7 +247,7 @@ Private back-office pages kept in the log as proof of a booking (Google Business
   "broken": [],
   "unsure": [ { "url": "https://www.linkedin.com/company/142923144/admin/page-posts/published/", "status": "blocked", "code": 403,
                 "why": "the site refuses automatic checks", "usedIn": ["post #9 (connect-1108-long on linkedin, scheduled)"] } ],
-  "links": [ { "url": "https://tsumagoi.kensaur.us/reserve?utm_source=x&utm_medium=social", "status": "ok", "code": 200, "why": "loads",
+  "links": [ { "url": "https://cafe-kumo.example/reserve?utm_source=x&utm_medium=social", "status": "ok", "code": 200, "why": "loads",
                "usedIn": ["post #14 (carstay-1108 on x, scheduled)"] } ],
   "sources": ["https://…every link checked…"],
   "cached": false,
