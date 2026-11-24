@@ -294,3 +294,11 @@ def test_unbook_takes_only_a_facebook_booking_still_ahead(net, monkeypatch):
     for pid in (soon, out):
         with pytest.raises(ValueError, match="only a scheduled booking"):
             publish.unbook(pid)
+
+
+def test_facebook_reels_are_held_by_the_studio_not_booked_on_facebook():
+    # 24 Nov 2026: reels uploaded days ahead with scheduled_publish_time got 0 plays; the one published at once got
+    # 102. Facebook must queue in the studio and go out at its time (publish.run_due), like Bluesky.
+    from studio.connectors import facebook
+
+    assert facebook.can_schedule is False

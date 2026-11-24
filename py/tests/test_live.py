@@ -158,3 +158,14 @@ def test_missing_youtube_and_facebook_posts_are_asked_again_for_three_days(fresh
     got = live.check_api(NOW)
     assert got["seen"] == [yt] and row(yt)["status"] == "posted"
     assert row(old)["status"] == "missing", "older than 72 h: left for a person"
+
+
+def test_making_settings_have_defaults_and_ranges(fresh):
+    """Track A (24 Nov): drafts from new footage and learned steering are settings, not only .env lines."""
+    st = live.settings()
+    assert st["drafts"] == {"on": True, "perDay": 2} and st["learn"] == {"steer": True, "explore": 30}
+    st = live.save_settings({"drafts": {"perDay": "4", "on": 0}, "learn": {"explore": 20}})
+    assert st["drafts"] == {"on": False, "perDay": 4} and st["learn"]["explore"] == 20 and live.settings()["drafts"]["perDay"] == 4
+    for bad in ({"drafts": {"perDay": 0}}, {"drafts": {"perDay": 11}}, {"learn": {"explore": 61}}, {"learn": {"steerAll": True}}):
+        with pytest.raises(ValueError):
+            live.save_settings(bad)

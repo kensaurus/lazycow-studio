@@ -127,9 +127,19 @@ def _overview() -> dict:
             # When a person made another version the reel (studio.versions): bookings made before hold the earlier one.
             "versionAt": used_at(slug),
             "hookText": next((b["ja"].replace("\n", " ") for b in reel.get("beats") or [] if b.get("kind") == "hook"), ""),
+            # Who made it and why it looks this way (Track A writes made: {by, at, steer}); Review and the editor show it.
+            "made": _made_view(reel.get("made") or man.get("made")),
         })
     out.sort(key=lambda r: (r["house"], -(r["updated"] or 0)))
     return {"reels": out, "library": _library_counts(), "filmNext": _film_next()}
+
+
+def _made_view(made) -> dict | None:
+    """The overview's short form of a reel's made data: who made it, and the steer's mode and why (EN and JA)."""
+    if not isinstance(made, dict):
+        return None
+    steer = made.get("steer") if isinstance(made.get("steer"), dict) else {}
+    return {"by": made.get("by"), "at": made.get("at"), "mode": steer.get("mode"), "why": steer.get("why"), "whyJa": steer.get("whyJa")}
 
 
 _COUNTS: dict = {"at": 0.0, "data": {}, "rows": {}}
@@ -150,6 +160,8 @@ def _library_rows() -> dict:
             "videos": sum(r["kind"] == "video" for r in ranch),
             "unused": sum(not r["usedIn"] for r in ranch),
             "newest": max((r["captured"] or "" for r in ranch), default=""),
+            # The newest catalog ids (ids only grow): the page counts "N new since your last visit" from these.
+            "recentIds": sorted((r["id"] for r in ranch if r.get("id") is not None), reverse=True)[:300],
         }
         _COUNTS["at"] = time.time()
     return _COUNTS["rows"]
@@ -265,20 +277,33 @@ def vary_look(project: dict, theme_style: str, rng, theme_look: str | None = Non
     if night:
         project["grade"] = "house"  # the house look keeps a night's dark; a tint would lift it
     if learned:
-        from studio.learn import vary_draw
+        from studio.learn import steer_draw
 
-        pick = vary_draw(theme_style, rng, night=night, looks=looks)
-        if pick:
-            project.update(pick)
+        d = steer_draw(theme_style, rng, night=night, looks=looks)
+        if d["mode"] == "learned":
+            project.update(style=d["style"], look=d["look"])
+        elif d["mode"] == "explore":
+            project["look"] = d["look"]
+        steer = {k: d[k] for k in ("mode", "why", "whyJa", "picks") if k in d}
+    else:
+        steer = {"mode": "random", "why": "Picked at random: Use what worked was off for this run.",
+                 "whyJa": "ランダム：この回は「効いたものを使う」がオフでした。"}
+    # Why it looks like this (Track A, 24 Nov): kept on the reel as made.steer; _autopilot adds who made it and when.
+    project["made"] = {**(project.get("made") or {}), "steer": steer}
     return project
 
 
-def _autopilot(themes: list[str], since: str | None, faces: bool, cut: str = "short", vary: bool = False, learned: bool = False) -> list[dict]:
+def _autopilot(themes: list[str], since: str | None, faces: bool, cut: str = "short", vary: bool = False, learned: bool = False,
+               by: str = "person", preset: dict | None = None) -> list[dict]:
     """Propose one reel per theme from the newest footage. Rendering is queued by the server.
     cut "long" makes the 40-60 s explainer for LinkedIn and Facebook instead of the short loop;
-    vary gives each reel a different text layout and effects (vary_look)."""
+    vary gives each reel a different text layout and effects (vary_look).
+    by: "auto" when the studio made it by itself from new footage (review.mjs autoDrafts), else "person". Every reel
+    keeps made: {by, at, steer: {mode, why, whyJa, picks}} (the Review page says why it looks the way it does).
+    preset: a choice from Results › What to try next ("Make a reel like this": look, style, recipe, mode); what it names
+    replaces the drawn choice, and the reel's why says so."""
     import random
-    from datetime import date, timedelta
+    from datetime import date, datetime, timedelta
 
     from studio.assemble import THEMES, assemble
     from studio.projects import load, save
@@ -302,9 +327,54 @@ def _autopilot(themes: list[str], since: str | None, faces: bool, cut: str = "sh
             vary_look(project, THEMES[key].get("style", "column"), random.Random(project["seed"]), THEMES[key].get("look"), night, learned)
             if cut == "long":
                 project["sfx"] = False
+        if preset:
+            asked = _apply_preset(project, preset)
+            if asked:
+                project["made"] = {"steer": asked}
+        steer = (project.get("made") or {}).get("steer") or {"mode": "theme", "why": "The theme's own look: Vary the look was off.",
+                                                              "whyJa": "テーマ本来の見た目（「見た目を変える」がオフ）。"}
+        project["made"] = {"by": "auto" if by == "auto" else "person", "at": datetime.now().astimezone().isoformat(timespec="seconds"), "steer": steer}
         save(project)
-        made.append({"slug": slug, "theme": key, "clips": len(project["shots"]), "style": project.get("style"), "sfx": project.get("sfx")})
+        if steer.get("mode") in ("learned", "explore", "results"):
+            from studio.learn import note_lesson
+
+            note_lesson("reel", slug, mode=steer.get("mode"), why=steer.get("why"), by=project["made"]["by"],
+                              picks=steer.get("picks") or {})
+        made.append({"slug": slug, "theme": key, "clips": len(project["shots"]), "style": project.get("style"), "sfx": project.get("sfx"),
+                     "steer": steer.get("mode")})
     return made
+
+
+def _apply_preset(project: dict, preset: dict) -> dict | None:
+    """Results' "Make a reel like this": set the look, text layout and recipe it names (known ones only); the why."""
+    from studio.staging import LOOKS, RECIPES
+
+    picks, en, ja = {}, [], []
+    look = preset.get("look")
+    if look == "plain" or look in LOOKS:
+        project["look"] = None if look == "plain" else look
+        picks["look"] = look
+        en.append("the plain picture" if look == "plain" else f"the {look.capitalize()} look")
+        ja.append("加工なしの画" if look == "plain" else f"{look.capitalize()} の見た目")
+    style = preset.get("style")
+    if style in TEXT_STYLES:
+        project["style"] = style
+        picks["style"] = style
+        en.append(f"the {style} text layout")
+        ja.append(f"文字の配置 {style}")
+    recipe = preset.get("recipe")
+    if recipe == "none" or recipe in RECIPES:
+        if recipe == "none":
+            project.pop("recipe", None)
+        else:
+            project["recipe"] = recipe
+        picks["recipe"] = recipe
+        en.append("no recipe" if recipe == "none" else f"the {recipe} recipe")
+        ja.append("レシピなし" if recipe == "none" else f"レシピ {recipe}")
+    if not picks:
+        return None
+    return {"mode": preset.get("mode") if preset.get("mode") in ("learned", "explore") else "learned", "picks": picks, "from": "results",
+            "why": "Made from Results › What to try next: " + ", ".join(en) + ".", "whyJa": "結果の「次に試すこと」から：" + "、".join(ja) + "。"}
 
 
 _FOOTAGE: dict = {}
@@ -428,6 +498,16 @@ def handle(req: dict) -> object:
         from studio.review_actions import list_drafts
 
         return list_drafts()
+    if cmd == "paused_looks":
+        # Looks learned picks leave out for now: sent back PAUSE_AFTER+ times in PAUSE_DAYS (studio.learn.paused_looks).
+        from studio.learn import PAUSE_AFTER, PAUSE_DAYS, paused_looks
+
+        return {"looks": sorted(paused_looks()), "after": PAUSE_AFTER, "days": PAUSE_DAYS}
+    if cmd == "reject_reasons":
+        # Why reels were sent back lately (review queue reasons): counts for Check, read-only.
+        from studio.review_actions import reasons
+
+        return reasons(int(req.get("days") or 30))
     if cmd == "review":
         from studio.review_actions import list_drafts
 
@@ -515,8 +595,11 @@ def handle(req: dict) -> object:
     if cmd == "autopilot":
         from studio.learn import steer_on
 
+        # learned: what the run says (Make reels' "Use what worked"); not said (MCP, API, older pages): the setting.
+        learned = req.get("learned")
         return _autopilot(req.get("themes") or [], req.get("since"), bool(req.get("faces")), "long" if req.get("cut") == "long" else "short", bool(req.get("vary")),
-                          bool(req.get("learned")) or steer_on())
+                          steer_on() if learned is None else bool(learned), "auto" if req.get("by") == "auto" else "person",
+                          req.get("preset") if isinstance(req.get("preset"), dict) else None)
     if cmd == "ping":
         return {"ok": True}
     raise ValueError(f"unknown command {cmd}")

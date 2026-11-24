@@ -79,7 +79,7 @@ flowchart TD
   R -- "Approve<br/>review_actions.py" --> S["Book and post<br/>autoplan.mjs, publish.py, youtube.py,<br/>helper.mjs in your Chrome"]
   S --> M["Measure<br/>perf.py: views and reactions per post"]
   M --> L["Learn<br/>learn.py and predict.py:<br/>Bayesian model, Thompson sampling"]
-  L -. "steers the style draw,<br/>opt-in STUDIO_PERF_STEER=1" .-> P
+  L -. "steers the style draw,<br/>Use what worked (setting)" .-> P
   X["Optional AI tools<br/>ai.py with a fal.ai key"] -. "sharpen, slow motion, music, voice<br/>on a copy, never on an approved reel" .-> B
   B -. "rendered reel" .-> V["Optional AI reviewer<br/>ai.py with an OpenRouter key"]
   V -. "suggestions and hook and look scores" .-> R
@@ -97,7 +97,7 @@ Step by step, with the code that does it:
 | Review | `server/editor.html`, `py/studio/review_actions.py` | A person watches, edits and presses Approve. A reel with faces cannot be approved without Consent OK or Blur faces. |
 | Book and post | `server/autoplan.mjs`, `py/studio/posting.py`, `publish.py`, `connectors/`, `youtube.py`, `server/helper.mjs` | One post a day per network. YouTube, Facebook and Bluesky through their APIs; X, TikTok, Google Maps, LINE and LinkedIn through the site's own scheduler in your Chrome; Instagram by hand from the approved folder. Every route refuses a reel that is not approved. |
 | Measure | `py/studio/perf.py` | Collects views and reactions from YouTube, Facebook and Bluesky; manual entry or CSV import for the rest (`docs/perf-api.md`). |
-| Learn | `py/studio/learn.py`, `predict.py` | A Bayesian additive model (closed form, numpy) over theme, layout, look, length, weekday and hour, with Thompson sampling for what to try next. `predict.py` gives each booking an 80 % range and later checks it against the result. It steers new reels only when switched on (`STUDIO_PERF_STEER=1`, or the `learned` flag on autopilot) and only after 15 measured posts. |
+| Learn | `py/studio/learn.py`, `predict.py` | A Bayesian additive model (closed form, numpy) over theme, layout, look, length, weekday and hour, with Thompson sampling for what to try next. `predict.py` gives each booking an 80 % range and later checks it against the result. It steers new reels after 15 measured posts while **Use what worked** is on (Settings › Workflow, on by default; the `learned` flag on autopilot or `STUDIO_PERF_STEER` override it), and each reel keeps why in `made.steer`. |
 
 ### A reel's life, as requests
 

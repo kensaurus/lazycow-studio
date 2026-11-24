@@ -470,11 +470,85 @@ def test_vary_look_is_unchanged_without_the_flag_and_steers_with_it(monkeypatch)
     assert vary_look({}, "column", random.Random(5), None, learned=True) == vary_look({}, "column", random.Random(5), None, learned=True)
 
 
-def test_steer_switch(monkeypatch):
+def test_steer_switch(monkeypatch, tmp_path):
+    """The .env switch wins when it is set (either way); otherwise the Settings › Workflow switch (on by default)."""
+    import studio.live as live
+
+    monkeypatch.setattr(live, "SETTINGS_FILE", tmp_path / "autopost.json")
     monkeypatch.delenv("STUDIO_PERF_STEER", raising=False)
+    assert learn.steer_on() and learn.steering_on is learn.steer_on
+    live.save_settings({"learn": {"steer": False}})
     assert not learn.steer_on()
     monkeypatch.setenv("STUDIO_PERF_STEER", "1")
     assert learn.steer_on()
+    live.save_settings({"learn": {"steer": True}})
+    monkeypatch.setenv("STUDIO_PERF_STEER", "0")
+    assert not learn.steer_on()
+
+
+def test_explore_share_follows_the_setting(monkeypatch, tmp_path):
+    import studio.live as live
+
+    monkeypatch.setattr(live, "SETTINGS_FILE", tmp_path / "autopost.json")
+    assert learn.explore_share() == pytest.approx(0.3)
+    live.save_settings({"learn": {"explore": 10}})
+    assert learn.explore_share() == pytest.approx(0.1)
+    with pytest.raises(ValueError):
+        live.save_settings({"learn": {"explore": 90}})
+    s = learn.suggest(n=200, seed=3, data=synthetic(40, lift=3.0))
+    assert s["explore"] == pytest.approx(0.1) and [x["mode"] for x in s["suggestions"]].count("explore") < 40
+
+
+# ---------- why a reel looks the way it does (made.steer) ----------
+
+def test_steer_draw_says_why_in_each_mode():
+    few = learn.steer_draw("column", random.Random(1), data=synthetic(9))
+    assert few["mode"] == "random" and "9 of 15" in few["why"] and "9件" in few["whyJa"]
+    data = synthetic(40, lift=3.0)
+    draws = [learn.steer_draw("column", random.Random(s), data=data) for s in range(80)]
+    modes = [d["mode"] for d in draws]
+    assert set(modes) == {"learned", "explore"} and 0.15 < modes.count("explore") / len(modes) < 0.45
+    for d in draws:
+        assert d["why"] and d["whyJa"] and d["picks"]["look"]
+        if d["mode"] == "learned":
+            assert d["why"].startswith("Learned: ") and "× a typical post" in d["why"] and d["style"] != "column"
+        else:  # an explore turn takes a look with the fewest measured posts: one the synthetic posts never used
+            assert d["why"].startswith("Trying something new: ") and "not tried yet" in d["why"]
+            assert d["picks"]["look"] not in LOOK_CYCLE and d["look"] != "ember"
+    learned = [d for d in draws if d["mode"] == "learned"]
+    assert sum(d["look"] == "punch" for d in learned) / len(learned) > 0.6
+    assert "Punch look did about" in next(d["why"] for d in learned if d["look"] == "punch")
+    # the same seed gives the same draw, and vary_draw keeps its old answer (the learned pick, else None)
+    assert learn.steer_draw("column", random.Random(7), data=data) == learn.steer_draw("column", random.Random(7), data=data)
+    for s in range(20):
+        d, v = learn.steer_draw("column", random.Random(s), data=data), learn.vary_draw("column", random.Random(s), data=data)
+        assert v == ({"style": d["style"], "look": d["look"]} if d["mode"] == "learned" else None)
+
+
+def test_vary_look_keeps_why_on_the_reel(monkeypatch):
+    from studio.service import vary_look
+
+    off = vary_look({}, "column", random.Random(2), None)
+    assert off["made"]["steer"]["mode"] == "random" and "off" in off["made"]["steer"]["why"]
+    data = synthetic(40, lift=3.0)
+    monkeypatch.setattr(learn, "comparable", lambda *a, **k: data)
+    on = [vary_look({}, "column", random.Random(s), None, learned=True) for s in range(30)]
+    for p in on:
+        st = p["made"]["steer"]
+        assert st["mode"] in ("learned", "explore") and st["whyJa"]
+        assert (p["look"] or "plain") == st["picks"]["look"], "the look on the reel is the one the sentence names"
+
+
+def test_autopilot_request_honours_learned_and_falls_back_to_the_setting(monkeypatch):
+    from studio import service
+
+    seen = []
+    monkeypatch.setattr(service, "_autopilot", lambda *a: seen.append(a) or [])
+    monkeypatch.setattr(learn, "steer_on", lambda: True)
+    service.handle({"cmd": "autopilot", "themes": ["autumn"], "learned": False})
+    service.handle({"cmd": "autopilot", "themes": ["autumn"], "by": "auto"})
+    service.handle({"cmd": "autopilot", "themes": ["autumn"], "learned": True, "by": "someone"})
+    assert [(a[5], a[6]) for a in seen] == [(False, "person"), (True, "auto"), (True, "person")]
 
 
 # ---------- the CLI ----------
@@ -553,6 +627,36 @@ def test_reach_calls_a_network_stalled_when_several_posts_days_out_all_have_noth
     assert by["bluesky"]["stalled"] and not by["bluesky"]["hasViews"], "no reactions on a network without views counts too"
     assert not by["facebook"]["stalled"], "the oldest is 36 h out: too early to say"
     assert not by["youtube"]["stalled"]
+
+
+def test_reach_counts_only_the_account_in_use_now(monkeypatch):
+    """24 Nov: the old Singapore-region TikTok was deleted (its bookings dropped with a note) and a new Japan account
+    took over; the 13 old posts at 0 views kept saying the new account was not being seen."""
+    from datetime import datetime, timedelta, timezone
+
+    from studio import perf, posting
+
+    now = datetime(2026, 11, 28, 12, tzinfo=timezone.utc)
+    day = lambda d: (now - timedelta(days=d)).isoformat()  # noqa: E731
+    posts = [{"id": i, "slug": f"s{i}", "network": "tiktok", "status": "posted", "at": day(d)} for i, d in [(1, 12), (2, 10), (3, 8)]]
+    posts += [{"id": 4, "slug": "s4", "network": "tiktok", "status": "dropped", "at": day(4),
+               "note": " · the old @tsumagoicamp TikTok (Singapore region) was deleted 24 Nov; book again on the new one"},
+              {"id": 5, "slug": "s5", "network": "tiktok", "status": "posted", "at": day(1)},
+              {"id": 6, "slug": "s6", "network": "x", "status": "dropped", "at": day(3), "note": "set aside by hand"},
+              {"id": 7, "slug": "s7", "network": "x", "status": "posted", "at": day(9)}]
+    reads = [{"post_id": i, "views": 0, "likes": 0} for i in (1, 2, 3, 5, 7)]
+    monkeypatch.setattr(posting, "posts", lambda: posts)
+    monkeypatch.setattr(perf, "readings", lambda: reads)
+    since = perf.account_since(posts, saved={})
+    assert since == {"tiktok": datetime.fromisoformat(day(4))}, "only a drop that names a deleted account counts"
+    by = {n["network"]: n for n in perf.reach(now=now, since=since)["networks"]}
+    assert by["tiktok"]["history"] == 3 and by["tiktok"]["out"] == 1 and not by["tiktok"]["stalled"]
+    assert by["tiktok"]["accountSince"] == "2026-11-24T12:00+00:00"
+    assert by["x"]["out"] == 1 and "history" not in by["x"]
+    # a saved "since" (the account name changed on Settings › Accounts) wins over the dropped rows
+    assert perf.account_since(posts, saved={"tiktok": day(2)})["tiktok"] == datetime.fromisoformat(day(2))
+    # with no account change every old post counts, and three silent ones days out are stalled
+    assert {n["network"]: n for n in perf.reach(now=now, since={})["networks"]}["tiktok"]["stalled"]
 
 
 def test_a_page_reel_missing_from_the_log_is_matched_to_its_reel_never_guessed():
@@ -754,3 +858,123 @@ def test_youtube_is_read_from_its_own_posts_not_pooled_with_networks_at_zero():
     assert pooled_punch["pBetter"] < punch["pBetter"], "pooled with X, YouTube's real lift is blurred"
     assert set(pooled["byNetwork"]) == {"youtube"} and pooled["byNetwork"]["youtube"]["measured"] == 20
     assert any(r["level"] == "punch" for r in pooled["byNetwork"]["youtube"]["worked"])
+
+
+def test_week_views_compares_like_with_like_and_leaves_out_replaced_uploads():
+    """24 Nov: Today said 2,181 ▼54% and Results 3,146 ▼23% for the same week. One definition (perf.week_views): views so
+    far on posts out in the last 7×24 h, against what the posts of the 7 days before had at this point last week."""
+    from datetime import datetime, timedelta, timezone
+
+    from studio import perf
+
+    now = datetime(2026, 11, 24, 12, tzinfo=timezone.utc)
+    ago = lambda d: (now - timedelta(days=d)).isoformat()  # noqa: E731
+    posts = [
+        {"id": 1, "slug": "a", "network": "youtube", "status": "posted", "at": ago(2)},
+        {"id": 2, "slug": "b", "network": "x", "status": "posted", "at": ago(6.9)},
+        {"id": 3, "slug": "c", "network": "youtube", "status": "posted", "at": ago(8)},   # last week: 100 then, 900 now
+        {"id": 4, "slug": "d", "network": "youtube", "status": "posted", "at": ago(10)},
+        {"id": 5, "slug": "e", "network": "youtube", "status": "posted", "at": ago(13)},
+        {"id": 6, "slug": "f", "network": "youtube", "status": "posted", "at": ago(1)},   # replaced: not counted
+        {"id": 7, "slug": "g", "network": "youtube", "status": "posted", "at": ago(20)},  # too old
+        {"id": 8, "slug": "h", "network": "youtube", "status": "scheduled", "at": ago(-1)},
+        {"id": 9, "slug": "i", "network": "tiktok", "status": "posted", "at": ago(3)},    # out, never read
+    ]
+    reads = [
+        {"post_id": 1, "views": 50, "fetched_at": ago(1.5)}, {"post_id": 1, "views": 400, "fetched_at": ago(0.1)},
+        {"post_id": 2, "views": 30, "fetched_at": ago(4)},
+        {"post_id": 3, "views": 100, "fetched_at": ago(7.5)}, {"post_id": 3, "views": 900, "fetched_at": ago(1)},
+        {"post_id": 4, "views": 200, "fetched_at": ago(9)}, {"post_id": 4, "views": 250, "fetched_at": ago(7.2)},
+        {"post_id": 5, "views": 70, "fetched_at": ago(10)},
+        {"post_id": 6, "views": 5000, "fetched_at": ago(0.5)},
+        {"post_id": 7, "views": 9999, "fetched_at": ago(1)},
+    ]
+    w = perf.week_views(posts, {6: "replaced"}, now, reads)
+    assert w["now"] == {"views": 430, "posts": 3, "seen": 2, "measured": 2}
+    assert w["before"] == {"views": 420, "posts": 3, "seen": 3, "measured": 3}, "last week's posts as they were 7 days ago"
+    assert w["beforeNow"] == 900 + 250 + 70
+    assert w["pct"] == round(100 * (430 - 420) / 420)
+    thin = perf.week_views(posts[:3], {}, now, reads)
+    assert thin["before"]["seen"] == 1 and thin["pct"] is None, "one post with views is no base for a percentage"
+
+
+def test_a_results_preset_sets_what_it_names_and_says_so():
+    from studio.service import _apply_preset
+    from studio.staging import LOOKS, RECIPES
+
+    look, recipe = LOOKS[0], RECIPES[0]
+    p = {"look": None, "style": "column", "recipe": "x"}
+    st = _apply_preset(p, {"look": look, "style": "lower", "recipe": recipe, "mode": "explore"})
+    assert p["look"] == look and p["style"] == "lower" and p["recipe"] == recipe
+    assert st["mode"] == "explore" and st["picks"] == {"look": look, "style": "lower", "recipe": recipe} and st["from"] == "results"
+    assert st["why"].startswith("Made from Results › What to try next: ") and st["whyJa"].startswith("結果の")
+    q = {"look": "punch", "recipe": "r"}
+    assert _apply_preset(q, {"look": "plain", "recipe": "none", "mode": "odd"})["mode"] == "learned"
+    assert q["look"] is None and "recipe" not in q
+    assert _apply_preset({}, {"look": "no-such-look", "style": "diagonal"}) is None, "unknown names change nothing"
+
+
+def test_autopilot_keeps_who_made_each_reel_and_why(monkeypatch, tmp_path):
+    """made: {by, at, steer} lands in the saved project for drafts by itself, a person's batch and a Results preset."""
+    import studio.assemble as assemble
+    import studio.projects as projects
+    from studio import service
+    from studio.staging import LOOKS
+
+    monkeypatch.setattr(projects, "DIR", tmp_path)
+    monkeypatch.setattr(assemble, "THEMES", {"autumn": {"title": "t", "style": "column"}})
+    monkeypatch.setattr(assemble, "assemble", lambda theme, slug, **kw: {"slug": slug, "seed": 7, "shots": [{"src": "a.mp4", "sec": 2}], "made_by": "assembler"})
+    monkeypatch.setattr(learn, "comparable", lambda *a, **k: synthetic(40, lift=3.0))
+    a = service._autopilot(["autumn"], None, False, vary=True, learned=True, by="auto")[0]
+    p = projects.load(a["slug"])
+    assert p["made"]["by"] == "auto" and p["made"]["at"] and p["made"]["steer"]["mode"] in ("learned", "explore")
+    assert a["steer"] == p["made"]["steer"]["mode"] and p["made"]["steer"]["why"]
+    b = projects.load(service._autopilot(["autumn"], None, False, vary=False)[0]["slug"])
+    assert b["made"]["by"] == "person" and b["made"]["steer"]["mode"] == "theme"
+    c = projects.load(service._autopilot(["autumn"], None, False, vary=True, preset={"look": LOOKS[0], "mode": "explore"})[0]["slug"])
+    assert c["look"] == LOOKS[0] and c["made"]["steer"]["from"] == "results" and c["made"]["steer"]["mode"] == "explore"
+
+
+def test_a_look_sent_back_twice_in_30_days_is_left_out_of_learned_picks():
+    """Track D's rejections table: punch wins on numbers, but two rejections of punch pause it for learned picks."""
+    from datetime import datetime, timedelta
+
+    from studio import review_actions
+
+    data = synthetic(40, lift=3.0)
+    try:
+        review_actions.reject("s-old", reason="weak-hook", look="punch")
+        assert learn.paused_looks() == set(), "one rejection pauses nothing"
+        review_actions.reject("s-new", reason="wrong-clip", look="punch")
+        assert learn.paused_looks() == {"punch"}
+        assert learn.paused_looks(now=datetime.now().astimezone() + timedelta(days=31)) == set(), "it comes back after 30 days"
+        draws = [learn.steer_draw("column", random.Random(s), data=data) for s in range(60)]
+        learned = [d for d in draws if d["mode"] == "learned"]
+        assert learned and all(d["look"] != "punch" for d in learned)
+        assert all("Paused after rejections: Punch." in d["why"] and "休止中" in d["whyJa"] for d in learned)
+        assert any(d["mode"] == "explore" for d in draws), "explore turns still run"
+        from studio import service
+        assert service.handle({"cmd": "paused_looks"}) == {"looks": ["punch"], "after": 2, "days": 30}
+    finally:
+        with connect() as con:
+            con.execute("DELETE FROM rejections")
+
+
+def test_a_reel_made_from_a_lesson_shows_why_on_the_overview_and_is_logged(monkeypatch, tmp_path):
+    """End to end without rendering: _autopilot (assembly stubbed) → saved project made.steer → the overview's short form
+    (_made_view, what Review and the queue show) → one "reel" line in lessons.jsonl (BL-106c, BL-112)."""
+    import studio.assemble as assemble
+    import studio.config as config
+    import studio.projects as projects
+    from studio import service
+
+    monkeypatch.setattr(projects, "DIR", tmp_path)
+    monkeypatch.setattr(config, "DATA", tmp_path)
+    monkeypatch.setattr(assemble, "THEMES", {"autumn": {"title": "t", "style": "column"}})
+    monkeypatch.setattr(assemble, "assemble", lambda theme, slug, **kw: {"slug": slug, "seed": 7, "shots": [{"src": "a.mp4", "sec": 2}], "made_by": "assembler"})
+    monkeypatch.setattr(learn, "comparable", lambda *a, **k: synthetic(40, lift=3.0))
+    slug = service._autopilot(["autumn"], None, False, vary=True, learned=True, by="auto")[0]["slug"]
+    view = service._made_view(projects.load(slug)["made"])
+    assert view["by"] == "auto" and view["mode"] in ("learned", "explore") and view["why"] and view["whyJa"]
+    lines = learn.lessons()
+    assert lines and lines[0]["kind"] == "reel" and lines[0]["slug"] == slug and lines[0]["by"] == "auto"

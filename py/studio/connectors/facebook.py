@@ -62,7 +62,11 @@ FIELDS = [
     {"key": "app_secret", "label": "App secret (optional: makes it permanent)", "secret": True, "placeholder": "App settings › Basic › App secret", "optional": True},
     {"key": "page_id", "label": "Page ID (optional: found for you)", "secret": False, "placeholder": "found from the token", "optional": True},
 ]
-can_schedule = True
+# The studio holds Facebook reels and sends each at its time (publish.run_due), like Bluesky. Checked 24 Nov 2026 on
+# the Page's 14 reels: the one published the moment it was made got 102 reel plays; the 13 uploaded days ahead with
+# scheduled_publish_time got 0-1 each (views and blue_reels_play_count alike), not even the Page's followers.
+# post() still takes `at` for a direct call, but nothing books ahead on Facebook any more.
+can_schedule = False
 LINKS = [{"label": "Open Graph API Explorer", "url": "https://developers.facebook.com/tools/explorer/"},
          {"label": "My Meta apps (app secret)", "url": "https://developers.facebook.com/apps/"}]
 

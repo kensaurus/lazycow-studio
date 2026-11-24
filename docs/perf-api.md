@@ -371,17 +371,20 @@ and `2h 30m` become seconds. A date or time without a zone is taken as JST.
 
 When `analytics` is false, show "Press Connect YouTube again and allow *View YouTube Analytics reports*".
 
-## Steering "Vary the look" (opt-in)
+## Steering "Vary the look" (Use what worked)
 
-There are two ways to switch it on:
+Since 24 Nov it is a setting, on by default: **Settings › Workflow › Runs by itself: making reels › Use what worked**
+(`learn.steer`, with `learn.explore`, the percent that try something new, default 30). One run can still say:
 
-- `POST /api/autopilot` with `"vary": true, "learned": true`, for one run.
-- `STUDIO_PERF_STEER=1` in `.env`, for every autopilot run.
+- `POST /api/autopilot` with `"learned": true` or `false` (Make reels sends its "Use what worked" box). Left out, the
+  setting decides.
+- `STUDIO_PERF_STEER=1` (or `0`) in `.env` wins over the setting while it is set.
 
 Below 15 measured posts nothing changes. Above it, `service.vary_look` first makes its usual random choice. Then on 70 %
-of reels (the other 30 % explore) it replaces the text layout and picture look with one Thompson draw from
-`learn.vary_draw`. Firelight (`ember`) still stays for night and fire themes. Without the flag, the random draw is
-exactly what it was.
+of reels it replaces the text layout and picture look with one Thompson draw from `learn.steer_draw`; the other 30 %
+explore: they take the look with the fewest measured posts. Firelight (`ember`) still stays for night and fire themes.
+Without the flag, the random draw is exactly what it was. Each reel keeps why in its project as
+`made: {by, at, steer: {mode, why, whyJa, picks}}` (`GET /api/reel` returns it).
 
 ## MCP
 

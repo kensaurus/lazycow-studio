@@ -82,6 +82,16 @@ CREATE TABLE IF NOT EXISTS drafts (
   caption_txt TEXT,
   created_at TEXT
 );
+-- Why a person sent a reel back (review queue, 24 Nov): one row per rejection, kept when the draft is made again,
+-- so Check can count reasons and learning can tell weak hooks from wrong clips (review_actions.REASONS).
+CREATE TABLE IF NOT EXISTS rejections (
+  id INTEGER PRIMARY KEY,
+  slug TEXT NOT NULL,
+  reason TEXT,
+  note TEXT,
+  look TEXT,
+  at TEXT NOT NULL
+);
 """
 
 

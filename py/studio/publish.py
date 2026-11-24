@@ -190,9 +190,10 @@ def replace(post_id: int) -> dict:
     when = _when(at)
     if row["status"] not in ("scheduled", "queued") or not when or when - _now() < SOON:
         raise ValueError(f"booking {post_id} is {row['status']} at {at}: only a booking more than a few minutes away can be replaced")
-    if net == "bluesky":
-        # The studio sends Bluesky itself at the time, from the reel's current files: nothing to swap.
-        return {"id": post_id, "status": row["status"], "network": net, "slug": slug, "note": "Bluesky sends the new render at its time"}
+    if row["status"] == "queued" and net in ("bluesky", "facebook"):
+        # The studio sends these itself at the time, from the reel's current files: nothing to swap.
+        name = "Bluesky" if net == "bluesky" else "Facebook"
+        return {"id": post_id, "status": row["status"], "network": net, "slug": slug, "note": f"{name} sends the new render at its time"}
     if net == "facebook":
         from studio.connectors import facebook
 

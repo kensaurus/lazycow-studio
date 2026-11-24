@@ -568,7 +568,12 @@ def set_status(ja: str, status: str) -> dict:
     row = next((r for r in bank() if _key(r["ja"]) == _key(ja)), None)
     if not row:
         raise KeyError("no such line")
-    return save_line(row["kind"], row["ja"], row.get("en", ""), status, row.get("source", "owner"))
+    out = save_line(row["kind"], row["ja"], row.get("en", ""), status, row.get("source", "owner"))
+    if status == "retired" and row.get("status") != "retired":
+        from studio import learn
+
+        learn.note_lesson("retired", None, ja=row["ja"], kind_of=row["kind"])
+    return out
 
 
 def reword(slug: str, seed: int | None = None, save_it: bool = True) -> dict:

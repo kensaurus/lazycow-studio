@@ -246,3 +246,13 @@ test("STUDIO_TRUST_PROXY trusts only a proxy next to the studio: loopback or a p
   for (const ip of ["203.0.113.9", "172.32.0.1", "172.15.0.1", "8.8.8.8", "2001:db8::1", "::ffff:8.8.8.8", "fe80::1", "", undefined])
     assert.equal(proxyPeer(r(ip)), false, String(ip));
 });
+
+test("a rejection passes only a known reason and a plain look id to the CLI", async () => {
+  const { rejectOptions, REJECT_REASONS } = await import("../server/trust.mjs");
+  assert.deepEqual(REJECT_REASONS, ["weak-hook", "wrong-clip", "repeats"]);
+  assert.deepEqual(rejectOptions({ reason: "weak-hook", look: "film-burn" }), ["--reason", "weak-hook", "--look", "film-burn"]);
+  assert.deepEqual(rejectOptions({ reason: "--help", look: "--reason" }), []);
+  assert.deepEqual(rejectOptions({ reason: "ugly", look: "a b" }), []);
+  assert.deepEqual(rejectOptions({}), []);
+  assert.deepEqual(rejectOptions(null), []);
+});

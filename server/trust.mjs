@@ -288,6 +288,20 @@ export function approvalRefusal(rows, slug) {
   return null;
 }
 
+/** The review queue's one-tap reasons for sending a reel back (py/studio/review_actions.py REASONS). */
+export const REJECT_REASONS = ["weak-hook", "wrong-clip", "repeats"];
+/**
+ * A rejection's options for `studio reject`: --reason only when it is one of REJECT_REASONS, --look only when it is a
+ * plain look id (letters, digits, dashes). Anything else is left out, so a page can never pass its own option.
+ */
+export function rejectOptions(payload = {}) {
+  const out = [];
+  if (REJECT_REASONS.includes(payload?.reason)) out.push("--reason", payload.reason);
+  const look = typeof payload?.look === "string" ? payload.look : "";
+  if (/^[a-z0-9][a-z0-9-]{0,39}$/i.test(look)) out.push("--look", look);
+  return out;
+}
+
 /**
  * Does a reel from a shared project file name a path outside this computer's footage folder? A network share
  * (\host\share or //host) makes Windows sign in to that host with the owner's account the moment the studio looks at

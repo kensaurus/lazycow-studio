@@ -5,8 +5,8 @@ import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { AUTO_NETS, fitsNetwork, planAhead, todayIn } from "../server/autoplan.mjs";
-import { openerOf, YT_GATE } from "../server/helper.mjs";
+import { AUTO_NETS, fitsNetwork, planAhead, postSlots, todayIn } from "../server/autoplan.mjs";
+import { EXPLORE_EVERY, openerOf, YT_GATE } from "../server/helper.mjs";
 import { setStartup, startupDir, startupScript, startupState } from "../scripts/autostart.mjs";
 
 const spec = { channels: [
@@ -134,7 +134,7 @@ test("the YouTube gate: 18 s or more first, no title again within 14 days, no op
 });
 
 test("every network the studio books by itself is known", () => {
-  assert.deepEqual([...AUTO_NETS].sort(), ["bluesky", "facebook", "gbp", "line-oa", "linkedin", "tiktok", "x", "youtube"]);
+  assert.deepEqual([...AUTO_NETS].sort(), ["bluesky", "facebook", "gbp", "line-oa", "linkedin", "pinterest", "tiktok", "x", "youtube"]);
   assert.equal(todayIn("Asia/Tokyo", Date.parse("2026-11-11T16:00:00Z")), "2026-11-12");
 });
 
@@ -151,4 +151,80 @@ test("start at sign-in writes one small file and removes it again", () => {
   assert.equal(startupState(null).supported, false);
   assert.throws(() => setStartup(true, null));
   assert.match(startupScript("C:\\s", "node"), /\r\n/);
+});
+
+test("each network's hours come from channels.json postTimesJst: 19:00 when listed, weekly slots left alone (BL-070)", () => {
+  const ch = { channels: [{ id: "x", postTimesJst: ["08:00", "12:00", "19:00"] }, { id: "youtube-shorts", postTimesJst: ["12:00", "19:00"] },
+    { id: "pinterest", postTimesJst: ["21:00"] }, { id: "linkedin", postTimesJst: ["Sun 19:00"] }, { id: "instagram", off: true, postTimesJst: ["12:00"] }] };
+  assert.deepEqual(postSlots(ch), { x: { usual: "19:00", others: ["08:00", "12:00"] }, youtube: { usual: "19:00", others: ["12:00"] },
+    pinterest: { usual: "21:00", others: [] } });
+  assert.deepEqual(postSlots(ch, "Europe/London"), {}, "the hours are Japan time: another audience keeps 19:00");
+});
+
+test("one booking in four per network goes to another listed hour, in turn, marked as a test (BL-102: 48 of 57 posts at 18-20 JST)", () => {
+  const reels = Array.from({ length: 30 }, (_, i) => ({ slug: `r${i}-1111`, headline: `h${i}`, networks: ["x", "bluesky", "facebook", "line-oa", "linkedin", "gbp"] }));
+  const slots = { x: { usual: "19:00", others: ["08:00", "12:00"] }, bluesky: { usual: "19:00", others: ["12:00"] }, facebook: { usual: "19:00", others: ["12:00"] },
+    "line-oa": { usual: "19:00", others: ["12:00"] }, linkedin: { usual: "19:00", others: ["12:00"] }, gbp: { usual: "19:00", others: ["08:00"] } };
+  const nets = ["x", "bluesky", "facebook", "line-oa", "linkedin", "gbp"];
+  const r = planAhead({ reels, networks: nets, posts: [], now: NOW, aheadDays: 14, slots });
+  const by = (n) => r.plan.filter((p) => p.network === n);
+  const hour = (p) => p.at.slice(11, 16);
+  // X: 14 days, bookings 4, 8 and 12 at 08:00, 12:00, 08:00; everything else at 19:00.
+  assert.deepEqual(by("x").map(hour), ["19:00", "19:00", "19:00", "08:00", "19:00", "19:00", "19:00", "12:00", "19:00", "19:00", "19:00", "08:00", "19:00", "19:00"]);
+  assert.deepEqual(by("x").filter((p) => p.test).map((p) => [p.test, p.usual]), [["hour", "19:00"], ["hour", "19:00"], ["hour", "19:00"]]);
+  assert.match(by("x")[3].why, /test hour: 08:00 instead of the usual 19:00/);
+  assert.ok(by("x").filter((p) => !p.test).every((p) => !("why" in p) && !("usual" in p)), "only test bookings carry the marks");
+  // Facebook keeps every other day; its 4th booking is the test.
+  assert.deepEqual(by("facebook").map((p) => p.test ? hour(p) : "-"), ["-", "-", "-", "12:00", "-", "-", "-"]);
+  for (const n of nets) assert.equal(new Set(by(n).map((p) => p.day)).size, by(n).length, `${n}: one a day at most`);
+  // Weekly and Maps keep their fixed hours, whatever slots say.
+  assert.ok(by("line-oa").every((p) => hour(p) === "10:00" && !p.test));
+  assert.ok(by("linkedin").every((p) => hour(p) === "19:00" && !p.test));
+  assert.ok(by("gbp").every((p) => hour(p) === "12:00" && !p.test));
+  // Same input, same plan: the turn is deterministic.
+  assert.deepEqual(planAhead({ reels, networks: nets, posts: [], now: NOW, aheadDays: 14, slots }).plan, r.plan);
+});
+
+test("the test-hour turn counts the bookings a network already has, so it holds across daily runs; a test hour already past today stays usual", () => {
+  const reels = Array.from({ length: 10 }, (_, i) => ({ slug: `r${i}-1111`, headline: `h${i}`, networks: ["bluesky"] }));
+  const slots = { bluesky: { usual: "19:00", others: ["12:00"] } };
+  // Three bookings already held (posted or queued): the next one is the 4th, a test.
+  const posts = [8, 9, 10].map((d, i) => ({ id: i, slug: `old${i}-1101`, network: "bluesky", status: i ? "queued" : "posted", at: `2026-11-0${d - 7}T19:00+09:00` }));
+  const r = planAhead({ reels, networks: ["bluesky"], posts, now: Date.parse("2026-11-11T09:00:00+09:00"), aheadDays: 2, slots });
+  assert.deepEqual(r.plan.map((p) => [p.at, p.test || null]), [["2026-11-11T12:00+09:00", "hour"], ["2026-11-12T19:00+09:00", null]]);
+  // At 13:00 the 12:00 test hour has passed: today's booking stays at 19:00.
+  const late = planAhead({ reels, networks: ["bluesky"], posts, now: Date.parse("2026-11-11T13:00:00+09:00"), aheadDays: 1, slots });
+  assert.deepEqual(late.plan.map((p) => [p.at, p.test || null]), [["2026-11-11T19:00+09:00", null]]);
+  assert.equal(EXPLORE_EVERY, 4);
+});
+
+test("with no slots the planner books as before: 19:00 everywhere, no test marks", () => {
+  const reels = Array.from({ length: 30 }, (_, i) => ({ slug: `r${i}-1111`, headline: `h${i}`, networks: ["x", "bluesky"] }));
+  const r = planAhead({ reels, networks: ["x", "bluesky"], posts: [], now: NOW, aheadDays: 14 });
+  assert.ok(r.plan.every((p) => p.at.slice(11, 16) === "19:00" && !p.test));
+});
+
+// Track C (24 Nov): a replaced account starts its own "since"; a stalled network says it is paused.
+test("a new account name starts that network's since; the first name, the same name or clearing it does not", async () => {
+  const { withAccount } = await import("../server/autoplan.mjs");
+  const at = new Date("2026-11-24T10:00:00Z");
+  const first = withAccount({ accounts: {} }, "tiktok", "@tsumagoicamp", at);
+  assert.equal(first.accounts.tiktok, "@tsumagoicamp"); assert.equal(first.since, undefined, "a first name is not a change");
+  const same = withAccount(first, "tiktok", "TsumagoiCamp", at);
+  assert.equal(same.since, undefined, "the same handle, other case and no @");
+  const moved = withAccount(first, "tiktok", "@tsumagoi.camp", at);
+  assert.deepEqual(moved.since, { tiktok: "2026-11-24T10:00:00.000Z" });
+  assert.equal(first.since, undefined, "the input is not changed");
+  const cleared = withAccount(moved, "tiktok", "", new Date("2026-11-25T00:00:00Z"));
+  assert.equal(cleared.accounts.tiktok, undefined); assert.deepEqual(cleared.since, moved.since, "clearing keeps the date");
+  const other = withAccount(moved, "x", "@new", at);
+  assert.deepEqual(other.since, moved.since, "another network's first name leaves TikTok's date alone");
+});
+
+test("a stalled network says it is paused until a post is seen", () => {
+  const reels = [{ slug: "a-1111", headline: "a", networks: ["tiktok", "x"] }];
+  const r = planAhead({ reels, networks: ["tiktok", "x"], posts: [], now: NOW, aheadDays: 2, stalled: ["tiktok"] });
+  const s = r.skipped.find((x) => x.stalled);
+  assert.equal(s.network, "tiktok"); assert.match(s.why, /^TikTok paused until a post is seen/);
+  assert.ok(r.plan.every((p) => p.network !== "tiktok"));
 });

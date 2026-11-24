@@ -498,9 +498,10 @@ export async function prepare({ home, network, url, file, text, name }) {
    ==================================================================================================== */
 
 /** Networks the helper can schedule end to end. */
-export const SCHEDULERS = ["x", "tiktok", "gbp", "line-oa", "linkedin"];
+export const SCHEDULERS = ["x", "tiktok", "gbp", "line-oa", "linkedin", "pinterest"];
 /** Days ahead each site accepts a scheduled post (TikTok: 10 days; the others far more). */
-export const MAX_DAYS_AHEAD = { x: 365, tiktok: 10, gbp: 180, "line-oa": 180, linkedin: 90 };
+/* Pinterest takes 30 days; 9 keeps at most ~9 Pins waiting there at once (third-party guides speak of a cap of 10). */
+export const MAX_DAYS_AHEAD = { x: 365, tiktok: 10, gbp: 180, "line-oa": 180, linkedin: 90, pinterest: 9 };
 /** A post time must carry its zone, so "19:00" never means the wrong 19:00. */
 export const AT_RX = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::\d{2})?(Z|[+-]\d{2}:\d{2})$/;
 /** A booked time as its audience reads it, from its own offset: "2026-11-22 19:00 JST". The network's own scheduler is
@@ -633,11 +634,13 @@ export function scheduleRefusal({ status, slug, network, at, posts = [], now = D
   return null;
 }
 
-/** Spread approved reels over the next days: one post per network per day at 19:00 in the audience's zone
-    (Google Maps 12:00 on Fridays and Saturdays only), skipping days a network already has a post, never the
-    same reel twice on one network, and never the same headline on one network on two days in a row.
+/** Spread approved reels over the next days: one post per network per day at its usual hour in the audience's zone
+    (19:00, or slots[net].usual; Google Maps 12:00 on Fridays and Saturdays only), skipping days a network already has a
+    post, never the same reel twice on one network, and never the same headline on one network on two days in a row.
     reels: [{slug, headline, networks, score?, seconds?}] (approved, with files for those networks); the best score
-    goes first. Returns {plan, skipped}. */
+    goes first. slots: {net: {usual, others}} from channels.json postTimesJst (autoplan.mjs postSlots); every
+    EXPLORE_EVERY-th booking on a network goes to one of its other hours and is marked test: "hour".
+    Returns {plan, skipped}. */
 /* Per network: the fewest days between two posts (Facebook every other day), and how many days around a post no other
    post of the same theme may land (a reel's theme is the first word of its id: aerial-1108-3 is "aerial").
    16 Nov: eight near-identical Facebook reels a day apart; one was shown to people (100 plays), seven to nobody, on a
@@ -657,8 +660,13 @@ export const YT_GATE = { minSec: 18, openerDays: 7, titleDays: 14 };
 /** The first clause of a title, where the hook sits (as py/studio/perf.py opener): 「不便だからこそ、尾根まで。｜嬬恋牧場」 -> 不便だからこそ. */
 export const openerOf = (title) => String(title || "").split(/[｜|]/)[0].split(/[。、,，.!?！？:：]/)[0].trim();
 export const themeOf = (slug) => String(slug || "").split("-")[0];
+/* BL-102 / BL-070: the learner could not tell hours apart because 48 of 57 posts went out at 18-20 JST (24 Nov). A
+   daily network with more than one listed hour (slots) books every EXPLORE_EVERY-th post (counting its bookings so
+   far, so it holds across runs) at one of its other hours, in turn; the rest stay at the usual hour. The weekly
+   networks (LINE, LinkedIn) and Google Maps keep their fixed hours. */
+export const EXPLORE_EVERY = 4;
 export function planWeek({ reels = [], networks = SCHEDULERS, posts = [], start, days = 7, timeZone = "Asia/Tokyo", now = Date.now(), limits = MAX_DAYS_AHEAD,
-  themeDays = THEME_DAYS_ALL }) {
+  themeDays = THEME_DAYS_ALL, slots = {} }) {
   // limits: days ahead per network; the Chrome networks by default, more (Facebook, Bluesky, YouTube) from server/autoplan.mjs.
   const nets = networks.filter((n) => n in limits);
   const first = start || addDays(dayIn(new Date(now), timeZone), 1);
@@ -677,6 +685,7 @@ export function planWeek({ reels = [], networks = SCHEDULERS, posts = [], start,
   }
   const apart = (a, b) => Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86400e3;
   const plan = [], skipped = [], count = new Map();
+  const booked = Object.fromEntries(nets.map((n) => [n, posts.filter((r) => r.network === n && held(r)).length]));  // for the test-hour turn
   for (let i = 0; i < days; i++) {
     const day = addDays(first, i);
     const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
@@ -689,7 +698,13 @@ export function planWeek({ reels = [], networks = SCHEDULERS, posts = [], start,
       if (net in weekly && [...days_[net].keys()].some((d) => Math.abs(Date.parse(`${d}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`)) < 7 * 86400e3)) {
         skipped.push({ day, network: net, why: `${net === "linkedin" ? "LinkedIn already has a post" : "LINE already has a message"} within 7 days` }); continue;
       }
-      const at = zonedIso(day, net === "gbp" ? "12:00" : net === "line-oa" ? "10:00" : "19:00", timeZone);
+      const hours = net === "gbp" || net in weekly ? null : slots[net];
+      let hm = net === "gbp" ? "12:00" : net === "line-oa" ? "10:00" : hours?.usual || "19:00", test = null;
+      if (hours?.others?.length && (booked[net] + 1) % EXPLORE_EVERY === 0) {
+        const alt = hours.others[Math.floor(booked[net] / EXPLORE_EVERY) % hours.others.length];
+        if (Date.parse(zonedIso(day, alt, timeZone)) >= now + 15 * 60e3) { hm = alt; test = "hour"; }  // today's has passed: the usual hour
+      }
+      const at = zonedIso(day, hm, timeZone);
       const t = Date.parse(at);
       if (t < now + 15 * 60e3) { skipped.push({ day, network: net, why: "already past" }); continue; }
       if (t > now + limits[net] * 86400e3) { skipped.push({ day, network: net, why: `too far ahead for ${net}` }); continue; }
@@ -713,7 +728,9 @@ export function planWeek({ reels = [], networks = SCHEDULERS, posts = [], start,
         .map((r, k) => ({ r, k, p: penalty(r) }))
         .sort((a, b) => a.p - b.p || (count.get(a.r.slug) || 0) - (count.get(b.r.slug) || 0) || scoreOf(b.r) - scoreOf(a.r) || a.k - b.k)[0]?.r;
       if (!pick) { skipped.push({ day, network: net, why: `no approved reel left that it has not had, with a different headline from the day before and after${themeGap ? ` and a theme it did not have within ${themeGap} days` : ""}${yt ? ` and a title it did not have within ${YT_GATE.titleDays} days` : ""}` }); continue; }
-      plan.push({ slug: pick.slug, network: net, at, day, headline: String(pick.headline || "").trim() });
+      plan.push({ slug: pick.slug, network: net, at, day, headline: String(pick.headline || "").trim(),
+        ...(test ? { test, usual: hours.usual, why: `test hour: ${hm} instead of the usual ${hours.usual}, so Results can compare hours` } : {}) });
+      booked[net]++;
       used[net].add(pick.slug);
       days_[net].set(day, String(pick.headline || "").trim());
       slugOn[net].set(day, pick.slug);
@@ -829,7 +846,22 @@ async function scheduleX(page, { file, text, at, timeZone, rehearse, step }) {
 }
 
 /* ---------- TikTok: https://www.tiktok.com/tiktokstudio/upload (Japanese UI) ---------- */
+/* A new TikTok account asks twice, once each (24 Nov 2026, @tsumagoi.camp): "コンテンツの自動チェックをオンにしますか？"
+   over the upload page (its overlay swallowed the helper's clicks: "locator.click: Timeout"), and "投稿予約用に動画を
+   保存しますか？" when 投稿予約する is first picked (no date box until it is allowed). Both are answered yes: the checks
+   warn about music and reach before a post, and scheduling needs the video kept. */
+const TIKTOK_ASKS = [
+  { says: /コンテンツの自動チェック|automatic content checks/i, yes: /^(オンにする|Turn on)$/ },
+  { says: /投稿予約用に動画を保存|save .*video.* schedul/i, yes: /^(許可する|Allow)$/ },
+];
 async function dismissTour(page) {
+  for (const ask of TIKTOK_ASKS) {
+    const box = page.locator('[role="dialog"], [class*="modal" i]').filter({ hasText: ask.says }).last();
+    if (await box.isVisible().catch(() => false)) {
+      await box.getByRole("button", { name: ask.yes }).first().click({ timeout: 3000 }).catch(() => {});
+      await sleep(800);
+    }
+  }
   for (const rx of [/^(OK|了解|わかりました|Got it|閉じる)$/]) {
     const b = page.getByRole("button", { name: rx });
     const n = await b.count().catch(() => 0);
@@ -881,7 +913,12 @@ async function scheduleTikTok(page, { file, text, at, timeZone, rehearse, step }
   const typed = await editor.innerText().catch(() => "");
   const firstLine = body.split("\n").find((l) => l.trim())?.trim().slice(0, 20) || "";
   // It must START with the first line: "includes" passed with the file name left in front of it.
-  if ((firstLine && !typed.trim().startsWith(firstLine)) || tags.some((t) => !typed.includes(t))) return fail("TikTok: the description did not come out as written, so nothing was scheduled. The window stays open; check it there.");
+  const missingTags = tags.filter((t) => !typed.includes(t));
+  if ((firstLine && !typed.trim().startsWith(firstLine)) || missingTags.length) {
+    // Say what TikTok holds, so a repeat failure can be read instead of guessed (24 Nov: carstay-1107-3 failed twice).
+    const head = typed.trim().replace(/\s+/g, " ").slice(0, 40);
+    return fail(`TikTok: the description did not come out as written (it starts "${head}"${missingTags.length ? `; missing ${missingTags.join(" ")}` : ""}), so nothing was scheduled. The window stays open; check it there.`);
+  }
   step(`setting ${want.date} ${want.time}`, 4);
   await page.locator('input[type="radio"][value="schedule"]').first().dispatchEvent("click");
   await sleep(1500);
@@ -890,19 +927,18 @@ async function scheduleTikTok(page, { file, text, at, timeZone, rehearse, step }
   const section = () => page.locator("div").filter({ hasText: "投稿のタイミング" }).filter({ has: page.getByText(/^\d{4}年\d{1,2}月\d{1,2}日$/) }).last();
   const dateBox = () => section().getByText(/^\d{4}年\d{1,2}月\d{1,2}日$/).first();
   const timeBox = () => section().getByText(/^\d{2}:\d{2}$/).first();
-  for (let attempt = 0; attempt < 2; attempt++) {
-    await dateBox().click({ force: true });
-    await sleep(600);
-    if (attempt === 1) {  // the next month: its arrow is the last one in the picker
-      const arrows = page.locator('[class*="DatePicker"] [class*="arrow"], [class*="DatePicker"] [class*="Arrow"]');
-      const n = await arrows.count();
-      if (n) await arrows.nth(n - 1).click({ force: true }).catch(() => {});
-      await sleep(500);
-    }
-    await tiktokPickDay(page, p);
-    await sleep(600);
-    if ((await dateBox().innerText().catch(() => "")).trim() === want.date) break;
+  // The calendar opens on the shown month; step with its "Next month" button until the title reads the wanted month.
+  // (24 Nov 2026: the old arrow selector matched nothing, so every December date failed with "TikTok shows 24 Nov".)
+  await dateBox().click({ force: true });
+  await sleep(600);
+  for (let i = 0; i < 3; i++) {
+    const title = (await page.locator(".DatePicker__titleMonth").first().innerText().catch(() => "")).trim();
+    if (!title || parseInt(title, 10) === p.month) break;
+    await page.locator('.DatePicker__panel button[aria-label="Next month"], .DatePicker__nav[aria-label="Next month"]').first().click({ force: true }).catch(() => {});
+    await sleep(500);
   }
+  await tiktokPickDay(page, p);
+  await sleep(600);
   await timeBox().click({ force: true });
   await sleep(600);
   await page.locator(".TimePicker__item").filter({ hasText: new RegExp(`^\\s*${pad(p.hour)}\\s*$`) }).first().click({ force: true });
@@ -920,6 +956,11 @@ async function scheduleTikTok(page, { file, text, at, timeZone, rehearse, step }
   const btn = page.locator('[data-e2e="post_video_button"]').first();
   const label = (await btn.innerText().catch(() => "")).trim();
   if (!/投稿予約|Schedule/i.test(label)) return fail(`TikTok's button says "${label || "nothing"}", not 投稿予約する, so it was not pressed (it would post now). The window stays open.`);
+  // The account's automatic checks (music copyright, content) run for a few minutes after the upload; 投稿予約する
+  // pressed while they show 確認中 did not book (24 Nov 2026: 4 of 6 "pressed" posts were missing from the content list).
+  step("waiting for TikTok's checks", 6);
+  if (!(await until(async () => !(await shows(page, "確認中")), 15 * 60e3, 3000))) return fail("TikTok's music and content checks were still running after 15 minutes, so nothing was scheduled. The window stays open.");
+  if (await until(() => shows(page, "問題が見つかりました"), 1500, 500)) return fail("TikTok's checks found a problem (music copyright or content), so nothing was scheduled. Open the helper window to see which.");
   if (rehearse) return { state: "rehearsed", message: `TikTok: ready to schedule for ${want.date} ${want.time} (your time). Rehearsal: 投稿予約する was not pressed.`, proof: { shown: `${want.date} ${want.time}` } };
   step("pressing 投稿予約する", 6);
   await btn.dispatchEvent("click");
@@ -1249,7 +1290,141 @@ async function scheduleLinkedIn(page, { file, text, at, extra, timeZone, rehears
   step("checking", 7);
   return { state: "scheduled", message: `LinkedIn: scheduled on the company page for ${want} on this computer's clock (${audienceTime(at)} for your audience).`, proof: { url: page.url(), shown: want } };
 }
-const SCHEDULE_URL = { x: "https://x.com/compose/post", tiktok: "https://www.tiktok.com/tiktokstudio/upload", "line-oa": "https://manager.line.biz/", linkedin: "https://www.linkedin.com/feed/" };
+/* ---------- Pinterest: https://www.pinterest.com/pin-creation-tool/ ----------
+   Only a business account has "Publish at a later date" (24 Nov 2026: the owner's personal account had none; the
+   ranch posts from the business profile @tsumagoicamp). The reel's pinterest/post.txt holds TITLE:, DESCRIPTION: and
+   LINK:. Video → title → description → link → board (by theme) → the switch → date and time in this computer's clock
+   → the top button must read "Schedule" before it is pressed. Pinterest holds a booking up to 30 days ahead. */
+export const PINTEREST_BOARDS = {
+  night: "星空と焚き火｜標高1,444m",
+  work: "山でワーケーション｜嬬恋",
+  camp: "群馬・嬬恋 冬キャンプと車中泊",
+};
+/** The board a reel goes to, from the theme its slug starts with (fire-1108-3 → night). */
+export function pinterestBoard(slugOrFile) {
+  const slug = String(slugOrFile || "").split(/[\\/]/).pop().replace(/^tsumagoi_/, "");
+  const theme = (slug.match(/^[a-z]+/) || [""])[0];
+  if (/^(fire|nightfire|lookup|warm|night|star)/.test(theme)) return PINTEREST_BOARDS.night;
+  if (/^(office|focus|connect|work)/.test(theme)) return PINTEREST_BOARDS.work;
+  return PINTEREST_BOARDS.camp;
+}
+/** TITLE: / DESCRIPTION: / LINK: out of a pinterest post.txt (a plain text is all description). */
+export function pinterestParts(text) {
+  const s = String(text || "").replace(/\r/g, "");
+  const title = (s.match(/^TITLE:\s*(.+)$/m) || [])[1]?.trim() || "";
+  const link = (s.match(/^LINK:\s*(\S+)/m) || [])[1] || "";
+  const d = s.match(/DESCRIPTION:\s*\n([\s\S]*?)(?:\n\s*LINK:|$)/);
+  const description = (d ? d[1] : title ? "" : s).trim();
+  return { title: [...title].slice(0, 100).join(""), description: [...description].slice(0, 500).join(""), link };
+}
+/** The date as the field's own placeholder spells it (DD/MM/YYYY here; YYYY/MM/DD and MM/DD/YYYY in other
+    languages), and the time the way the field shows it (12 h "9:00 PM" or 24 h "21:00"). */
+export function pinterestLabels(p, datePlaceholder = "DD/MM/YYYY", timeShown = "12:00 PM") {
+  const ph = String(datePlaceholder || "DD/MM/YYYY").toUpperCase();
+  const sep = (ph.match(/[^A-Z]/) || ["/"])[0];
+  const by = { D: pad(p.day), M: pad(p.month), Y: String(p.year) };
+  const order = [...new Set(ph.replace(/[^DMY]/g, ""))];
+  const date = order.map((k) => by[k]).join(sep);
+  const time = /AM|PM/i.test(timeShown) ? `${p.hour12}:${pad(p.minute)} ${p.ampm.toUpperCase()}` : `${pad(p.hour)}:${pad(p.minute)}`;
+  return { date, time };
+}
+async function pinDeleteDraft(page) {
+  await page.getByRole("button", { name: /^(Pin draft actions|ピンの下書きのアクション)/ }).first().click({ timeout: 5000 }).catch(() => {});
+  await page.getByRole("menuitem", { name: /^(Delete|削除)$/ }).first().click({ timeout: 5000 }).catch(() => {});
+  await page.getByRole("dialog").getByRole("button", { name: /^(Delete|削除)$/ }).first().click({ timeout: 5000 }).catch(() => {});
+}
+async function schedulePinterest(page, { file, text, at, extra, timeZone, rehearse, step }) {
+  const parts_ = pinterestParts(text);
+  if (!parts_.title) return fail("Pinterest: the post text has no TITLE: line, so nothing was scheduled. Press Prepare files on the reel again.");
+  const board = extra?.board || pinterestBoard(file);
+  const p = localParts(at, timeZone);
+  const upload = page.locator("#storyboard-upload-input");
+  await upload.waitFor({ state: "attached", timeout: 30000 });
+  // An open draft that already has media would get this video's text: start a new Pin instead.
+  if (await page.locator("#storyboard-selector-title").isEnabled().catch(() => false)) {
+    await page.getByRole("button", { name: /^(Create new|新規作成)$/ }).first().click({ timeout: 5000 }).catch(() => {});
+    await sleep(1500);
+  }
+  step("attaching the video", 2);
+  await attachFile(upload.first(), file);
+  const ready = await until(() => page.locator("#storyboard-selector-title").isEnabled(), 5 * 60e3, 2000);
+  if (!ready) return fail("Pinterest: the video did not finish uploading within 5 minutes, so nothing was scheduled. The window stays open.");
+  step("writing the title, description and link", 3);
+  await page.locator("#storyboard-selector-title").fill(parts_.title);
+  if (parts_.description) {
+    const ed = page.locator('[data-test-id="storyboard-description-field-container"] [contenteditable="true"]').first();
+    await ed.click();
+    await typeLines(page, parts_.description.split("\n"));
+  }
+  if (parts_.link) await page.locator("#WebsiteField").fill(parts_.link);
+  step(`choosing the board ${board}`, 4);
+  const pick = page.locator('[data-test-id="board-dropdown-select-button"]').first();
+  await pick.click();
+  await page.getByRole("textbox", { name: /Search through your boards|ボードを検索/ }).first().fill(board).catch(() => {});
+  await sleep(800);
+  await page.locator('[data-test-id="board-row"], [role="listitem"], [role="option"]').filter({ hasText: board }).first().click({ timeout: 8000 })
+    .catch(() => page.getByText(board, { exact: true }).last().click({ timeout: 5000 }));
+  await sleep(600);
+  if (!(await pick.innerText().catch(() => "")).includes(board)) return fail(`Pinterest: the board "${board}" could not be chosen (make it on the business profile), so nothing was scheduled. The window stays open.`);
+  const sw = page.locator("#pin-draft-switch-group");
+  if (!(await sw.isChecked().catch(() => false))) await sw.check({ force: true });
+  const dateBox = page.locator('[id^="pin-draft-schedule-date-field"]').first();
+  const timeBox = page.locator('[id^="pin-draft-schedule-time-field"]').first();
+  await dateBox.waitFor({ state: "visible", timeout: 10000 });
+  const L = pinterestLabels(p, await dateBox.getAttribute("placeholder").catch(() => null), await timeBox.inputValue().catch(() => ""));
+  step(`setting ${L.date} ${L.time}`, 5);
+  await dateBox.click();
+  await dateBox.fill(L.date);
+  await page.keyboard.press("Enter").catch(() => {});
+  await sleep(500);
+  // The time box ignores typing: it opens a menu (#time-field-dropdown) of half hours spelled "08:00 PM" (24 Nov 2026).
+  if (p.minute % 30) return fail(`Pinterest books on the half hour only, not ${L.time}, so nothing was scheduled.`);
+  await timeBox.click();
+  await page.locator("#time-field-dropdown").waitFor({ state: "visible", timeout: 8000 }).catch(() => {});
+  const padded = L.time.replace(/^(\d):/, "0$1:");
+  const item = page.locator('#time-field-dropdown [role="menuitem"]').filter({ hasText: new RegExp(`^\\s*(${padded}|${L.time})\\s*$`, "i") }).first();
+  await item.scrollIntoViewIfNeeded().catch(() => {});
+  await item.click({ timeout: 8000 }).catch(() => {});
+  await sleep(600);
+  const shownDate = await dateBox.inputValue().catch(() => ""), shownTime = await timeBox.inputValue().catch(() => "");
+  const sameTime = (a, b) => a.replace(/\s+/g, " ").trim().replace(/^0(\d):/, "$1:").toUpperCase() === b.replace(/^0(\d):/, "$1:").toUpperCase();
+  if (shownDate !== L.date || !sameTime(shownTime, L.time)) {
+    return fail(`Pinterest shows ${shownDate || "no date"} ${shownTime || "no time"}, not ${L.date} ${L.time}, so nothing was scheduled. The window stays open.`);
+  }
+  const btn = page.locator('[data-test-id="storyboard-creation-nav-done"]').first();
+  const label = (await btn.innerText().catch(() => "")).trim();
+  if (!/^(Schedule|予約|予約する)$/.test(label)) return fail(`Pinterest's button says "${label || "nothing"}", not "Schedule", so it was not pressed (it might publish now). The window stays open.`);
+  if (rehearse) {
+    await pinDeleteDraft(page);
+    return { state: "rehearsed", message: `Pinterest: ready to schedule on "${board}" for ${L.date} ${L.time} on this computer's clock (${audienceTime(at)} for your audience). Rehearsal: Schedule was not pressed, the draft was deleted.`, proof: { shown: `${L.date} ${L.time}`, board } };
+  }
+  // 24 Nov 2026: a video Pin cannot be scheduled while "This video is still being processed" shows (often 20+ minutes
+  // after the upload), and Schedule opens a confirm box ("Schedule for 25 Nov at 20:00 … Cancel / Schedule") whose
+  // own button does the booking. The first version pressed only the top button and took the page changing for
+  // success: 8 Pins stayed drafts while the log said "scheduled". Now success = one draft fewer than before.
+  step("waiting for Pinterest to process the video", 6);
+  const processed = await until(async () => !/still being processed|処理中/.test(await pageText(page)), 25 * 60e3, 15000);
+  if (!processed) {
+    await pinDeleteDraft(page);
+    return fail("Pinterest was still processing the video after 25 minutes, so nothing was scheduled (the draft was deleted). Book it again later.");
+  }
+  const draftCount = async () => Number(((await page.locator('[data-test-id="storyboard-drafts-sidebar-header-title"]').innerText().catch(() => "")).match(/\((\d+)\)/) || [0, 0])[1]);
+  const before = await draftCount();
+  step("pressing Schedule", 6);
+  await btn.click();
+  const confirmBox = page.getByRole("dialog").filter({ hasText: /Schedule for|予約日時|に予約/ }).last();
+  if (!(await confirmBox.waitFor({ state: "visible", timeout: 15000 }).then(() => true).catch(() => false))) {
+    return fail("Pinterest did not ask to confirm the time, so it may not have been scheduled. The window stays open.");
+  }
+  const said = (await confirmBox.innerText().catch(() => "")).replace(/\s+/g, " ");
+  await confirmBox.getByRole("button", { name: /^(Schedule|予約|予約する)$/ }).last().click();
+  const done = await until(async () => (await draftCount()) < before, 90000, 1500);
+  if (!done) return fail(`Pinterest: the time was confirmed ("${said.slice(0, 60)}") but the draft is still there, so it was not scheduled. Check the window before trying again.`);
+  step("checking", 7);
+  return { state: "scheduled", message: `Pinterest: scheduled on "${board}" for ${L.date} ${L.time} on this computer's clock (${audienceTime(at)} for your audience).`, proof: { url: page.url(), shown: `${L.date} ${L.time}`, board } };
+}
+
+const SCHEDULE_URL = { pinterest: "https://www.pinterest.com/pin-creation-tool/", x: "https://x.com/compose/post", tiktok: "https://www.tiktok.com/tiktokstudio/upload", "line-oa": "https://manager.line.biz/", linkedin: "https://www.linkedin.com/feed/" };
 
 /** Schedule one post end to end. at: ISO with its zone (e.g. 2026-11-13T19:00+09:00). X and TikTok are set in
     the browser's own clock (the helper converts), Google Maps in the listing's (the time as written).
@@ -1257,7 +1432,7 @@ const SCHEDULE_URL = { x: "https://x.com/compose/post", tiktok: "https://www.tik
     Returns {state: "scheduled"|"rehearsed"|"signin"|"failed", message, proof}. */
 export async function schedule({ home, network, file, text, at, extra = {}, rehearse = false, onStep = () => {} }) {
   const name = NAMES[network] || network;
-  if (!SCHEDULERS.includes(network)) return fail(`The helper schedules on X, TikTok, Google Maps, LINE and LinkedIn only, not ${network}.`);
+  if (!SCHEDULERS.includes(network)) return fail(`The helper schedules on X, TikTok, Google Maps, LINE, LinkedIn and Pinterest only, not ${network}.`);
   if (!AT_RX.test(String(at || ""))) return fail("The time needs a date, a time and a zone, e.g. 2026-11-13T19:00+09:00.");
   if (!file || !existsSync(file)) return fail(`${name}: the file to post is missing; press Prepare files on the reel, then try again.`);
   const step = (label, stage) => { try { onStep(label, stage, 7); } catch { /* progress is a convenience */ } };
@@ -1279,7 +1454,8 @@ export async function schedule({ home, network, file, text, at, extra = {}, rehe
       || Intl.DateTimeFormat().resolvedOptions().timeZone;
     const args = { home, file, text: String(text || "").replace(/\s+$/, ""), at, extra, timeZone, rehearse, step };
     const r = network === "x" ? await scheduleX(page, args) : network === "tiktok" ? await scheduleTikTok(page, args)
-      : network === "line-oa" ? await scheduleLine(page, args) : network === "linkedin" ? await scheduleLinkedIn(page, args) : await scheduleGbp(page, args);
+      : network === "line-oa" ? await scheduleLine(page, args) : network === "linkedin" ? await scheduleLinkedIn(page, args)
+      : network === "pinterest" ? await schedulePinterest(page, args) : await scheduleGbp(page, args);
     if (r.state === "signin") {
       remember(home, network, false);
       return { state: "signin", message: `Sign in to ${name} ${where()}, then schedule again.`, proof: null };

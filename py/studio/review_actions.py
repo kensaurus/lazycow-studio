@@ -39,6 +39,52 @@ def set_note(slug: str, status: str, note: str) -> None:
         con.execute("UPDATE drafts SET status = ?, notes = ? WHERE slug = ?", (status, note, slug))
 
 
+# One-tap reasons in the review queue (BL-111): a short key each, so learning and Check count them, not free text.
+REASONS = ("weak-hook", "wrong-clip", "repeats")
+
+
+def reject(slug: str, note: str = "", reason: str | None = None, look: str | None = None) -> dict:
+    """Send a reel back: the draft's status and note as before, plus one row in rejections with the reason (one of
+    REASONS, or none for a note only) and the reel's look, so Check can show why reels go back and learning can use it."""
+    from datetime import datetime
+
+    if reason is not None and reason not in REASONS:
+        raise ValueError(f"reason: one of {', '.join(REASONS)}")
+    note = (note or "").strip()[:500]
+    at = datetime.now().astimezone().isoformat(timespec="seconds")
+    with connect() as con:
+        con.execute("UPDATE drafts SET status = ?, notes = ? WHERE slug = ?", ("rejected", note, slug))
+        con.execute("INSERT INTO rejections (slug, reason, note, look, at) VALUES (?, ?, ?, ?, ?)", (slug, reason, note, look, at))
+    return {"slug": slug, "reason": reason, "note": note, "at": at}
+
+
+def reasons(days: int = 30, now=None) -> dict:
+    """Why reels were sent back in the last `days`: a count per reason ("note" = a note with no reason), the total,
+    a count per look, and the newest five with their notes. Read-only."""
+    from datetime import datetime, timedelta
+
+    now = now or datetime.now().astimezone()
+    cut = now - timedelta(days=max(1, int(days)))
+    with connect() as con:
+        rows = [dict(r) for r in con.execute("SELECT slug, reason, note, look, at FROM rejections ORDER BY at DESC, id DESC")]
+
+    def moment(s):  # stored with their zone offset: compared as moments, not as text
+        try:
+            d = datetime.fromisoformat(s)
+            return d if d.tzinfo else d.replace(tzinfo=now.tzinfo)
+        except (TypeError, ValueError):
+            return None
+
+    rows = [r for r in rows if (m := moment(r["at"])) and m >= cut]
+    by = {k: 0 for k in (*REASONS, "note")}
+    looks: dict = {}
+    for r in rows:
+        by[r["reason"] if r["reason"] in REASONS else "note"] += 1
+        if r["look"]:
+            looks[r["look"]] = looks.get(r["look"], 0) + 1
+    return {"days": int(days), "total": len(rows), "by": by, "looks": looks, "recent": rows[:5]}
+
+
 def consent(slug: str) -> None:
     with connect() as con:
         con.execute("UPDATE drafts SET consent = 1 WHERE slug = ?", (slug,))

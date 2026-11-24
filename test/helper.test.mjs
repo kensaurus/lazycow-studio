@@ -153,7 +153,7 @@ test("only approved reels, on the three networks, at a zoned time inside the sit
   assert.equal(scheduleRefusal({ ...ok }), null);
   assert.match(scheduleRefusal({ ...ok, status: "rendered" }), /not approved/);
   assert.match(scheduleRefusal({ ...ok, status: null }), /no review record/);
-  assert.match(scheduleRefusal({ ...ok, network: "bluesky" }), /X, TikTok, Google Maps, LINE, LinkedIn only/);
+  assert.match(scheduleRefusal({ ...ok, network: "bluesky" }), /X, TikTok, Google Maps, LINE, LinkedIn, Pinterest only/);
   assert.match(scheduleRefusal({ ...ok, at: "2026-11-16T19:00" }), /zone/);
   assert.match(scheduleRefusal({ ...ok, at: "2026-11-09T12:05+09:00" }), /past or less than 15 minutes/);
   assert.match(scheduleRefusal({ ...ok, network: "tiktok", at: "2026-11-25T19:00+09:00" }), /10 days ahead/);
@@ -339,4 +339,34 @@ test("a post id carried by several objects reads the richest one, not the first 
   const hit = matchPost(postObjects(tree), { remoteId: "7706443056693710132" });
   assert.equal(hit.numbers.views, 312);
   assert.equal(hit.numbers.likes, 9);
+});
+
+/* Pinterest (24 Nov 2026): the business profile schedules; the text comes from the reel's pinterest post.txt. */
+import { pinterestBoard, pinterestParts, pinterestLabels, PINTEREST_BOARDS, SCHEDULERS as SCHED, MAX_DAYS_AHEAD as AHEAD } from "../server/helper.mjs";
+
+test("pinterest: books through the helper, at most 9 days ahead", () => {
+  assert.ok(SCHED.includes("pinterest"));
+  assert.equal(AHEAD.pinterest, 9);
+});
+
+test("pinterest: TITLE / DESCRIPTION / LINK split out of post.txt", () => {
+  const t = "TITLE: 寒いからこそ、こたつがうれしい。｜嬬恋牧場Work&Camp\n\nDESCRIPTION:\n一行目\n二行目\n\nLINK: https://tsumagoi.kensaur.us/events?utm_source=pinterest&utm_medium=social\n";
+  const p = pinterestParts(t);
+  assert.equal(p.title, "寒いからこそ、こたつがうれしい。｜嬬恋牧場Work&Camp");
+  assert.equal(p.description, "一行目\n二行目");
+  assert.equal(p.link, "https://tsumagoi.kensaur.us/events?utm_source=pinterest&utm_medium=social");
+  assert.equal([...pinterestParts(`TITLE: ${"あ".repeat(150)}`).title].length, 100);
+});
+
+test("pinterest: board by the reel's theme", () => {
+  assert.equal(pinterestBoard("I:/x/pinterest/tsumagoi_fire-1108-3_1080x1920.mp4"), PINTEREST_BOARDS.night);
+  assert.equal(pinterestBoard("office-1108"), PINTEREST_BOARDS.work);
+  assert.equal(pinterestBoard("carstay-1109-ridge"), PINTEREST_BOARDS.camp);
+});
+
+test("pinterest: date in the field's own order, time 12 h or 24 h as shown", () => {
+  const p = { year: 2026, month: 11, day: 5, hour: 21, minute: 0, hour12: 9, ampm: "pm" };
+  assert.deepEqual(pinterestLabels(p, "DD/MM/YYYY", "12:00 PM"), { date: "05/11/2026", time: "9:00 PM" });
+  assert.deepEqual(pinterestLabels(p, "YYYY/MM/DD", "12:00"), { date: "2026/11/05", time: "21:00" });
+  assert.deepEqual(pinterestLabels(p, "MM/DD/YYYY", "1:30 AM"), { date: "11/05/2026", time: "9:00 PM" });
 });

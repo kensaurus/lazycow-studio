@@ -40,7 +40,7 @@ def keep_ai(project: dict) -> dict:
     old = load(str(project.get("slug", ""))) if re.fullmatch(r"[a-z0-9][a-z0-9-]*", str(project.get("slug", ""))) else None
     if not old:
         return project
-    for key in AI_KEYS:
+    for key in (*AI_KEYS, "made"):  # made: who made the reel and why it looks this way (service._autopilot)
         if key not in project and key in old:
             project[key] = old[key]
     for key in ("ai_clip", "ai_foley", "ai_behind"):
