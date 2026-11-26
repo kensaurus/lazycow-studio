@@ -374,3 +374,71 @@
     header .topnav button span[data-t] { display: none; }
     header .topnav .chip { padding: 0 3px; margin-left: 2px; }
   }
+  /* ---- BL-140 (26 Nov): simple mode's top bar keeps at most five controls (setup chip while unfinished, Help, the
+     bell, the language, More); the rest live in the More menu and show in full mode. The status bar's key hints too
+     (the keys still work). <html data-ui> is set before the first paint and by uiChrome(). ---- */
+  :root[data-ui="simple"] header :is(#aboutBtn, #palBtn, #syncBtn, #themeBtn, #sysBtn, #probBtn) { display: none !important; }
+  :root[data-ui="simple"] #sbKeys, :root[data-ui="simple"] .rvkeys { display: none !important; }
+  :root:not([data-ui="simple"]) .morewrap { display: none !important; }
+  :root[data-ui="simple"] .app.at-home header #helpBtn { display: inline-flex; }  /* the search it stood in for is in More now */
+  .morewrap { position: relative; display: inline-flex; }
+  #moreBtn { min-width: 30px; justify-content: center; font-weight: 800; letter-spacing: 1px; }
+  .moremenu { position: fixed; left: auto; width: min(280px, calc(100vw - 16px)); padding: 6px; display: grid; gap: 2px; z-index: 80; color: var(--text); background: var(--bg); }
+  .moremenu[hidden] { display: none; }
+  .moremenu [role=menuitem] { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+  .moremenu [role=menuitem]:hover, .moremenu [role=menuitem]:focus-visible { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .moremenu [role=menuitem] span { flex: 1; }
+  .moremenu kbd { font-size: 11px; }
+  .moremenu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
+  /* The bell carries the problems dot in simple mode (WN.paintBtn sets data-prob). */
+  :root[data-ui="simple"] #newsBtn { position: relative; }
+  :root[data-ui="simple"] #newsBtn[data-prob="red"]::after, :root[data-ui="simple"] #newsBtn[data-prob="amber"]::after { content: ""; position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); }
+  :root[data-ui="simple"] #newsBtn[data-prob="amber"]::after { background: var(--warn); }
+  /* ---- BL-132 (26 Nov): Review with no network connected: the row says the reel is kept, not booked; the first
+     approval asks "Where should this go?" inline (Connect each network, or Not now). ---- */
+  .rv-nonet { align-items: center; }
+  .rv-nonet .logo-ch { opacity: .55; }
+  .rv-nonet-go { font-weight: 600; margin-left: 4px; }
+  .rv-ask { margin: 10px 0 12px; padding: 12px 14px; border-left: 4px solid var(--warn); }
+  .rv-ask h3 { display: flex; align-items: center; gap: 6px; margin: 0 0 4px; }
+  .rv-ask p { margin: 0 0 10px; }
+  .rv-ask-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .rv-ask-acts .rv-conn { display: inline-flex; align-items: center; gap: 6px; }
+  /* ---- BL-139 (26 Nov): Settings, More tools and Review fit two phone screens (390 x 844, the tallest scroll box). ---- */
+  /* More tools: one group per section; the section's name is said once. */
+  .mt-sec + .mt-sec { margin-top: 14px; }
+  .mt-h { display: flex; align-items: center; gap: 8px; margin: 14px 0 0; }
+  .mt-sec .mt-grid { margin-top: 8px; }
+  /* Settings › Accounts: the map folds under its title (closed on a phone at first). */
+  .am-fold > summary { cursor: pointer; list-style: none; }
+  .am-fold > summary::-webkit-details-marker { display: none; }
+  .am-fold > summary::after { content: "▸"; margin-left: auto; transition: transform .15s; }
+  .am-fold[open] > summary::after { transform: rotate(90deg); }
+  .am-foldsum { font-size: 12px; }
+  .am-fold:not([open]) { padding-bottom: 0; } .am-fold:not([open]) > summary { margin-bottom: 0 !important; }
+  @media (max-width: 760px) {
+    /* More tools: compact rows; how often each was used sits beside its name. */
+    .mt-sec + .mt-sec { margin-top: 8px; } .mt-h { margin-top: 10px; } .mt-sec .mt-grid { margin-top: 6px; }
+    .mt-grid { gap: 4px; }
+    .mt-card { padding: 6px 8px; gap: 8px; align-items: start; }
+    .mt-card .ktile { width: 26px; height: 26px; margin-top: 2px; }
+    .mt-txt { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; row-gap: 0; }
+    .mt-txt b { flex: 1 1 auto; font-size: 14px; } .mt-use { order: 1; font-size: 11px; } .mt-help { order: 2; flex: 1 1 100%; font-size: 12px; line-height: 1.3; }
+    .uix-switch { padding: 6px 10px; } .uix-switch > .meta { display: none; }  /* the page's lead says the same */
+    .mt-private { font-size: 12px; margin-top: 8px; }
+    /* Settings: the connection check's button on its title row. */
+    .nchead { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+    .nchead > .meta { grid-column: 1 / -1; order: 3; }
+    .nchead > .grow { display: none; }
+    .netcheck { margin-bottom: 12px; }
+    .accsec { margin-bottom: 14px; } .accsec h2 { font-size: 21px; }
+    .accsec .helpnote > svg.i:first-child { display: none; }  /* its own line above the title on a phone */
+    /* Review: the queue is one row of reels to swipe, the reel's picture and its clips smaller. */
+    .rv-queue { max-height: none; }
+    .rvq-list { display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; }
+    .rvq-list > li { flex: 0 0 min(250px, 74vw); scroll-snap-align: start; }
+    .rvq { border-bottom: 0; border-right: 1px solid var(--line); }
+    .rv-md .rvfocus { padding: 12px; }
+    .rv-md .rvfocus .rvposter, .rv-md .rvfocus .rvvid { max-width: 180px; }
+    .rv-md .rvfocus .rvstrip .rvshot { max-width: 48px; }
+  }

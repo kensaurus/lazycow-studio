@@ -267,18 +267,72 @@ function autoNote() {
   return `<p class="note autonote">${ico("clock", "sm")} ${pl.on ? tr("auto.on", { h: String(pl.hour ?? 9).padStart(2, "0") }) : tr("auto.off")}${autoView.settings.verify?.on ? " " + tr("auto.check") : ""} ${tr("auto.yours")} <a href="#/posting">${tr("auto.see")} ›</a></p>`;
 }
 function afterApprove() {
-  if (autoView === null && !autoLoading) { autoLoading = true; api("/api/autopost").then((v) => { autoView = v; }).catch(() => {}).finally(() => { autoLoading = false; if (page === "review") renderHome(true); }); }
-  return tr(autoView?.settings?.plan?.on === false ? "rv.after.manual" : "rv.after.auto");
+  rvFresh();
+  const w = rvWhere(), manual = autoView?.settings?.plan?.on === false;
+  if (w && !w.ready.length) return tr(manual ? "rv.after.nonemanual" : "rv.after.none");
+  return tr(manual ? "rv.after.manual" : "rv.after.auto");
 }
 /* Where an approved reel is booked: the project's posting networks, and Instagram Stories when they are connected.
    Shown on each review row so Approve says what it leads to (17 Nov design pass). */
 function goesNets() { return [...PLAN_NETS(), ...(connections?.["instagram-story"]?.connected ? ["instagram-story"] : [])]; }
+/* ---------- BL-132 (first-run walk 26 Nov): what Approve does with no network connected ----------
+   Approve (POST /api/approve, py/studio/review_actions.approve) marks the reel approved and copies its files to the
+   ready folder; it books nothing. The daily plan (server/review.mjs autoPlan) then books approved reels only on the
+   networks it can post to now (autoReady: connected, or Chrome linked for the networks Chrome posts; GET /api/autopost
+   "ready"). With none ready nothing is booked, and the page said "Approving means it will be posted" and "Would land on
+   TikTok / X Thu 19:00". Now it says the reel is kept, and the first approval asks where it should go: Connect (Settings
+   › Accounts, at that network) or Not now (it stays approved; asked again next visit). */
+function rvSplit(nets, ready) {
+  if (!ready || typeof ready !== "object") return null;  // an older server, or not read yet: say what it said before
+  return { ready: nets.filter((n) => n === "instagram-story" || ready[n] === true), missing: nets.filter((n) => n in ready && ready[n] !== true) };
+}
+const rvWhere = () => rvSplit(goesNets(), autoView?.ready);
+/* The plan's view goes stale once a network is connected elsewhere: read it again on Review at most every 30 s. */
+function rvFresh() {
+  if (autoLoading || (autoView !== null && Date.now() - (rvFresh.at || 0) < 30e3)) return;
+  autoLoading = true; rvFresh.at = Date.now();
+  api("/api/autopost").then((v) => { autoView = v; }).catch(() => {}).finally(() => { autoLoading = false; if (page === "review" && atHome()) renderHome(true); });
+}
+let rvAsk = null;  // {slug}: the approval that asked "Where should this go?"
+const rvNotNow = () => { try { return sessionStorage.getItem("rv.notnow") === "1"; } catch { return false; } };
+const rvConnectLinks = (nets) => nets.map((n) => `<a class="btn rv-conn" href="#/accounts" data-rvconnect="${esc(n)}">${netLogo(chOf(n), "sm")}${esc(tr("rv.ask.connect", { n: NET_NAME[n] || n }))}</a>`).join("");
+/* A row's "where it goes" line when no network can take it: kept, not booked, and where to connect. */
+function rvNoNetHtml(r, w) {
+  return `<div class="rvgoes rv-nonet"><span class="meta">${ico("info", "sm")} ${esc(tr(r.status === "approved" ? "rv.nonet.kept" : "rv.nonet"))}</span>${w.missing.map((n) => netLogo(chOf(n), "sm")).join("")}
+    <a class="rv-nonet-go" href="#/accounts" data-rvconnect="${esc(w.missing[0] || "")}">${esc(tr("rv.nonet.go"))} ›</a></div>`;
+}
+/* The ask, right after an approval that nothing can book: inline at the top of Review, never a pop-up. */
+function rvAskHtml() {
+  const w = rvWhere();
+  if (!rvAsk || !w || w.ready.length) return "";
+  return `<section class="rv-ask panel" role="region" aria-labelledby="rvAskT" tabindex="-1"><h3 id="rvAskT">${ico("send", "sm")} ${esc(tr("rv.ask.h"))}</h3>
+    <p class="meta">${esc(tr(autoView?.settings?.plan?.on === false ? "rv.ask.bodymanual" : "rv.ask.body", { s: reelName(rvAsk.slug) }))}</p>
+    <div class="rv-ask-acts">${w.missing.length ? rvConnectLinks(w.missing) : `<a class="btn" href="#/accounts">${esc(tr("rv.nonet.go"))} ›</a>`}
+      <button type="button" class="linkish" data-rvnotnow="1">${esc(tr("rv.ask.notnow"))}</button></div></section>`;
+}
+document.addEventListener("click", (e) => {
+  if (e.target.closest?.("[data-rvnotnow]")) { rvAsk = null; try { sessionStorage.setItem("rv.notnow", "1"); } catch { /* private window */ } toast(`${ico("check", "sm")} ${esc(tr("rv.ask.kept"))}`, 5000); renderHome(true); return; }
+  const c = e.target.closest?.("[data-rvconnect]"); if (!c) return;
+  rvAsk = null;
+  // Settings › Accounts, at that network's row (or the Chrome box that holds the networks your Chrome posts).
+  const n = c.dataset.rvconnect;
+  let tries = 0;
+  const show = () => {
+    const el = page === "accounts" && ((n && document.getElementById("acc-" + n)) || document.querySelector("#home [data-chromeconnect]")?.closest(".helpnote"));
+    if (!el) { if (++tries < 15) setTimeout(show, 300); return; }  // the page draws once its accounts are read
+    el.closest("details")?.setAttribute("open", "");
+    el.scrollIntoView({ block: "center", behavior: moCalm() ? "auto" : "smooth" });
+    el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
+  };
+  setTimeout(show, 300);
+});
 function renderReview() {
   const one = revOnly && overviewLoaded ? overview.reels.find((r) => r.slug === revOnly) : null;
   const list = one ? [one] : reviewList();
   const head = `<div class="pagehead">${crumbs([tr("nav.reels"), "#/"], [tr("nav.review")])}<span class="meta">${overviewLoaded ? tr("rv.count", { n: list.length }) : "…"}</span></div>`
-    + (list.length ? `<p class="note rvafter">${ico("info", "sm")} ${afterApprove()}</p>` : "");
+    + (list.length ? `<p class="note rvafter">${ico("info", "sm")} ${afterApprove()}</p>` : "") + rvAskHtml();
   if (!overviewLoaded) { $("#home").innerHTML = head + loadingHtml(tr("nav.review")); return; }
+  const where = rvWhere();
   if (!list.length) {
     const any = overview.reels.some((r) => !r.house);
     $("#home").innerHTML = head + `<div class="empty mascot">${kenji("lounge")}<b>${tr("rv.none")}</b><span>${tr("rv.nonehint")}</span>${any ? `<a class="btn" href="#/posting">${tr("rv.toposting")}</a>` : `<button class="primary" data-openmaker="1">${ico("clapper", "sm")}${tr("act.make")}</button>`}</div>`;
@@ -308,7 +362,7 @@ function renderReview() {
         <div class="rvwords">${words.map((b) => `<span class="${b.kind === "hook" ? "rvhook" : ""}">${esc(b.ja.replace(/\n/g, " "))}</span>`).join("")}</div>
         <div class="rvstrip">${strip}</div>
         <div class="row-tight">${flags}</div>
-        ${cLandsHtml(r)}</div>
+        ${where && !where.ready.length ? rvNoNetHtml(r, where) : cLandsHtml(r)}</div>
       <div class="rvacts">${r.status === "approved" ? `<span class="okline">${ico("check", "sm")}${tr("ed.st.approved")}</span>`
           : `<button class="primary" data-revok="${esc(r.slug)}" ${revBusy ? "disabled" : ""}>${tr("rv.approve")}</button>`}
         ${tdRejHtml(r)}
@@ -521,10 +575,14 @@ document.addEventListener("click", async (e) => {
   try {
     if (r?.faces && !r.consent && !r.blurFaces) await post("/api/consent", { slug: "story-" + slug });
     await post("/api/approve", { slug: "story-" + slug });
-    toast(`${ico("check", "sm")} ${tr("rv.done", { s: esc(slug) })}`, 4000);
+    // Nothing can book it (no network ready): it is approved and kept; the first time, ask where it should go (BL-132).
+    const w = rvWhere();
+    if (w && !w.ready.length) { if (rvNotNow()) toast(`${ico("check", "sm")} ${esc(tr("rv.done.kept", { s: reelName(slug) }))}`, 6000); else rvAsk = { slug }; }
+    else toast(`${ico("check", "sm")} ${tr("rv.done", { s: esc(slug) })}`, 4000);
   } catch (err) { toast(`${ico("alert", "sm")} ${esc(err.message)}`, 8000); }
   revBusy = ""; delete revCache[slug]; if (revPlay === slug) revPlay = "";
   await loadOverview(); renderHome(true);
+  if (rvAsk) requestAnimationFrame(() => { const a = document.querySelector("#home .rv-ask"); a?.scrollIntoView({ block: "start", behavior: moCalm() ? "auto" : "smooth" }); a?.focus({ preventScroll: true }); });
 });
 function renderIdeas() {
   if (researchView === null) { researchView = undefined; loadResearch(); }

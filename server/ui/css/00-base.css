@@ -391,6 +391,12 @@
   .pk-crumbs .pkc:last-child { color: var(--text); font-weight: 600; }
   .pk-crumbs .sep { color: var(--mute); }
   .pk-here { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  /* BL-141: a typed or pasted path, and hidden folders on request (shown dimmer, in italics). */
+  .pk-type { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; }
+  .pk-type form { display: flex; gap: 6px; flex: 1 1 320px; min-width: 0; }
+  .pk-type input[type="text"] { flex: 1 1 auto; min-width: 0; font-family: var(--mono); font-size: 13px; }
+  .pk-hid { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--mute); white-space: nowrap; }
+  .pk-dirs button.hid { opacity: .72; font-style: italic; }
   .pk-dirs { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 2px; }
   .report { display: grid; gap: 10px; }
   .pk-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }

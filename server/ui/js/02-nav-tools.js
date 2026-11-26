@@ -48,6 +48,53 @@ const ftShown = (id) => uiLevel === "full" || !FEATURES[id] || FEATURES[id].leve
 const ftHref = (id) => FEATURES[id]?.href || "#/" + id;
 const ftName = (id) => tr(FEATURES[id]?.name || PAGES[id]?.[1] || "nav." + id);
 const ftIcon = (id) => FEATURES[id]?.icon || PAGES[id]?.[0] || "list";
+/* BL-140 (first-run walk 26 Nov): simple mode's top bar keeps at most five controls: the setup chip (while setup is
+   unfinished), Help, the bell, the language and one "More" menu holding the rest (search, refresh, colours, the system
+   check, About and the switch to all tools). The version chip, Ctrl K search, refresh, colours, the system dot, the red
+   problems button (its count rides on the bell; the strip under the bar lists them) and the status bar's key hints show
+   in full mode only (CSS keys on <html data-ui>). Every keyboard shortcut keeps working in both. */
+function uiChrome() {
+  document.documentElement.dataset.ui = uiLevel;
+  const b = document.getElementById("moreBtn"); if (!b) return;
+  b.title = tr("rv.more.tip"); b.setAttribute("aria-label", tr("rv.more.tip"));
+}
+uiChrome();
+let moreOpen = false;
+function moreMenuPaint() {
+  const m = document.getElementById("moreMenu"); if (!m) return;
+  m.hidden = !moreOpen; document.getElementById("moreBtn")?.setAttribute("aria-expanded", String(moreOpen));
+  if (!moreOpen) { m.innerHTML = ""; return; }
+  // Outside the header (its overflow would clip it), under the button, its right edge on the button's.
+  const r = document.getElementById("moreBtn")?.getBoundingClientRect();
+  if (r) { m.style.top = `${Math.round(r.bottom + 6)}px`; m.style.right = `${Math.max(8, Math.round(innerWidth - r.right))}px`; }
+  const dark = typeof themeDark === "function" && themeDark();
+  const item = (k, icon, label, extra = "") => `<button type="button" role="menuitem" data-moreact="${k}">${ico(icon, "sm")}<span>${esc(label)}</span>${extra}</button>`;
+  m.innerHTML = item("search", "search", tr("rv.more.search"), "<kbd>Ctrl K</kbd>") + item("sync", "refresh", tr("rv.more.sync"))
+    + item("theme", dark ? "sun" : "moon", tr(dark ? "rv.more.light" : "rv.more.dark")) + item("system", "shield", tr("rv.more.system"))
+    + item("about", "info", tr("rv.more.about", { v: ($("#verTag")?.textContent || "").trim() }))
+    + `<hr>` + item("full", "grid", tr("uix.showall"));
+}
+function moreClose(focus) { if (!moreOpen) return; moreOpen = false; moreMenuPaint(); if (focus) document.getElementById("moreBtn")?.focus(); }
+document.addEventListener("click", (e) => {
+  if (e.target.closest?.("#moreBtn")) { moreOpen = !moreOpen; moreMenuPaint(); if (moreOpen) document.querySelector("#moreMenu [role=menuitem]")?.focus(); return; }
+  const a = e.target.closest?.("[data-moreact]");
+  if (a) {
+    const k = a.dataset.moreact; moreClose(false);
+    // The full-mode buttons stay in the page (hidden in simple mode), so each item presses the same one.
+    if (k === "search") palOpen(); else if (k === "sync") $("#syncBtn")?.click(); else if (k === "theme") themeToggle();
+    else if (k === "system") $("#sysBtn")?.click(); else if (k === "about") openAbout(); else if (k === "full") uiSetLevel("full");
+    return;
+  }
+  if (moreOpen && !e.target.closest?.("#moreMenu")) moreClose(false);
+});
+document.addEventListener("keydown", (e) => {
+  if (!moreOpen) return;
+  if (e.key === "Escape") { e.preventDefault(); moreClose(true); return; }
+  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+  const items = [...document.querySelectorAll("#moreMenu [role=menuitem]")], at = items.indexOf(document.activeElement);
+  if (!items.length) return;
+  e.preventDefault(); items[(at + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length].focus();
+});
 /* The tool open now: a page, or one of the tabs that are tools of their own (Results' tabs, Reply on Bluesky). */
 function ftNow() {
   if (page === "results") { const k = { next: "resnext", where: "reswhere", posts: "resposts", youtube: "resyt" }[resTab]; if (k) return k; }
@@ -78,6 +125,7 @@ function subTabs() {
   if (head) head.insertAdjacentHTML("afterend", html); else $("#home").insertAdjacentHTML("afterbegin", html);
 }
 function paintNav() {
+  uiChrome();
   if (typeof paintStartChip === "function") paintStartChip();
   document.querySelectorAll(".topnav [data-page]").forEach((b) => {
     const on = atHome() ? b.dataset.sec === secOf(page) : b.dataset.sec === "reels";
@@ -197,7 +245,7 @@ function nextSteps() {
   if (repeats.length) add(2, "warn", "type", tr("next.words", { n: repeats.length }), `data-goto="words"`);
   if (approved.length) add(2, "ok", "send", tr("next.approved", { n: approved.length }), `data-goto="posting"`);
   const thin = (overview.filmNext || []).filter((g) => !g.left);
-  if (thin.length) add(5, "info", "camera", tr("next.film", { t: esc(thin[0].title || thin[0].theme), w: esc(thin[0].need), n: thin.length }), `data-goto="footage"`);
+  if (thin.length) add(5, "info", "camera", tr("next.film", { t: esc(thin[0].title || thin[0].theme), w: esc(mkNeed(thin[0])), n: thin.length }), `data-goto="footage"`);
   if (!out.length && !overview.reels.some((r) => !r.house)) return "";  // nothing made yet: the empty state asks once
   if (!out.length) add(6, "ok", "clapper", tr("next.make"), `id="toggleMaker"`);
   return `<nav class="nextsteps" aria-label="${tr("next.title")}"><span class="meta">${tr("next.title")}</span>${out.sort((a, b) => a.rank - b.rank).slice(0, 3).map((x) => x.html).join("")}</nav>`;

@@ -52,7 +52,8 @@ const lpaResHtml = (k, v) => { const r = lpaThemeRes(k, v); return r ? `<span cl
 /* Good first, then not tried, then the weaker ones, worn last; the order stays as written where nothing is measured. */
 const lpaSortThemes = (entries) => entries.map((e, i) => ({ e, i, r: lpaThemeRes(e[0], e[1])?.rank ?? 1 })).sort((a, b) => b.r - a.r || a.i - b.i).map((x) => x.e);
 /* Make reels › "Use what worked": on by default once enough posts are measured and the setting is on; a click changes
-   only this batch (autoLearned), the default is in Settings › Workflow. */
+   only this batch (autoLearned), the default is in Settings › Workflow. Simple mode hides Workflow (a full-mode tool), so
+   there the default is a switch on this line (the same POST /api/autopost as Workflow's), not a link to a hidden page. */
 let autoLearned = null;
 function lpaLearnedNow() {
   const m = lpaMeasured();
@@ -64,7 +65,13 @@ function lpaUseHtml() {
   const m = lpaMeasured(), need = lpaNeed(), ready = m != null && m >= need, on = !!lpaLearnedNow();
   if (m == null) return "";
   return `<div class="lpa-use"><label class="${ready ? "" : "dis"}" title="${esc(tr("lpa_a.use.tip"))}"><input type="checkbox" id="lpaUse" ${on ? "checked" : ""} ${ready ? "" : "disabled"}> ${esc(tr("lpa_a.use"))}</label>
-    <span class="meta">${esc(ready ? tr("lpa_a.use.n", { m, x: lpaExplore() }) : tr("lpa_a.use.wait", { need, m }))} · <a href="#/workflow" data-lpafold="1">${esc(tr("lpa_a.use.how"))}</a></span></div>`;
+    <span class="meta">${esc(ready ? tr("lpa_a.use.n", { m, x: lpaExplore() }) : tr("lpa_a.use.wait", { need, m }))}${lpaDefaultHtml()}</span></div>`;
+}
+function lpaDefaultHtml() {
+  if (ftShown("workflow")) return ` · <a href="#/workflow" data-lpafold="1">${esc(tr("lpa_a.use.how"))}</a>`;
+  const ln = LPA.loop?.learn;
+  if (!ln) return "";
+  return ` · <button type="button" class="linkbtn" role="switch" aria-checked="${!!ln.steer}" data-lpaset="learn.steer" ${LPA.saving ? "disabled" : ""}>${esc(tr("lpa_a.use.def", { v: tr(ln.steer ? "lpa_a.on" : "lpa_a.off") }))}</button>`;
 }
 document.addEventListener("change", (e) => { if (e.target.id === "lpaUse") { autoLearned = e.target.checked; renderHome(true); } });
 /* Results' "Make a reel like this" (Track B's makeLike keeps it in window.makerPreset): said above Make them, sent with the
@@ -108,10 +115,10 @@ function lpaStripHtml() {
   return `<section class="lpa" aria-label="${esc(tr("lpa_a.aria"))}">
     <div class="lpa-head"><i class="lpa-dot ${offs === 0 ? "" : offs >= 3 ? "off" : "part"}" aria-hidden="true"></i><b class="lpa-t">${esc(tr("lpa_a.title"))}</b>
       <span class="lpa-say">${esc(tr("lpa_a.say", { make, book, learn }))}${dr.quiet ? ` <span class="meta">${esc(tr("lpa_a.quiet"))}</span>` : ""}</span>
-      <a href="#/workflow" data-lpafold="1">${ico("shield", "sm")} ${esc(tr("lpa_a.settings"))} ›</a></div>
+      ${ftShown("workflow") ? `<a href="#/workflow" data-lpafold="1">${ico("shield", "sm")} ${esc(tr("lpa_a.settings"))} ›</a>` : ""}</div>
     <ol class="lpa-row">
       ${stage("plan", "plan", themes ? bigN(`${ready}`, tr("lpa_a.p.big", { of: keys.length })) : `<div class="skel skel-line"></div>`, [
-        h.reelsLeft != null ? `<a href="#/footage">${esc(tr("lpa_a.p.runway", { n: h.reelsLeft, a: h.more?.low ?? "?", b: h.more?.high ?? "?" }))}</a>` : "",
+        h.reelsLeft != null ? `<a href="#/footage">${esc(h.more ? tr("lpa_a.p.runway", { n: h.reelsLeft, a: h.more.low, b: h.more.high }) : tr("mk.est.runway", { n: h.reelsLeft }))}</a>` : "",
         h.fresh != null ? esc(tr("lpa_a.p.clips", { n: num(h.fresh) })) : "",
         thin ? `<button type="button" class="linkbtn" data-goto="footage">${esc(tr("lpa_a.p.thin", { n: thin }))}</button>` : esc(tr("lpa_a.p.nothin"))],
         `<button type="button" class="primary lpa-go" data-openmaker="1">${ico("clapper", "sm")}${esc(tr("lpa_a.p.go"))}</button>`)}
@@ -239,7 +246,7 @@ function renderToday() {
       ${top.length ? `<span class="td-nets">${top.map(([n, v]) => `<span>${netLogo(chOf(n), "sm")}${num(v)}</span>`).join("")}</span>` : ""}</a>`;
   // The runway: fresh footage left, and how far the bookings reach.
   const h = foot.h || {}, last = bookedAhead().map((p) => p.at).sort().pop();
-  const runway = `<a class="td-runway" href="#/footage">${ico("layers", "sm")}<span>${h.reelsLeft != null ? esc(tr("td.runway", { n: h.reelsLeft, a: h.more?.low ?? "?", b: h.more?.high ?? "?" })) : esc(tr("td.runwayread"))}</span>${last ? `<span class="meta">· ${esc(tr("td.bookedto", { d: postDayLabel(dayOf(last)) }))}</span>` : ""}<span class="grow"></span>${ico("chev-r", "sm")}</a>`;
+  const runway = `<a class="td-runway" href="#/footage">${ico("layers", "sm")}<span>${h.reelsLeft != null ? esc(h.more ? tr("td.runway", { n: h.reelsLeft, a: h.more.low, b: h.more.high }) : tr("mk.est.td", { n: h.reelsLeft })) : esc(tr("td.runwayread"))}</span>${last ? `<span class="meta">· ${esc(tr("td.bookedto", { d: postDayLabel(dayOf(last)) }))}</span>` : ""}<span class="grow"></span>${ico("chev-r", "sm")}</a>`;
   const fresh = !moCalm() && !moState().shown.has("today");
   if (fresh) moState().shown.add("today");
   const card = (i, cls, icon, title, body, extra = "") => `<section class="td-card ${cls}" style="--i:${i}"><h3>${ico(icon, "sm")}<span>${esc(title)}</span>${extra}</h3>${body}</section>`;
@@ -265,13 +272,14 @@ function renderReels() {
   const R = overview.reels, review = needsReview(), none = !R.some((r) => !r.house);
   if (none) homeFilter = "all";
   if (!autoThemes && themes) autoThemes = new Set();  // nothing ticked: one click never queues every theme by surprise
+  mkPicksSync(); mkFootWatch();  // the ticks are kept per project (BL-136); the footage numbers follow new reels (BL-134)
   if (!SEGMENTS.includes(homeFilter)) homeFilter = "all";
   const counts = stateCounts(R);
   const shown = R.filter((r) => !r.house && (homeFilter === "all" || reelState(r) === homeFilter) && reelPicked(r))
     .sort((a, b) => STATE_ORDER.indexOf(reelState(a)) - STATE_ORDER.indexOf(reelState(b)));
   const house = homeFilter === "all" && !rTheme && !rNet ? R.filter((r) => r.house) : [];
   $("#home").innerHTML = `
-    <div class="pagehead">${crumbs([tr("nav.reels"), homeFilter === "all" ? null : "#/"], ...(homeFilter === "all" ? [] : [[tr(STATE_KEY[homeFilter])]]))}
+    <div class="pagehead rhead">${crumbs([tr("nav.reels"), homeFilter === "all" ? null : "#/"], ...(homeFilter === "all" ? [] : [[tr(STATE_KEY[homeFilter])]]))}
       <span class="meta">${trR("home.sum", { n: counts.all, f: overview.library?.ranch ?? "…" })}${foot.h?.more ? ` · <a href="#/footage">${tr("fh.moreest", { r: moreReels() })}</a>` : ""}</span>
       <span class="grow"></span>
       ${review.length ? `<button data-act="review">${ico("eye", "sm")}${tr("act.review")} <span class="meta">${review.length}</span></button>` : ""}
@@ -409,8 +417,8 @@ const THEME_HUE = { office: 212, carstay: 32, autumn: 18, fire: 4, field: 108, w
 const footageOf = (k) => (overview.filmNext || []).find((g) => g.theme === k);
 function themePill(k, v) {
   const on = !!autoThemes?.has(k), f = footageOf(k), left = f ? f.left : null;
-  const badge = left === 0 ? `<span class="tbadge used" title="${esc(tr("make.nofreshtip", { w: f.need }))}">${tr("make.nofresh")}</span>`
-    : left != null && left < 1 ? `<span class="tbadge warn" title="${esc(tr("make.lowtip", { w: f.need }))}">${tr("make.low", { n: left })}</span>` : "";
+  const badge = left === 0 ? `<span class="tbadge used" title="${esc(tr("make.nofreshtip", { w: mkNeed(f) }))}">${tr("make.nofresh")}</span>`
+    : left != null && left < 1 ? `<span class="tbadge warn" title="${esc(tr("make.lowtip", { w: mkNeed(f) }))}">${tr("make.low", { n: left })}</span>` : "";
   const pill = `<button class="tpill ${on ? "on" : ""}" style="--h:${THEME_HUE[k] ?? 140}" data-auto-theme="${k}" aria-pressed="${on}" title="${esc(v.title)}">
     <span class="tcheck">${ico(on ? "check" : THEME_ICON[k] || "film", "sm")}</span><span class="tname"><b class="clamp" lang="ja">${esc(v.title || k)}${Object.entries(themes || {}).some(([k2, v2]) => k2 !== k && v2.title === v.title) ? ` <small class="meta">(${esc(k)})</small>` : ""}</b></span>${lpaResHtml(k, v)}${badge}</button>`;
   return v.own ? `<span class="tpwrap">${pill}<button class="chip tedit" data-theme-edit="${esc(k)}" title="${esc(tr("th.edit"))}" aria-label="${esc(tr("th.edit"))}: ${esc(k)}">${ico("type", "sm")}</button></span>` : pill;
@@ -423,17 +431,17 @@ function makerHtml() {
   return `<div class="hero maker">
       <div style="flex:1;min-width:0">
         <h2>${tr("act.make")}</h2>
-        <p>${tr("make.lead")}</p>
+        <p class="mk-lead">${tr("make.lead")}</p>
         ${tooLittle ? `<p class="warnline">${ico("alert", "sm")} ${tr("make.toolittle", { n: lib })} <button data-goto="footage">${tr("make.addfootage")}</button></p>` : ""}
-        <div class="mk-step"><span class="mk-num">1</span><b>${tr("make.step1")}</b><span class="meta">${tr("make.picked", { n, of: keys.length })}</span><span class="grow"></span>
-          <button class="chip" data-auto-pick="all">${ico("check", "sm")}${tr("make.all")}</button>
+        <div class="mk-step mk-picks"><span class="mk-num">1</span><b>${tr("make.step1")}</b><span class="meta">${tr("make.picked", { n, of: keys.length })}</span><span class="grow"></span>
+          ${keys.length ? `<button class="chip" data-auto-pick="all">${ico("check", "sm")}${tr("make.all")}</button>
           ${thin.length ? `<button class="chip" data-auto-pick="fresh" title="${esc(tr("make.freshtip"))}">${ico("camera", "sm")}${tr("make.fresh")}</button>` : ""}
           <button class="chip" data-auto-pick="none">${ico("x", "sm")}${tr("make.clear")}</button>
-          <button class="chip dice" data-auto-pick="dice" title="${esc(tr("make.dicetip"))}"><span class="die" aria-hidden="true">⚄</span>${tr("make.dice")}</button>
+          <button class="chip dice" data-auto-pick="dice" title="${esc(tr("make.dicetip"))}"><span class="die" aria-hidden="true">⚄</span>${tr("make.dice")}</button>` : ""}
           <button class="chip" data-theme-new="1">${ico("plus", "sm")}${tr("th.new")}</button>
-          <a class="chip" href="#/ideas/ideas">${ico("search", "sm")}${esc(tr("lpa_a.ideas"))}</a></div>
-        ${themes && !keys.length ? `<div class="noth"><b>${tr("th.none")}</b><span class="meta">${tr("th.nonewhy")}</span><button class="primary" data-theme-new="1">${ico("plus", "sm")}${tr("th.first")}</button><a class="btn" href="#/videos">${ico("play", "sm")}${tr("vid.trip")}</a></div>`
-          : `<div class="tpills lpa-2" role="group" aria-label="${tr("make.themes")}">${themes ? lpaSortThemes(Object.entries(themes)).map(([k, v]) => themePill(k, v)).join("") : `<span class="skel skel-line" style="width:320px"></span>`}</div>`}
+          ${keys.length ? mkStoriesChip() : ""}${mkIdeasChip()}</div>
+        ${themes && !keys.length ? mkStoriesHtml(true)
+          : `<div class="tpills lpa-2" role="group" aria-label="${tr("make.themes")}">${themes ? lpaSortThemes(Object.entries(themes)).map(([k, v]) => themePill(k, v)).join("") : `<span class="skel skel-line" style="width:320px"></span>`}</div>${MK.gallery && keys.length ? mkStoriesHtml(false) : ""}`}
         ${foot.h?.more ? `<p class="note">${tr("fh.moreest", { r: moreReels() })} ${tr("fh.morewhy", { c: foot.h.more.cap })}</p>` : ""}
         ${themes && perfView?.features?.theme ? `<p class="note">${esc(tr("lpa_a.r.key"))}</p>` : ""}
         ${thin.length ? `<p class="note">${ico("camera", "sm")} ${tr("make.thinnote", { n: thin.length })} <button class="linkbtn" data-goto="footage">${tr("make.seewhat")}</button></p>` : ""}
@@ -563,12 +571,16 @@ async function saveThemeForm() {
   try {
     await post("/api/themes", { key, theme });
     themes = await api("/api/themes");
+    themesChanged();
     autoThemes?.add(key);
     closeThemeEditor();
     toast(`${ico("check", "sm")} ${esc(tr("th.saved", { k: themeTitle(key) }))}`, 4000);
     renderHome(true);
   } catch (e2) { err.textContent = e2.message; err.hidden = false; }
 }
+/* A theme saved or deleted: the badges (overview.filmNext: "no new opening shot") and the footage runway are per theme.
+   The server works them out again at once (py/studio/service.py _themes_changed); the page reads them again. */
+function themesChanged() { foot.h = null; loadOverview().catch(() => {}); }
 document.addEventListener("submit", (e) => { if (e.target.id === "themeForm") { e.preventDefault(); saveThemeForm(); } });
 document.addEventListener("click", async (e) => {
   if (e.target.closest("#themeCancel") || e.target === $("#themeModal")) return closeThemeEditor();
@@ -577,7 +589,7 @@ document.addEventListener("click", async (e) => {
   if (rm) return rm.closest(".tline").remove();
   if (e.target.closest("#themeDelete") && themeEditing) {
     const k = themeEditing;
-    try { await post("/api/themes/delete", { key: k }); themes = await api("/api/themes"); autoThemes?.delete(k); closeThemeEditor(); toast(`${ico("check", "sm")} ${esc(tr("th.deleted", { k }))}`, 4000); renderHome(true); }
+    try { await post("/api/themes/delete", { key: k }); themes = await api("/api/themes"); themesChanged(); autoThemes?.delete(k); closeThemeEditor(); toast(`${ico("check", "sm")} ${esc(tr("th.deleted", { k }))}`, 4000); renderHome(true); }
     catch (e2) { $("#themeErr").textContent = e2.message; $("#themeErr").hidden = false; }
   }
 });

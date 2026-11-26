@@ -74,9 +74,11 @@ function psTick() {
    planFits (no people on Google Maps, LinkedIn only for long cuts). Nothing is booked from here. */
 let cLandMemo = { key: "" };
 function cLandTaken() {
-  const key = JSON.stringify([postsLog.length, postsLog.map((p) => p.id).reduce((a, b) => Math.max(a, b || 0), 0), overview.reels.filter((r) => r.status === "approved").length, Math.floor(Date.now() / 6e4), Object.keys(connections || {}).length, !!yt.connected]);
+  const key = JSON.stringify([postsLog.length, postsLog.map((p) => p.id).reduce((a, b) => Math.max(a, b || 0), 0), overview.reels.filter((r) => r.status === "approved").length, Math.floor(Date.now() / 6e4), Object.keys(connections || {}).length, !!yt.connected, autoView?.ready || null]);
   if (cLandMemo.key === key) return cLandMemo;
-  const nets = PLAN_NETS().filter((n) => planBooks(n) && planReady(n));
+  // Only where the daily plan can book now (GET /api/autopost "ready", BL-132): planReady alone counted every network
+  // Chrome posts as ready, so an unlinked TikTok and X showed "Would land on Thu 19:00".
+  const nets = PLAN_NETS().filter((n) => planBooks(n) && planReady(n) && (!autoView?.ready || autoView.ready[n] === true));
   const P = { nets: new Set(nets), start: wallOf(Date.now()).slice(0, 10), days: 60, approvedOnly: true };
   const plan = plannerPlan(P, plannerPool(true));
   cLandMemo = { key, nets, taken: new Set(plan.map((x) => `${x.net}|${x.day}`)) };
@@ -108,14 +110,16 @@ function cLandsOn(r) {
   return { out, skip };
 }
 function cLandsHtml(r) {
-  if (r.status === "approved" || !postsLoaded) return `<div class="rvgoes"><span class="meta">${tr(r.status === "approved" ? "rv.goes.ok" : "rv.goes")}</span>${goesNets().map((n) => netLogo(chOf(n), "sm")).join("")}</div>`;
+  const w = rvWhere();  // BL-132: a network the plan cannot book yet is named as "not connected", never given a slot
+  const off = w?.missing.length ? `<a class="c-land skip" href="#/accounts" data-rvconnect="${esc(w.missing[0])}" title="${esc(tr("rv.notconn.tip", { list: w.missing.map((n) => NET_NAME[n] || n).join(", ") }))}">${w.missing.map((n) => netLogo(chOf(n), "sm")).join("")}<b>${esc(tr("rv.notconn", { n: w.missing.length }))}</b></a>` : "";
+  if (r.status === "approved" || !postsLoaded) return `<div class="rvgoes"><span class="meta">${tr(r.status === "approved" ? "rv.goes.ok" : "rv.goes")}</span>${(w ? w.ready : goesNets()).map((n) => netLogo(chOf(n), "sm")).join("")}${off}</div>`;
   const { out, skip } = cLandsOn(r), L = lang === "ja" ? "ja-JP" : "en-GB";
   const dayTxt = (d) => new Date(d + "T12:00Z").toLocaleDateString(L, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
   const chips = out.map(({ n, hit, lim }) => hit
     ? `<button type="button" class="c-land" data-cland="${esc(n)}|${hit.day}" title="${esc(tr("c_land.tip", { n: NET_NAME[n] || n, t: `${postDayLabel(hit.day)} ${hit.hm}` }))}">${netLogo(chOf(n), "sm")}<b>${esc(dayTxt(hit.day))}</b><span>${esc(hit.hm)}</span></button>`
     : `<span class="c-land later" title="${esc(tr("c_land.latertip", { n: NET_NAME[n] || n, d: lim }))}">${netLogo(chOf(n), "sm")}<b>${esc(tr("c_land.later"))}</b></span>`).join("");
   const sk = skip.length ? `<span class="c-land skip" title="${esc(tr("c_land.skiptip", { list: skip.map((n) => NET_NAME[n] || n).join(", ") }))}">${skip.map((n) => netLogo(chOf(n), "sm")).join("")}<b>${esc(tr("c_land.skip", { n: skip.length }))}</b></span>` : "";
-  return `<div class="rvgoes c-lands"><span class="meta">${esc(tr("c_land.h"))}</span>${chips || `<span class="meta">${esc(tr("c_land.none"))}</span>`}${sk}<span class="c-land-note meta">${esc(tr("c_land.note"))}</span></div>`;
+  return `<div class="rvgoes c-lands"><span class="meta">${esc(tr("c_land.h"))}</span>${chips || `<span class="meta">${esc(tr("c_land.none"))}</span>`}${sk}${off}<span class="c-land-note meta">${esc(tr("c_land.note"))}</span></div>`;
 }
 document.addEventListener("click", (e) => {
   const c = e.target.closest?.("[data-cland]"); if (!c) return;

@@ -64,6 +64,19 @@ def test_browsing_shows_subfolders_and_media_but_not_system_folders(data, tmp_pa
     assert out["parent"] == str(tmp_path)
 
 
+def test_show_hidden_folders_lists_dot_folders_and_appdata_but_never_system_folders(data, tmp_path):
+    """BL-141: the picker's "Show hidden folders" reaches .footage and AppData; the recycle bin and System Volume
+    Information stay out, and each hidden one is marked so the page can tell them apart."""
+    root = tmp_path / "home"
+    for d in ["2026", ".footage", "AppData", "$RECYCLE.BIN", "System Volume Information", "$WinREAgent"]:
+        (root / d).mkdir(parents=True)
+    plain = sources.listdir(str(root))
+    assert [d["name"] for d in plain["dirs"]] == ["2026"]
+    shown = sources.listdir(str(root), hidden=True)
+    assert [d["name"] for d in shown["dirs"]] == [".footage", "2026", "AppData"]
+    assert {d["name"]: d.get("hidden", False) for d in shown["dirs"]} == {".footage": True, "2026": False, "AppData": True}
+
+
 def test_discovery_counts_what_would_be_added_and_skips_outputs_and_graphics(data, tmp_path):
     root = tmp_path / "phone"
     _touch(root / "DCIM" / "IMG_20261102_154607.jpg", 100)
@@ -76,6 +89,24 @@ def test_discovery_counts_what_would_be_added_and_skips_outputs_and_graphics(dat
     assert r["total"] == 4 and r["kinds"] == {"photo": 2, "video": 1, "raw": 1}
     assert r["outputs"] == 1 and r["graphics"] == 1 and r["is360"] == 1 and r["new"] == 4
     assert r["years"] == {2025: 1, 2026: 3}
+
+
+def test_discovery_says_whether_the_project_has_a_home_place(data, tmp_path, monkeypatch):
+    """BL-133: the page asks Placed by GPS or Shot here only when there is a home place to be near."""
+    from studio import brand
+
+    root = tmp_path / "cafe"
+    _touch(root / "a.jpg")
+    monkeypatch.setattr(brand, "home_place", lambda: None)
+    assert sources.discover(str(root))["homePlace"] is False
+    monkeypatch.setattr(brand, "home_place", lambda: {"lat": 35.0, "lon": 139.0, "radiusKm": 2, "awayEvents": [], "names": []})
+    assert sources.discover(str(root))["homePlace"] is True
+
+    def broken():
+        raise ValueError("bad brand file")
+
+    monkeypatch.setattr(brand, "home_place", broken)
+    assert sources.discover(str(root))["homePlace"] is None
 
 
 def test_the_diff_finds_files_the_catalog_does_not_know(data, tmp_path, monkeypatch):

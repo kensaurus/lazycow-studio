@@ -77,9 +77,14 @@ test("'schedule a post' waits until a reel is approved (Plan posts books approve
   for (const l of gap) assert.match(l, /r\.status === "approved"/, l.trim().slice(0, 120));
 });
 
-test("on a phone the setup header keeps its words on one row and the bar under them", () => {
-  const phone = css.slice(css.indexOf("@media (max-width: 700px) {\n    .hm-grid"));
-  assert.match(phone.slice(0, 600), /\.hm-setup \.fw-head \{ grid-template-columns: auto minmax\(0, 1fr\); \} \.hm-setup \.fw-bar \{ grid-column: 1 \/ -1; grid-row: 2; \}/);
+test("Home is one drop box with no footage and has no setup cards once footage is in; their styles and words are gone (BL-131)", () => {
+  const page = body("renderHomePage");
+  assert.match(page, /if \(!steps\.find\(\(s\) => s\.id === "footage"\)\?\.ok\) \{ \$\("#home"\)\.innerHTML = head \+ homeOneHtml\(\); return; \}/, "no footage: the one box");
+  assert.equal((body("homeOneHtml").match(/addDropHtml\(/g) || []).length, 1, "one drop box");
+  assert.doesNotMatch(page, /hm-setup|hm-steps|fw-steps|homeSetupHtml/, "no setup cards once footage is in");
+  assert.doesNotMatch(css, /\.hm-setup|\.hm-steps/, "the setup cards' styles are gone");
+  // Words no page shows any more (the setup cards; Footage › Add before BL-133): gone from both dictionaries.
+  for (const l of ["en", "ja"]) for (const k of ["hm.title", "hm.sub", "hm.go", "ah.hint", "src.add"]) assert.ok(!strings(l).includes(`"${k}": "`), `${l} ${k} is gone`);
 });
 
 test("back from 'not answering': the page loads again by itself, and the way back is not only a terminal command", () => {

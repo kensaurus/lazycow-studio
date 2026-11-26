@@ -3,7 +3,9 @@ FILE: py/studio/netcheck.py
 PURPOSE: Check every connection before a post needs it: is each sign-in still alive, does it carry every permission
          the studio uses, and what to press when it does not. Accounts › Check every connection, GET
          /api/connections/check, the MCP tool check_connections.
-OVERVIEW: One entry per network in use (booked or posted in the last 30 days, or connected): its checks, each
+OVERVIEW: One entry per network in use: booked or posted in the last 30 days, or one the project uses (the page sends
+          the networks Settings › Accounts counts as "in use", BL-135: the check said "No network is in use yet" under
+          "6 networks in use"). Its checks, each
           {id, ok, say, fix, url}, where ok is True (fine), False (posting or a feature fails) or None (worth a look).
           - YouTube, per connected account: the sign-in refreshes, and Google's own record of the token's scopes
             (tokeninfo) has upload; comments, playlists and Analytics are features.
@@ -15,7 +17,7 @@ OVERVIEW: One entry per network in use (booked or posted in the last 30 days, or
           - Networks the owner's Chrome posts (TikTok, X, LinkedIn, ...): whether Chrome is linked (the server says).
           - Every network: its latest post that failed or went missing in the last 14 days, unless a later one went out.
 DEPENDENCIES: studio.youtube, studio.connectors (facebook, instagram_story, bluesky), studio.posting
-USAGE: python -m studio.netcheck check   (request JSON on stdin: {"chrome": true|false|null})
+USAGE: python -m studio.netcheck check   (request JSON on stdin: {"chrome": true|false|null, "nets": [network, ...]?})
        prints RESULT {"ok": true, "data": {...}}
 TECHNICAL DETAILS (read 2026-11-18):
   Google: GET https://oauth2.googleapis.com/tokeninfo?access_token=<token> -> {scope: "a b c", expires_in}.
@@ -28,6 +30,7 @@ NOTES: Read-only: nothing here posts, signs in or changes a connection. No token
 from __future__ import annotations
 
 import json
+import re
 import sys
 import urllib.parse
 from datetime import datetime, timedelta, timezone
@@ -59,6 +62,9 @@ NAMES = {"youtube": "YouTube", "facebook": "Facebook", "instagram-story": "Insta
          "threads": "Threads", "instagram": "Instagram"}
 FAIL_DAYS = 14
 IN_USE_DAYS = 30
+# Networks the owner's Chrome posts to (server/autoplan.mjs CHROME_NETS, plus the ones the helper fills in): a network
+# the project uses but never booked gets the Chrome check only if it is one of these (Instagram is posted by hand).
+CHROME_POSTS = ("x", "tiktok", "gbp", "line-oa", "linkedin", "pinterest", "threads", "line-voom")
 EXPIRY_WARN_DAYS = 14
 
 
@@ -287,7 +293,9 @@ def check(req: dict | None = None, posts: list[dict] | None = None) -> dict:
         from studio import posting
 
         posts = posting.posts()
-    nets = _in_use(posts, now)
+    used = _in_use(posts, now)
+    asked = {n for n in (req.get("nets") or []) if isinstance(n, str) and re.fullmatch(r"[a-z0-9-]{1,40}", n)}
+    nets = used | asked
     runners = {"youtube": _yt_checks, "facebook": _fb_checks, "instagram-story": _ig_checks, "bluesky": _bsky_checks}
     out = []
     for net in sorted(nets | {n for n in STUDIO_NETS if n in nets or req.get("all")}, key=lambda n: (n not in STUDIO_NETS, n)):
@@ -298,8 +306,8 @@ def check(req: dict | None = None, posts: list[dict] | None = None) -> dict:
                 checks, account = [_check("error", None, _scrub(f"The check could not finish: {type(err).__name__}: {err}"), "Press Check again.")], None
             via = "studio"
         else:
-            via, account = "chrome", None
-            chrome = req.get("chrome")
+            via, account = ("chrome" if net in used or net in CHROME_POSTS else "hand"), None
+            chrome = req.get("chrome") if via == "chrome" else None  # posted by hand: nothing to check here
             checks = [_check("chrome", True, "Your Chrome is linked: the studio posts here through it.")] if chrome is True else (
                 [_check("chrome", False, "Your Chrome is not linked, so posts booked here wait.",
                         "Settings › Keys & AI › Chrome link key, or open the studio's Chrome helper.")] if chrome is False else [])

@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createUsage, featureIds, keepNetworksOnUpgrade, madeBefore, readLevel, tierOf, writeLevel } from "../server/uiprefs.mjs";
+import { cleanPicks, createUsage, featureIds, keepNetworksOnUpgrade, madeBefore, readLevel, readPicks, tierOf, writeLevel, writePicks } from "../server/uiprefs.mjs";
 import { assemblePage } from "../server/ui.mjs";
 import { fileURLToPath } from "node:url";
 
@@ -76,7 +76,29 @@ test("the level is simple or full, saved per project with whether the person cho
 test("the server wires /api/ui and /api/ui/usage to the registry, and a refused id answers 400", () => {
   assert.ok(server.includes("featureIds(assemblePage(ROOT))"), "the ids come from the whole page (shell + parts, server/ui.mjs)");
   assert.match(server, /url\.pathname === "\/api\/ui\/usage"\) \{\s*const b = await body\(req\);\s*if \(!USAGE\.hit\(b\.id\)\) return send\(res, 400/);
-  assert.match(server, /url\.pathname === "\/api\/ui"\) \{\s*const b = await body\(req\);\s*if \(!\["simple", "full"\]\.includes\(b\.level\)\) return send\(res, 400/);
+  // A level outside simple/full answers 400; ticks (BL-136) may come alone, and a list is required.
+  const route = server.slice(server.indexOf('url.pathname === "/api/ui") {'), server.indexOf('url.pathname === "/api/ui/usage"'));
+  assert.match(route, /if \(!\["simple", "full"\]\.includes\(b\.level\)\) return send\(res, 400/);
+  assert.match(route, /if \(!Array\.isArray\(b\.picks\)\) return send\(res, 400/);
+  assert.match(route, /if \(b\.level === undefined\) return send\(res, 200, await uiView\(\)\)/);
+  assert.match(server, /picks: uiQuietPicks \|\| readPicks\(UI_FILE\)/, "GET /api/ui answers the saved ticks");
+});
+
+test("Make reels' ticked themes are kept per project beside the level, so a reload keeps them (BL-136)", () => {
+  const dir = scratch();
+  try {
+    const file = join(dir, "ui.json");
+    assert.equal(readPicks(file), null, "never saved: nothing ticked");
+    writeLevel(file, "simple", false);
+    assert.deepEqual(writePicks(file, ["lunch", "morning", "lunch", "Bad Key", 7, "x".repeat(30)]), ["lunch", "morning"]);
+    assert.deepEqual(readPicks(file), ["lunch", "morning"]);
+    assert.deepEqual(readLevel(file), { level: "simple", chosen: false }, "the level is left as it was");
+    writeLevel(file, "full");
+    assert.deepEqual(readPicks(file), ["lunch", "morning"], "choosing a level keeps the ticks");
+    assert.deepEqual(writePicks(file, []), []);
+    assert.deepEqual(readPicks(file), [], "untick all is kept too (not the same as never saved)");
+    assert.deepEqual(cleanPicks("lunch"), []);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test("network tiers: the six common networks are on in a new project, a channel's own tier wins", () => {

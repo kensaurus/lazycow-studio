@@ -44,7 +44,7 @@ function runwayHtml(h) {
     ${svg}
     <div class="px-foot"><span class="px-key"><i class="k-booked"></i>${esc(tr("rw.k.booked"))}</span><span class="px-key"><i class="k-foot"></i>${esc(tr("rw.k.foot", { n: r.reelsLeft }))}</span>${r.more ? `<span class="px-key"><i class="k-more"></i>${esc(tr("rw.k.more", { r: moreReels() }))}</span>` : ""}</div>
     <p class="rw-act"><button type="button" class="${low ? "primary" : ""}" data-fhshoot="1">${ico("camera", "sm")}${esc(tr("rw.filmby", { d: dd(r.filmBy) }))} · ${esc(tr("rw.shoot"))} ›</button></p>
-    ${(h.shoot || []).length ? `<ol class="rw-next">${h.shoot.slice(0, 3).map((t) => `<li>${ico(THEME_ICON[t.theme] || "film", "sm")}<span>${esc(t.need)}</span>${t.camera ? `<span class="meta">${esc(t.camera)}</span>` : ""}</li>`).join("")}</ol>` : ""}</section>`;
+    ${(h.shoot || []).length ? `<ol class="rw-next">${h.shoot.slice(0, 3).map((t) => `<li>${ico(THEME_ICON[t.theme] || "film", "sm")}<span>${esc(mkNeed(t))}</span>${t.camera ? `<span class="meta">${esc(t.camera)}</span>` : ""}</li>`).join("")}</ol>` : ""}</section>`;
 }
 function fhShootGo() {
   if (footTabNow() !== "health") footTabGo("health");
@@ -353,6 +353,19 @@ foot.drawer = "auto";
 const FOOT_TABS = { health: "health", library: "lib", sources: "add" };
 const footAttention = () => { const h = foot.h; return !!h && !h.loading && !h.error && (h.reelsLeft < 4 || (runwayOf(h)?.days ?? Infinity) < 30); };
 const footTabNow = () => (foot.drawer === "auto" ? (footAttention() ? "health" : "lib") : foot.drawer || "lib");
+/* BL-138: a count shows only once the studio has answered with it. Before that, or while the studio is away (restarting,
+   unreachable), "…" stands in: "0 clips · 0 places · 0 files" read as a lost library. A real empty library still says 0. */
+function footKnown() { return foot.itemsOk === true && !sys.down; }
+function srcKnown() { return !!foot.src && !foot.src.error && !sys.down; }
+/* Back after being away: what failed is asked again (the counts, the places, the map's clips, Health). */
+function footBack() {
+  if (!foot.away || sys.down) return false;
+  foot.away = false; foot.loadedKey = null; foot.mapLibErr = false; foot.mapLib = null;
+  if (foot.src?.error) foot.src = null;
+  if (foot.h?.error) foot.h = null;
+  return true;
+}
+setInterval(() => { if (foot.away && !sys.down && page === "footage" && atHome()) renderHome(true); }, 2000);
 function footStrip() {
   const s = foot.src, last = s?.last || {}, counts = new Map((last.sources || []).map((x) => [x.path, x]));
   const files = s ? s.sources.reduce((n, x) => n + (counts.get(x.path)?.files || 0), 0) : null;
@@ -364,8 +377,8 @@ function footStrip() {
       <b>${ico(icon, "sm")} ${label}</b><span>${info}</span></a>`;
   return `<nav class="footstrip" role="tablist" aria-label="${esc(tr("fs.label"))}">
     ${tab("health", "camera", tr("fs.health"), h && !h.loading && !h.error ? esc(runwayOf(h)?.days != null ? tr("rw.tab", { n: Math.round(runwayOf(h).days) }) : h.more ? tr("fh.moreest", { r: moreReels() }) : tr(h.reelsLeft === 1 ? "fs.left1" : "fs.left", { n: h.reelsLeft })) : "…", footAttention() ? "warn" : "")}
-    ${tab("lib", "layers", tr("ly_f.lib"), foot.loading && !foot.items.length ? "…" : esc(tr("f.count", { n: foot.items.length })) + tdLibNew())}
-    ${tab("add", "plus", tr("ly_f.src"), (s ? esc(tr("fs.placesinfo", { n: s.sources.length, f: Number(files).toLocaleString(), t: ago(last.checked) })) + (last.new ? ` · <em>${esc(tr("src.new", { n: last.new }))}</em>` : "") : "…") + (d?.open ? ` · ${esc(tr("fs.dropopen"))}` : ""), "addtab " + (d?.open ? "live" : ""))}
+    ${tab("lib", "layers", tr("ly_f.lib"), !footKnown() || (foot.loading && !foot.items.length) ? "…" : esc(tr("f.count", { n: foot.items.length })) + tdLibNew())}
+    ${tab("add", "plus", tr("ly_f.src"), (srcKnown() ? esc(tr("fs.placesinfo", { n: s.sources.length, f: Number(files).toLocaleString(), t: ago(last.checked) })) + (last.new ? ` · <em>${esc(tr("src.new", { n: last.new }))}</em>` : "") : "…") + (d?.open ? ` · ${esc(tr("fs.dropopen"))}` : ""), "addtab " + (d?.open ? "live" : ""))}
     <span class="grow"></span>
     <button id="srcWatch" title="${esc(tr("src.checknowtip"))}" ${foot.job?.status === "running" ? "disabled" : ""}>${ico("refresh", "sm")}${tr("src.checknow")}</button>
   </nav>`;
@@ -379,55 +392,105 @@ function footTabGo(key) {
 document.addEventListener("click", (e) => { if (e.target.closest?.("[data-fgmore]")) { foot.gPage = (foot.gPage || 0) + 1; renderHome(true); } });
 // Searching the clips is the Library's job: typing in the search box opens that tab.
 document.addEventListener("input", (e) => { if (e.target.id === "footQ" && footTabNow() !== "lib") footTabGo("lib"); });
-/* Add footage: four kinds of way in, each with its own colour and icon (the map below uses the same ones), one big
-   drop target, the upload bars, and the map. The whole box takes dropped files. */
+/* Add footage (BL-133, 26 Nov: a first visit offered 7 buttons in 3 boxes plus the map): one drop zone with Choose a
+   folder (and Choose files, the keyboard way), the upload bars, then "Other ways": Cloud, Phones and other people, and the
+   map of where footage comes from. A way this project already uses (Google Photos connected or a Drive folder added; the
+   drop box open or a form saved) stays in view above the fold. The whole box takes dropped files. Each way in keeps its
+   own colour and icon (the map uses the same ones). */
 function addCard(kind, title, desc, actions, extra = "") {
   const k = AH_KIND[kind];
   return `<li class="ah-card ${k.cls} ${extra}"><span class="sn-ico ah-ico" aria-hidden="true">${ico(k.icon)}</span>
     <div class="ah-body"><h4>${title}</h4><p>${desc}</p><div class="ah-acts">${actions}</div></div></li>`;
 }
-function addHub() {
+/* The one drop zone (Footage › Add, and Home for a project with no footage yet): Choose a folder opens the folder picker,
+   Choose files the system file dialog; a drop anywhere on the page goes the same way (takeFiles). */
+function addDropHtml(title, sub, cls = "") {
+  return `<div class="ah-drop ${cls}">
+      <span class="ah-dropico" aria-hidden="true">${ico("download")}</span>
+      <div><b>${title}</b><span class="meta">${sub}</span></div>
+      <div class="ah-dropbtns"><button type="button" class="primary" data-pickfolder="1">${ico("folder", "sm")}${esc(tr("hm.folder"))}</button>
+        <button type="button" data-choosefiles="1">${ico("plus", "sm")}${tr("ah.choose")}</button></div>
+    </div>`;
+}
+/* Which ways in this project already uses (they stay in view): Google Photos connected or a Drive folder added; the drop
+   box open or a form saved. foot.g.guess is the stand-in before /api/gphotos answers. */
+function addUsed() {
   const g = foot.g || {}, d = collect?.drop, f = collect?.form;
+  return { cloud: (!!g.connected && !g.guess) || (foot.src?.sources || []).some((x) => srcKind(x)[0] === "drive"), people: !!(d?.open || d?.lastAt || f?.url) };
+}
+foot.otherOpen = lsGet("lc.ah.other", "") === "1";
+// Opened or closed by the person: remembered on this browser (a per-viewer convenience); opening draws the map. A details
+// drawn already open also fires "toggle": that one matches what was drawn (foot.otherShown) and changes nothing.
+document.addEventListener("toggle", (e) => {
+  if (!e.target.matches?.(".ah-other") || e.target.open === foot.otherShown) return;
+  foot.otherShown = foot.otherOpen = e.target.open; lsSet("lc.ah.other", foot.otherOpen ? "1" : "");
+  if (foot.otherOpen) renderHome(true);
+}, true);
+/* The map of where footage comes from folds on its own (Footage › Add with Other ways open was 2.6 screens on a phone):
+   open on a wide screen, folded on a phone until opened; the person's choice is remembered on this browser. It is drawn
+   only when open (it reads the whole library). */
+function addMapOpen() {
+  const v = lsGet("lc.ah.map", "");
+  if (v) return v === "1";
+  return !(typeof matchMedia === "function" && matchMedia("(max-width: 640px)").matches);
+}
+document.addEventListener("toggle", (e) => {
+  if (!e.target.matches?.(".ah-map") || e.target.open === foot.mapShown) return;
+  foot.mapShown = e.target.open; lsSet("lc.ah.map", e.target.open ? "1" : "0");
+  if (e.target.open) renderHome(true);
+}, true);
+function addHub() {
+  const g = foot.g || {}, d = collect?.drop, f = collect?.form, used = addUsed();
   const gp = !g.connected ? `<a class="btn" href="${gpConnectHref(g)}">${ico("image", "sm")}${tr(g.app === false ? "f.gsetup" : "f.gconnect")}</a>`
     : `<button type="button" data-gpadd="1" ${foot.session ? "disabled" : ""}>${ico("image", "sm")}${tr("f.gphotos")}</button>`;
-  const cards = [
-    addCard("pc", tr("ah.pc"), tr("ah.pc.d"), `<button type="button" id="srcAdd">${ico("folder", "sm")}${tr("src.add")}</button>`),
-    addCard("cloud", tr("ah.cloud"), tr("ah.cloud.d"), `<button type="button" data-srcadd="cloud">${ico("folder", "sm")}${tr("ah.drive")}</button>${gp}`),
-    addCard("people", tr("ah.people"), tr("ah.people.d"), `<button type="button" data-addmore="people" aria-expanded="${foot.addMore === "people"}" aria-controls="ahMore">${ico("wifi", "sm")}${d?.open ? tr("fs.dropopen") : tr("ah.dropbox")}</button><button type="button" data-addmore="people" aria-expanded="${foot.addMore === "people"}" aria-controls="ahMore">${ico("list", "sm")}${tr("col.form")}${f?.url ? ` ${ico("check", "sm")}` : ""}</button>`, d?.open ? "live" : ""),
-  ].join("");
+  const card = {
+    cloud: addCard("cloud", tr("ah.cloud"), tr("ah.cloud.d"), `<button type="button" data-srcadd="cloud">${ico("folder", "sm")}${tr("ah.drive")}</button>${gp}`),
+    people: addCard("people", tr("ah.people"), tr("ah.people.d"), `<button type="button" data-addmore="people" aria-expanded="${foot.addMore === "people"}" aria-controls="ahMore">${ico("wifi", "sm")}${d?.open ? tr("fs.dropopen") : tr("ah.dropbox")}</button><button type="button" data-addmore="people" aria-expanded="${foot.addMore === "people"}" aria-controls="ahMore">${ico("list", "sm")}${tr("col.form")}${f?.url ? ` ${ico("check", "sm")}` : ""}</button>`, d?.open ? "live" : ""),
+  };
+  const shown = ["cloud", "people"].filter((k) => used[k]), folded = ["cloud", "people"].filter((k) => !used[k]);
+  const more = foot.addMore === "people" ? `<div class="ah-more k-people ${foot.moreShown !== "people" ? "in" : ""}" id="ahMore"><div class="ah-morehead"><b>${ico("users", "sm")} ${tr("col.title")}</b><span class="meta">${tr("col.hint")}</span><span class="grow"></span><button type="button" class="icon" data-addmore="" aria-label="${esc(tr("src.close"))}" title="${esc(tr("src.close"))}">${ico("x", "sm")}</button></div>${collectBody()}</div>` : "";
+  const moreOut = more && used.people;
   foot.moreShown = foot.addMore;
+  const open = foot.otherShown = foot.otherOpen || (!!more && !moreOut), map = foot.mapShown = open && addMapOpen();
   return `<section class="panel addhub" id="addhub" aria-labelledby="ahTitle">
-    <div class="fh-head"><h3 id="ahTitle">${ico("plus")} ${tr("fs.add")}</h3><span class="meta">${tr("ah.hint")}</span></div>
-    <ul class="ah-cards">${cards}</ul>
-    ${foot.addMore === "people" ? `<div class="ah-more k-people ${foot.moreShown !== "people" ? "in" : ""}" id="ahMore"><div class="ah-morehead"><b>${ico("users", "sm")} ${tr("col.title")}</b><span class="meta">${tr("col.hint")}</span><span class="grow"></span><button type="button" class="icon" data-addmore="" aria-label="${esc(tr("src.close"))}" title="${esc(tr("src.close"))}">${ico("x", "sm")}</button></div>${collectBody()}</div>` : ""}
-    <div class="ah-drop">
-      <span class="ah-dropico" aria-hidden="true">${ico("download")}</span>
-      <div><b>${tr("ah.drop")}</b><span class="meta">${tr("ah.limits")}</span></div>
-      <span class="grow"></span><span class="meta">${tr("ah.or")}</span>
-      <button type="button" class="primary" data-choosefiles="1">${ico("plus", "sm")}${tr("ah.choose")}</button>
-    </div>
+    <div class="fh-head"><h3 id="ahTitle">${ico("plus")} ${tr("fs.add")}</h3></div>
+    ${addDropHtml(tr("ah.drop"), tr("ah.limits"))}
     <div class="ah-ups" id="addUploads"></div>
-    <p class="ah-foot">${ico("link", "sm")} ${tr("ah.linknote")}</p>
+    ${shown.length ? `<ul class="ah-cards">${shown.map((k) => card[k]).join("")}</ul>` : ""}${moreOut ? more : ""}
+    <details class="ah-other" ${open ? "open" : ""}><summary><b>${esc(tr("hm.other"))}</b><span class="meta">${esc(tr("hm.otherd"))}</span></summary>
+      ${folded.length ? `<ul class="ah-cards">${folded.map((k) => card[k]).join("")}</ul>` : ""}${moreOut ? "" : more}
+      <details class="ah-map" ${map ? "open" : ""}><summary class="sm-title">${ico("layers", "sm")} ${tr("src.title")}</summary>
+      ${map ? sourceMap() : ""}</details>
+      <p class="ah-foot">${ico("link", "sm")} ${tr("ah.linknote")}</p>
+    </details>
     <div class="ah-dropmsg" aria-hidden="true"><div class="ah-dmbox"><span class="ah-dmico">${ico("download")}</span><b>${tr("dz.title")}</b><span class="meta">${tr("dz.where")}</span></div></div>
-    <h4 class="sm-title">${ico("layers", "sm")} ${tr("src.title")}</h4>
-    ${sourceMap()}
   </section>`;
 }
+/* Choose a folder (the drop zone's button, here and on Home): the folder picker, on Footage › Add. */
+document.addEventListener("click", (e) => {
+  if (!e.target.closest?.("[data-pickfolder]")) return;
+  e.preventDefault();
+  foot.picker = { roots: null, list: null, report: null, job: null, mode: "gps" };
+  if (page !== "footage" || footTabNow() !== "add") footTabGo("add");
+  pickerGo(null);
+});
 document.addEventListener("click", (e) => {
   const a = e.target.closest?.("[data-srcadd]"); if (!a) return;
   e.preventDefault(); foot.picker = { roots: null, list: null, report: null, job: null, mode: "gps", want: a.dataset.srcadd }; pickerGo(null);
 });
 function renderFootage() {
   tdFootVisit();  // Track D: remember this visit, count what is new since the last one
+  if (sys.down) foot.away = true;  // drawn with "…" while away: drawn again, with fresh numbers, once back
+  footBack();
   // Load once per search and filter; an empty result is an answer, not a reason to ask again.
   if (!foot.loading && foot.loadedKey !== JSON.stringify([foot.q, foot.f])) loadFootage();
-  if (!foot.g) { foot.g = { app: true, connected: true }; api("/api/gphotos").then((g) => { foot.g = g; renderHome(true); }).catch(() => {}); }
+  if (!foot.g) { foot.g = { app: true, connected: true, guess: true }; api("/api/gphotos").then((g) => { foot.g = g; renderHome(true); }).catch(() => {}); }
   loadFootHealth();
   const segs = [["all", "f.all"], ["new", "td_f.new"], ["video", "f.video"], ["photo", "f.photo"], ["360", "f.360"], ["unused", "f.unused"], ["used", "f.used"]];
   const it = foot.open ? foot.items.find((i) => i.id === foot.open) : null;
   const tab = footTabNow();
   $("#home").innerHTML = `
-    <div class="pagehead">${crumbs([tr("nav.footage")])}<span class="meta">${foot.loading && !foot.items.length ? "" : tr("f.count", { n: foot.items.length })}</span><span class="grow"></span>
+    <div class="pagehead">${crumbs([tr("nav.footage")])}<span class="meta">${!footKnown() || (foot.loading && !foot.items.length) ? "…" : tr("f.count", { n: foot.items.length })}</span><span class="grow"></span>
       <div class="search" style="width:min(420px,36vw);margin:0">${ico("search", "sm")}<input id="footQ" data-lyfocus="footq" value="${esc(foot.q)}" placeholder="${esc(trR("f.search"))}"></div></div>
     ${footStrip()}
     ${tab === "add" ? addHub() : tab === "health" ? footHealth() || `<section class="panel"><div class="skel skel-line"></div><div class="skel skel-line"></div></section>` : ""}
@@ -540,7 +603,6 @@ document.addEventListener("click", async (e) => {
     try { foot.job = await post("/api/sources/watch", {}); } catch (err) { toast(`${ico("alert", "sm")} ${esc(err.message)}`, 8000); }
     return renderHome(true);
   }
-  if (e.target.closest("#srcAdd")) { e.preventDefault(); foot.picker = { roots: null, list: null, report: null, job: null, mode: "gps" }; return pickerGo(null); }
   const srcDel = e.target.closest("[data-srcdel]");
   if (srcDel) {
     e.preventDefault();

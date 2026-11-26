@@ -39,6 +39,7 @@ STATE = DATA / "sources_state.json"
 SKIP_DIRS = {"$recycle.bin", "system volume information", "node_modules", ".git", ".venv", "venv",
              "__pycache__", "appdata", ".trash", ".trashes", ".spotlight-v100", ".fseventsd",
              "windows", "program files", "program files (x86)", "programdata"}
+SYSTEM_DIRS = {"$recycle.bin", "system volume information"}  # never listed, even with "Show hidden folders"
 INSTA_NAME = re.compile(r"^(IMG|VID|LRV)_\d{8}_\d{6}_\d{2}_\d{3}", re.I)
 SPHERE_EXT = {".insp", ".insv", ".360"}
 
@@ -203,7 +204,11 @@ def _volume_label(drive: Path) -> str:
         return ""
 
 
-def listdir(path: str) -> dict:
+def listdir(path: str, hidden: bool = False) -> dict:
+    """One folder's subfolders and how many photos and videos sit in it. Hidden folders (a name starting with a dot, and
+    the ones SKIP_DIRS leaves out: AppData, .git, Program Files...) are listed only with hidden=True (the picker's "Show
+    hidden folders", BL-141), each marked "hidden". System folders ($Recycle.Bin, System Volume Information, any $name)
+    never are."""
     folder = Path(path)
     if not folder.is_dir():
         raise ValueError(f"not a folder: {path}")
@@ -213,9 +218,13 @@ def listdir(path: str) -> dict:
             for entry in it:
                 try:
                     if entry.is_dir(follow_symlinks=False):
-                        if entry.name.lower() in SKIP_DIRS or entry.name.startswith((".", "$")):
+                        low = entry.name.lower()
+                        if low in SYSTEM_DIRS or entry.name.startswith("$"):
                             continue
-                        dirs.append({"name": entry.name, "path": entry.path})
+                        unseen = low in SKIP_DIRS or entry.name.startswith(".")
+                        if unseen and not hidden:
+                            continue
+                        dirs.append({"name": entry.name, "path": entry.path, **({"hidden": True} if unseen else {})})
                     elif kind_of(Path(entry.name)):
                         media += 1
                 except OSError:
@@ -312,8 +321,20 @@ def discover(path: str) -> dict:
         "kinds": dict(kinds), "formats": dict(exts.most_common()), "years": dict(sorted(years.items())),
         "is360": sphere, "outputs": outputs, "graphics": graphics, "already": already, "new": total - already,
         "newest": [{"path": p, "kind": k, "modified": datetime.fromtimestamp(t).isoformat(timespec="minutes")} for t, p, k in newest[:12]],
-        "included": included, "checked": _now(),
+        "included": included, "checked": _now(), "homePlace": _has_home_place(),
     }
+
+
+def _has_home_place() -> bool | None:
+    """Whether the project has a home place (studio.brand.home_place). Without one every file is used whatever the folder's
+    mode ("ranch (no home place)"), so the page asks Placed by GPS or Shot here only when this is True (BL-133).
+    None when it cannot be told: the page then asks, as before."""
+    try:
+        from studio.brand import home_place
+
+        return home_place() is not None
+    except Exception:  # noqa: BLE001 - a broken brand file must not stop a folder from being looked at
+        return None
 
 
 # ---------- the watcher ----------

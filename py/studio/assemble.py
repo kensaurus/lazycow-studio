@@ -84,6 +84,12 @@ STARTER_SHOTS = [
     "a close-up of hands at work", "the main room or space inside", "a detail that shows what is special here",
     "food, drink or a product on a table", "a view at golden hour or dusk", "a calm wide shot to end on",
 ]
+# The same shots in Japanese, for the Japanese page (BL-137): the search still reads the English ones.
+STARTER_SHOTS_JA = [
+    "外から見た建物の全景", "入口や建物の正面", "人が来るところ・入ってくるところ", "作業している手元のアップ", "中のメインの部屋や空間",
+    "ここならではのこだわりの細部", "テーブルの上の料理・飲み物・商品", "夕方や日暮れの景色", "締めくくりの落ち着いた引きの画",
+]
+HOOK_MAX, HOOK_EN_MAX = 80, 120  # the theme editor's boxes stop here (server/editor.html maxlength); the server says so too
 _THEMES_SEEN: list = [object()]  # the themes.json stamp THEMES was last built from
 
 
@@ -99,9 +105,30 @@ def _cues(n_lines: int, n_slots: int) -> list[int]:
     return [max(1, min(n_slots - 2, round(step * (k + 1)))) for k in range(n_lines)]
 
 
+def _fits(field: str, text: str, most: int, strict: bool) -> str:
+    """The text, at most `most` characters. Saving (strict) refuses a longer one by name, as the editor's box would;
+    reading a saved file cuts it (a hand-edited theme still loads)."""
+    if strict and len(text) > most:
+        raise ValueError(f"{field}: at most {most} characters (this one has {len(text)})")
+    return text[:most]
+
+
+def _shots_en(shots: list[str], given, strict: bool) -> list[str]:
+    """Each shot's English search form (BL-137): the one sent with it (a starter story has its own), else made from the
+    words: English as typed, Japanese through the AI when saving with a key, else the glossary (studio.shotwords)."""
+    from studio.shotwords import has_ja, search_form, to_english
+
+    if isinstance(given, list) and len(given) == len(shots):
+        sent = [str(x or "").strip()[:120] for x in given]
+        if all(x and not has_ja(x) for x in sent):
+            return sent
+    return to_english(shots) if strict else [search_form(s) for s in shots]
+
+
 def clean_theme(key: str, t: dict, check_copy: bool = True) -> dict:
-    """A theme from the editor, checked: {hook: {ja, en}, lines: [{ja, en}], shots: [..], tags: [..], style}.
-    Raises ValueError naming the field. Every line passes this project's guard (studio.guard)."""
+    """A theme from the editor, checked: {hook: {ja, en}, lines: [{ja, en}], shots: [..], shotsEn: [..], tags: [..], style}.
+    Raises ValueError naming the field. Every line passes this project's guard (studio.guard). Saving (check_copy)
+    refuses words longer than the editor's boxes and makes the English search form of each shot (shotsEn)."""
     if not THEME_KEY.match(key or ""):
         raise ValueError("key: lowercase letters, numbers and dashes, starting with a letter (e.g. lunch-menu)")
     if key in RANCH_THEMES or key in HOUSE_KEYS:
@@ -109,18 +136,22 @@ def clean_theme(key: str, t: dict, check_copy: bool = True) -> dict:
     hook = t.get("hook") or {}
     if isinstance(hook, str):
         hook = {"ja": hook}
-    hook_ja, hook_en = _one(hook.get("ja"))[:80], _one(hook.get("en"))[:120]
+    hook_ja = _fits("hook", _one(hook.get("ja")), HOOK_MAX, check_copy)
+    hook_en = _fits("hook (second language)", _one(hook.get("en")), HOOK_EN_MAX, check_copy)
     if not hook_ja:
         raise ValueError("hook: the headline the reel opens with")
     lines = []
-    for ln in (t.get("lines") or [])[:LINES_MAX]:
+    for n, ln in enumerate((t.get("lines") or [])[:LINES_MAX], 1):
         ln = {"ja": ln} if isinstance(ln, str) else (ln or {})
-        ja, en = _one(ln.get("ja"))[:80], _one(ln.get("en"))[:120]
+        ja = _fits(f"line {n}", _one(ln.get("ja")), HOOK_MAX, check_copy)
+        en = _fits(f"line {n} (second language)", _one(ln.get("en")), HOOK_EN_MAX, check_copy)
         if ja:
             lines.append({"ja": ja, "en": en})
-    shots = [str(s).strip()[:120] for s in (t.get("shots") or []) if str(s).strip()][:SHOTS_MAX] or list(STARTER_SHOTS)
+    typed = [str(s).strip()[:120] for s in (t.get("shots") or []) if str(s).strip()][:SHOTS_MAX]
+    shots = typed or list(STARTER_SHOTS)
     if len(shots) < SHOTS_MIN:
         raise ValueError(f"shots: at least {SHOTS_MIN} things to film, one per line (a reel needs four clips or more)")
+    shots_en = _shots_en(shots, t.get("shotsEn") if typed else None, check_copy)
     tags = [x if str(x).startswith("#") else "#" + str(x) for x in (t.get("tags") or []) if str(x).strip()][:6]
     if any(re.search(r"\s", x) for x in tags):
         raise ValueError("tags: hashtags without spaces, e.g. #lunch")
@@ -130,7 +161,16 @@ def clean_theme(key: str, t: dict, check_copy: bool = True) -> dict:
             if text:
                 assert_copy(text)
     return {"title": _one(t.get("title"))[:60] or hook_ja.replace("\n", ""), "hook": {"ja": hook_ja, "en": hook_en}, "lines": lines,
-            "shots": shots, "tags": tags, "style": style}
+            "shots": shots, "shotsEn": shots_en, "tags": tags, "style": style}
+
+
+def shot_ja(shot: str, typed: str | None = None) -> str | None:
+    """The Japanese words for a shot, when there are some: the words as typed, or a starter shot's own (BL-137)."""
+    from studio.shotwords import has_ja
+
+    if typed and has_ja(typed):
+        return typed
+    return STARTER_SHOTS_JA[STARTER_SHOTS.index(shot)] if shot in STARTER_SHOTS else None
 
 
 def theme_from_json(key: str, t: dict) -> dict:
@@ -144,8 +184,10 @@ def theme_from_json(key: str, t: dict) -> dict:
     beats = [("hook", hook["ja"], hook["en"])] + [("line", ln["ja"], ln["en"]) for ln in t["lines"]]
     ja = "\n".join([one(hook["ja"])] + [one(ln["ja"]) for ln in t["lines"]])
     en = "\n".join([hook["en"]] + [ln["en"] for ln in t["lines"] if ln["en"]]).strip()
+    # The search reads English (OpenCLIP): each slot is the shot's English form; slots_ja keeps the Japanese words to show.
     theme = {
-        "title_ja": t["title"], "slots": t["shots"], "cues": _cues(len(t["lines"]), len(t["shots"])), "beats": beats,
+        "title_ja": t["title"], "slots": t["shotsEn"], "slots_ja": [shot_ja(en, typed) for en, typed in zip(t["shotsEn"], t["shots"])],
+        "cues": _cues(len(t["lines"]), len(t["shots"])), "beats": beats,
         "tags": t["tags"], "yt_title": f"{one(hook['ja'])}｜{name}" if name else one(hook["ja"]), "style": t["style"],
         "own": True, "post": {"ja": ja, "en": en, "x": ja},
     }
@@ -229,6 +271,22 @@ def theme_list() -> dict:
 load_themes()
 
 JUNK_MAX = 0.4  # skip clips whose worst keyframe is filler (weeds close-up 0.985; good scenes < 0.1)
+MIN_CLIP = min(RHYTHM) + 0.8  # 1.8 s: the shortest shot Make reels cuts, with the 0.8 s it keeps spare on a video
+
+
+def can_use(p: dict, allow_faces: bool = False) -> bool:
+    """A library row Make reels may put in a reel: at the home place, not set aside, not filler, nobody in frame
+    (unless faces are allowed; a person seen from behind has no face to detect, CLIP still calls it people), and a
+    video long enough for the shortest shot. Footage's estimate counts the same rows (studio.footage, BL-134)."""
+    from studio.library import PERSON_MAX
+
+    if not str(p.get("place") or "").startswith("ranch") or p.get("vetoed") or (p.get("junk") or 0) >= JUNK_MAX:
+        return False
+    if not allow_faces and (p.get("faces") or (p.get("person") or 0) >= PERSON_MAX or "people" in (p.get("top") or [])):
+        return False
+    if p.get("kind") == "video":
+        return (p.get("duration") or 0) >= MIN_CLIP
+    return p.get("kind") == "photo"
 
 
 def _cos(a: np.ndarray, b: np.ndarray) -> float:
@@ -417,11 +475,7 @@ def assemble(theme: dict, slug: str, allow_faces: bool = False, since: str | Non
         filters = {"ranch": True, "noFaces": not allow_faces}
         if n == 0:
             filters["kind"] = "video"  # open on motion
-        pool = items(slot, filters, limit=80)
-        if not allow_faces:
-            # A person seen from behind has no face to detect; CLIP still calls it people.
-            pool = [p for p in pool if "people" not in p["top"]]
-        pool = [p for p in pool if p.get("junk", 0) < JUNK_MAX and not p.get("vetoed")]
+        pool = [p for p in items(slot, filters, limit=80) if can_use(p, allow_faces)]
         if theme.get("device"):
             pool = [p for p in pool if p.get("device") in theme["device"]]
         seasons = theme.get("slot_season") or []
@@ -636,7 +690,9 @@ def film_next() -> list[dict]:
             pool = [p for p in pool if p.get("device") in theme["device"]]
         fresh = [p for p in pool if not p["usedIn"] and p.get("match", 0) >= 0.22]
         if len(fresh) < 3:
-            thin.append({"theme": key, "title": theme["title_ja"], "need": theme["slots"][0], "left": len(fresh)})
+            # need: the shot in English (what the search reads); needJa: its Japanese words when it has some (BL-137).
+            ja = (theme.get("slots_ja") or [None])[0] or shot_ja(theme["slots"][0])
+            thin.append({"theme": key, "title": theme["title_ja"], "need": theme["slots"][0], "needJa": ja, "left": len(fresh)})
     return thin
 
 

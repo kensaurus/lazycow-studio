@@ -69,3 +69,28 @@ def test_overview_made_view_is_short_and_safe():
     assert _made_view(made) == {"by": "auto", "at": "2026-11-24T09:00:00+09:00", "mode": "learned", "why": "Film look did best.", "whyJa": "フィルムが一番。"}
     assert _made_view(None) is None and _made_view("auto") is None
     assert _made_view({"by": "person", "steer": "odd"})["mode"] is None
+
+
+def test_approve_with_no_network_keeps_the_reel_and_books_nothing(tmp_path, monkeypatch):
+    """BL-132: what Approve does when no network is connected (it was never tried live). It marks the draft approved and
+    copies the reel's files to the ready folder; it books and posts nothing (the daily plan books approved reels only on
+    networks it can post to: server/review.mjs autoPlan, autoReady). Review now says exactly that."""
+    from studio import posting, review_actions, reels
+
+    drafts = tmp_path / "drafts"
+    (drafts / "unit-none" / "instagram").mkdir(parents=True)
+    (drafts / "unit-none" / "instagram" / "post.txt").write_text("caption", encoding="utf-8")
+    master = tmp_path / "story_9x16.mp4"
+    master.write_bytes(b"\0")
+    monkeypatch.setattr(reels, "DRAFTS", drafts)
+    monkeypatch.setattr(review_actions, "READY", tmp_path / "ready")
+    with connect() as con:
+        con.execute("DELETE FROM drafts WHERE slug = 'story-unit-none'")
+        con.execute("INSERT INTO drafts (slug, recipe, edl_json, status, faces, consent, render_natural, created_at) VALUES ('story-unit-none', 'story', '{}', 'rendered', 0, 0, ?, '2026-11-26')", (str(master),))
+    before = [p for p in posting.posts() if p.get("slug") in ("unit-none", "story-unit-none")]
+    folder = approve("story-unit-none")
+    with connect() as con:
+        assert con.execute("SELECT status FROM drafts WHERE slug = 'story-unit-none'").fetchone()["status"] == "approved"
+    assert (folder / "instagram" / "post.txt").read_text(encoding="utf-8") == "caption", "kept ready: its files are in the ready folder"
+    assert folder.parent == tmp_path / "ready"
+    assert [p for p in posting.posts() if p.get("slug") in ("unit-none", "story-unit-none")] == before == [], "nothing booked or posted"

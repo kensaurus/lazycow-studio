@@ -621,7 +621,10 @@ def items(query: str = "", filters: dict | None = None, limit: int = 400) -> lis
         base = _base_items()
         if _BATCH is not None:
             _BATCH["base"] = base
-    q = text_embedding(query) if query.strip() else None
+    # The picture search reads English: a Japanese query goes through the shot glossary first (BL-137, studio.shotwords).
+    from studio.shotwords import search_form
+
+    q = text_embedding(search_form(query)) if query.strip() else None
     out = []
     for item0, emb in base:
         item = dict(item0)  # callers may change their copy; the batch keeps the original
