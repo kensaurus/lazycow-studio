@@ -1,7 +1,7 @@
 """
 FILE: py/studio/providers/sync_http.py
 PURPOSE: The simplest protocol: one request, one answer (ElevenLabs text to speech, sound effects and music, Stability's
-         Stable Audio 2.5, OpenRouter's /audio/speech, MiniMax's /v1/t2a_v2).
+         Stable Audio 2.5 and 3.0, OpenRouter's /audio/speech, MiniMax's /v1/t2a_v2).
 OVERVIEW: The model's registry entry gives `path` (a template: "/v1/text-to-speech/{voice}?output_format=mp3_44100_128"),
           `input` (the body template), `body` ("json", the default, or "multipart" for form fields), `accept` (the
           Accept header) and optionally `timeout` (seconds, default 180).
@@ -13,13 +13,17 @@ OVERVIEW: The model's registry entry gives `path` (a template: "/v1/text-to-spee
           `quantityHeader` names a response header with what was billed (ElevenLabs' character count) and
           `quantityField` a field of a JSON answer (MiniMax's extra_info.usage_characters), so the cost can be worked
           out from what was really used.
+          A model with `poll` ({path, id}: Stability's Stable Audio 3.0) answers HTTP 202 and a generation id first;
+          the file is then fetched from poll.path ("/v2beta/audio/results/{id}") with the same Accept header, asked
+          again (3 s growing to 15 s) while it answers 202, until the capability's deadline. The request is never sent
+          twice; a failed generation is not charged by the provider.
 DEPENDENCIES: studio.providers.base, studio.providers.http.
 """
 from __future__ import annotations
 
 import json
 
-from studio.providers.base import Ctx, body_error, dig, finish, first_url
+from studio.providers.base import Ctx, backoff, body_error, dig, finish, first_url
 from studio.providers.http import AiError, _json, multipart, send
 
 TIMEOUT = 180
@@ -32,9 +36,33 @@ def _number(v):
         return None
 
 
-def run(ctx: Ctx, model_id: str, model: dict, values: dict) -> dict:
+def _poll(ctx: Ctx, model: dict, raw: bytes, headers: dict, deadline: float | None):
+    """(status, headers, body) of the finished file for a model that answered 202 and a generation id (`poll`)."""
+    spec = model["poll"]
+    gid = dig(_json(raw), spec.get("id") or "id")
+    if not gid:
+        raise AiError(f"{ctx.name} accepted the request but sent no generation id.", "upstream", 502, charged=True)
+    url = ctx.url(spec["path"], {"id": gid})
+    stop = ctx.clock() + float(deadline or model.get("timeout") or 600)
+    waits = backoff(ctx)
+    while True:
+        if ctx.clock() > stop:
+            raise AiError(f"{ctx.name} did not finish within {int(float(deadline or 600) // 60)} minutes. Try again later.", "timeout", 504, charged=True)
+        ctx.sleep(next(waits))
+        try:
+            status, rh, body = ctx.http("GET", url, ctx.name, headers={k: v for k, v in headers.items() if k != "Content-Type"}, timeout=60)
+        except AiError as err:
+            if err.code not in ("timeout", "network"):
+                raise
+            continue  # a check that did not get through: ask again later, never resubmit
+        if status in (202, 429, 503):
+            continue
+        return status, rh, body
+
+
+def run(ctx: Ctx, model_id: str, model: dict, values: dict, deadline: float | None = None) -> dict:
     """{"bytes": the file or None, "url": the file's URL or None, "type": its content type, "billed": the quantity the
-    provider reported or None}."""
+    provider reported or None}. deadline: seconds a model that answers later (`poll`) may take."""
     if not ctx.key:
         raise AiError(f"Add your {ctx.name} key in Settings › AI.", "no_key", 400)
     values = {"model": model_id, **values}
@@ -51,6 +79,8 @@ def run(ctx: Ctx, model_id: str, model: dict, values: dict) -> dict:
         if err.code == "timeout":
             err.charged = True  # it may have been made and billed: never sent twice
         raise
+    if model.get("poll") and status == 202:
+        status, rh, raw = _poll(ctx, model, raw, headers, deadline)
     low = {str(k).lower(): v for k, v in (rh or {}).items()}
     rtype = str(low.get("content-type") or "")
     if status >= 400:

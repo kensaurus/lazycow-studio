@@ -55,6 +55,7 @@ from pathlib import Path
 
 from studio.config import RANCH, ROOT, SPEC, _parse_env, daily_budget, openrouter_key, project_file, ranch_data
 from studio.guard import problems as guard_problems
+from studio.providers.http import with_agent
 
 API = "https://api.firecrawl.dev/v2"
 OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
@@ -234,8 +235,9 @@ def _tls():
 
 
 def _call(method: str, url: str, *, data: bytes | None = None, headers: dict | None = None, timeout: int = 60):
-    """One HTTP request -> (status, headers, body). An HTTP error status is an answer, not an exception."""
-    req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
+    """One HTTP request -> (status, headers, body). An HTTP error status is an answer, not an exception. The studio's
+    User-Agent goes with it unless the caller set one (Together's Cloudflare refuses urllib's own: studio.providers.http)."""
+    req = urllib.request.Request(url, data=data, method=method, headers=with_agent(headers))
     try:
         with urllib.request.urlopen(req, timeout=timeout, context=_tls()) as r:
             return r.status, dict(r.headers), r.read(2_000_000)
@@ -806,7 +808,11 @@ def _llm_attempt(pid: str, model: str, t: dict, key: str, payload: dict, system:
         body = _json(raw)
         if status >= 400:
             raise ai._provider_error(pid, status, body.get("error") if isinstance(body.get("error"), dict) else body, headers)
-        actual, tin, tout = ai.openai_chat.usage(body, price)
+        p = ai.registry.provider(pid)
+        inner = ai.openai_chat.body_status(p, body)  # kie.ai answers 200 with {"code": 402, "msg": …}
+        if inner:
+            raise ai._provider_error(pid, inner[0], inner[1], headers)
+        actual, tin, tout = ai.openai_chat.usage(body, price, p)
         try:
             out = ai.openai_chat.json_of(ai.openai_chat.text_of(body))
         except (KeyError, IndexError, TypeError, ValueError, AttributeError):
@@ -861,7 +867,7 @@ def _llm(system: str, user: str, purpose: str = "research", max_tokens: int = 70
         p, m = ai.registry.provider(bpid), ai.registry.model(bpid, bmid) or {}
         if ai.base.protocol_of(p, m) != "openai_chat" or p.get("free"):
             return None
-        bt = {"remote": m.get("id") or bmid, "url": ai.openai_chat.endpoint(p), "chat": {**(p.get("chat") or {}), **(m.get("chat") or {})},
+        bt = {"remote": m.get("id") or bmid, "url": ai.openai_chat.endpoint(p, model=m), "chat": {**(p.get("chat") or {}), **(m.get("chat") or {})},
               "openrouter": bpid == "openrouter"}
         bpay = {"model": bt["remote"], "messages": payload["messages"], "max_tokens": max_tokens + 2000, **(bt["chat"].get("extra") or {})}
         if bt["chat"].get("jsonMode", bpid == "openrouter"):

@@ -103,3 +103,14 @@ def test_heic_and_raw_report_their_size(tmp_path):
     assert (info["width"], info["height"]) == (64, 48)
     raw = _touch(tmp_path / "b.dng")  # not a real RAW: recorded without a size, no crash
     assert media.exif_photo(raw)["width"] is None
+
+
+def test_the_default_footage_folder_is_made_and_a_chosen_one_never_is(data, tmp_path, monkeypatch):
+    """A new studio listed its own default footage folder in red ("folder not found") before anyone used it."""
+    monkeypatch.setattr(sources, "SOURCE", data / "footage")
+    root = sources.all_sources()[0]
+    assert root["origin"] == "root" and root["exists"] and (data / "footage").is_dir()
+    chosen = tmp_path / "unplugged-drive" / "media"
+    monkeypatch.setattr(sources, "SOURCE", chosen)
+    root = sources.all_sources()[0]
+    assert not root["exists"] and not chosen.exists()  # a person's folder that is missing stays reported, never made

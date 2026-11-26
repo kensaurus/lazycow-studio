@@ -87,9 +87,23 @@ def _tls():
         return None
 
 
+# Sent when a caller names no User-Agent. urllib's own ("Python-urllib/3.x") is refused by Cloudflare's browser-signature
+# rule in front of Together AI: HTTP 403 "error code: 1010" before the key is even read (live check, 26 Nov), which the
+# studio then took for a refused key.
+USER_AGENT = "LazycowStudio/1.0"
+
+
+def with_agent(headers: dict | None) -> dict:
+    """headers with the studio's User-Agent added, unless the caller set one (any case)."""
+    h = dict(headers or {})
+    if not any(str(k).lower() == "user-agent" for k in h):
+        h["User-Agent"] = USER_AGENT
+    return h
+
+
 def _call(method: str, url: str, *, data: bytes | None = None, headers: dict | None = None, timeout: int = 60):
     """One HTTP request -> (status, headers, body). An HTTP error status is an answer, not an exception."""
-    req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
+    req = urllib.request.Request(url, data=data, method=method, headers=with_agent(headers))
     try:
         with urllib.request.urlopen(req, timeout=timeout, context=_tls()) as r:
             return r.status, dict(r.headers), r.read()

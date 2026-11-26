@@ -253,13 +253,15 @@ function startSteps() {
       { id: "ytvlog", icon: "play", href: "/api/youtube/connect", ok: !!yt.connected, key: "setup.ytvlog", run: () => { location.href = "/api/youtube/connect"; } },
     ];
   }
+  // A first reel comes before any sign-in: footage → reel → review, then connect where it will go (as the user guide's
+  // "Your first day" orders it). Signing in to networks first stood between a new person and the first thing they make.
   return [
     system, footage,
     { ok: !!AUD_TZ, key: "setup.tz", optional: true, run: () => openAbout() },
-    { id: "network", icon: "link", href: "#/accounts", ok: Object.values(connections || {}).some((c) => c?.connected) || !!yt.connected || booked, key: "setup.connect", run: () => goPage("accounts") },
-    { ok: !!yt.connected, key: "setup.youtube", optional: true, run: () => { location.href = "/api/youtube/connect"; } },
     { id: "reel", icon: "film", make: true, ok: overview.reels.some((r) => !r.house && r.rendered), key: "setup.reels", run: () => openMaker() },
     { ok: overview.reels.some((r) => !r.house && r.status === "approved"), key: "setup.review", optional: true, run: () => goPage("review") },
+    { id: "network", icon: "link", href: "#/accounts", ok: Object.values(connections || {}).some((c) => c?.connected) || !!yt.connected || booked, key: "setup.connect", run: () => goPage("accounts") },
+    { ok: !!yt.connected, key: "setup.youtube", optional: true, run: () => { location.href = "/api/youtube/connect"; } },
     { id: "book", icon: "cal", href: "#/posting", ok: booked, key: "setup.post", run: () => goPage("posting") },
   ];
 }

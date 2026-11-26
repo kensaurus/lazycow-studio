@@ -2,6 +2,50 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.28.0 (2026-11-26)
+
+More AI services to switch between (kie.ai, Stability AI, Together AI), and a first run that a person with no
+terminal and no keys can get through: fixes from walking the first-time path as a cafe owner in simple mode.
+
+### Added
+- **kie.ai writes and looks at pictures:** Gemini 3.8 Flash through kie.ai is a choice (and a backup) for writing help
+  and picture questions, at kie.ai's own address per model; what it reports (`credits_consumed`) is what the ledger
+  records. Its errors inside an HTTP 200 (`{"code": 402}`) count as out of credit, so a backup takes over.
+- **Stable Audio 3.0** from Stability for music and natural sound (up to 380 s, 8 credits like 2.5): it answers
+  later, so the studio asks for the file until it is ready.
+- **A key for any service, before a job uses it:** Settings › Keys & AI › *Add a key for another service* lists every
+  service that takes a key (kie.ai, Stability AI, Runway …), so one can be set up as a backup first.
+
+### Changed
+- **Together's writing model is GLM-5.3 Flash** ($0.15 / $0.50 per M tokens, MIT): GPT-OSS 120B is no longer on
+  Together's serverless list. A project that picked it falls back to the default with a warning, as for any model
+  the registry no longer lists.
+- **Setup in the order a first day goes:** Home's setup cards are now add footage → make the first reel → connect a
+  network → book the first post (connecting a network came before the first reel).
+- **Themes go by their headline:** a theme typed from an English headline was saved and shown as `theme`, `theme-2`
+  ("Theme theme-2 saved"); a theme is now named from the headline in either box, the saved note, the theme editor and
+  "what to film" show its headline, and an empty theme form shows an example headline and shots.
+- **"Schedule a post" waits for an approved reel:** Needs you asked to schedule as soon as the first reel rendered,
+  before it was reviewed; Plan posts books approved reels only.
+
+### Fixed
+- **Folder picker:** its title was invisible in both themes; the button says **Choose this folder** (was *Look
+  inside*); it closes at once after "Folder added"; a folder with no photos or videos says why it cannot be added.
+- **A new studio's footage folder is made, not shown as "not found":** the default `<data>/footage` is created like
+  `<data>/imports` (a folder a person set is never made for them).
+- **Make reels:** a double click queued two batches; it is one batch per press. "Only N usable assets for this theme"
+  now names the theme and says what to do.
+- **When the studio is away:** the way back is "double-click Start Lazycow" (or `npm run review` in a terminal), and
+  the page loads again by itself when the studio returns, instead of staying on "not answering".
+- **Phone:** Home's setup header no longer squeezes "Get set up" to a word a line; a long headline with no spaces wraps
+  on Review instead of running under Approve / Reject.
+- **Together AI calls were refused before the key was read:** its Cloudflare blocks urllib's own User-Agent (HTTP 403
+  "error code: 1010"), which read as a refused key. Every request now names the studio (`LazycowStudio/1.0`).
+- **kie.ai voices can be picked:** the voice list came back empty for kie.ai; it now shows the 20 voices kie.ai's
+  docs list, and a voice it does not take is refused when picked, not on the paid call.
+- **kie.ai voice is priced as billed:** each line costs at least 1000 characters there (6 credits for a 10-character
+  line, checked live), so the estimate and the Workflow page's cost per reel no longer show about a fiftieth of it.
+
 ## 0.27.1 (2026-11-25)
 
 ### Added

@@ -702,7 +702,7 @@
   .rvposter { place-items: end center; padding-bottom: 10px; cursor: pointer; }
   .rvposter svg { width: 16px; height: 16px; padding: 10px; box-sizing: content-box; border-radius: 50%; background: rgba(0,0,0,.6); transition: background .15s; }
   .rvposter:hover svg, .rvposter:focus-visible svg { background: rgba(0,0,0,.85); }
-  .rvbody { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .rvbody { display: flex; flex-direction: column; gap: 8px; min-width: 0; overflow-wrap: anywhere; }  /* a headline with no spaces ran over the buttons */
   .rvwords { display: flex; flex-direction: column; gap: 2px; font-size: 14px; } .rvwords .rvhook { font-weight: 700; font-size: 16px; }
   .rvstrip { display: flex; gap: 3px; overflow-x: auto; } .rvshot { position: relative; flex: none; width: 54px; height: 96px; background: var(--line) center/cover; }  /* a light tint until the picture arrives: black read as black footage */
   .rvface { position: absolute; top: 2px; right: 2px; background: var(--bg); color: var(--warn); line-height: 0; padding: 2px; }

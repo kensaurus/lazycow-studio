@@ -563,7 +563,9 @@ document.addEventListener("click", async (e) => {
       try {
         await post("/api/sources/add", { path: inc.dataset.path, mode });
         toast(`${ico("check", "sm")} ${esc(tr("src.added"))}`, 7000);
+        // Close at once: the picker stayed open (its button greyed) for the seconds the source list took to reload.
         foot.picker = null; foot.job = { status: "running", kind: "watch", label: tr("src.adding") };
+        renderHome(true);
         return await loadSources();
       } catch (err) { inc.disabled = false; return toast(`${ico("alert", "sm")} ${esc(err.message)}`, 8000); }
     }
@@ -610,7 +612,12 @@ document.addEventListener("click", async (e) => {
   const thEdit = e.target.closest("[data-theme-edit], [data-theme-new]");
   if (thEdit) { e.stopPropagation(); return openThemeEditor(thEdit.dataset.themeEdit || null); }
   if (at) { const k = at.dataset.autoTheme; autoThemes.has(k) ? autoThemes.delete(k) : autoThemes.add(k); return renderHome(); }
-  if (e.target.closest("#autoGo")) { autoDays = +$("#autoDays").value; autoFaces = $("#autoFaces").checked; return autopilot([...autoThemes]); }
+  if (e.target.closest("#autoGo")) {
+    // A double click queued the same batch twice (two jobs, two error toasts); a second press later still queues one more.
+    if (Date.now() - (autopilot.lastGo || 0) < 1500) return;
+    autopilot.lastGo = Date.now();
+    autoDays = +$("#autoDays").value; autoFaces = $("#autoFaces").checked; return autopilot([...autoThemes]);
+  }
   if (e.target.closest("[data-act=review]")) { const q = needsReview(); if (q.length) go(q[0].slug); return; }
   const mk = e.target.closest("[data-render]");
   if (mk) {
@@ -645,14 +652,23 @@ function autopilot(list) {
   autoChain = autoChain.then(() => runAutopilot(list, opts)).finally(() => { autoWaiting--; renderHome(true); });
   return autoChain;
 }
+/* One "theme: why" line from the server, in a person's words: the theme by its headline, and the commonest refusal
+   ("only 1 usable assets for this theme") said as what to do about it. Anything else keeps the server's own words. */
+function makeWhy(line) {
+  const m = /^([a-z][a-z0-9-]*): (.*)$/.exec(String(line || ""));
+  if (!m) return String(line || "");
+  const few = /^only (\d+) usable assets? for this theme$/.exec(m[2]);
+  return few ? tr("mk.fewclips", { t: themeTitle(m[1]), n: few[1] }) : `${themeTitle(m[1])}: ${m[2]}`;
+}
 async function runAutopilot(list, { since, faces, cut, vary, learned, preset }) {
   toast(`${ico("clapper", "sm")} ${esc(tr("mk.picking", { n: list.length }))}`, 5000);
   try {
     const res = await post("/api/autopilot", { themes: list, since, faces, cut, vary, learned, preset });  // learned undefined: the setting decides
     // Nothing made (no usable footage for the theme, ...): say why, never "Queued ." for an empty list.
-    if (!res.made?.length) throw new Error(tr("mk.nonemade", { why: (res.failed || []).join("; ") || "-" }));
+    const why = (res.failed || []).map(makeWhy).join(" ");
+    if (!res.made?.length) throw new Error(tr("mk.nonemade", { why: why || "-" }));
     homeFilter = "making";
-    toast(`${ico("check", "sm")} ${esc(tr("mk.queued", { list: res.made.map((m) => m.slug).join(", ") }))}${res.failed?.length ? `<br>${ico("alert", "sm")} ${esc(tr("mk.somefailed", { why: res.failed.join("; ") }))}` : ""}`, res.failed?.length ? 9000 : 5000);
+    toast(`${ico("check", "sm")} ${esc(tr("mk.queued", { list: res.made.map((m) => themeTitle(m.theme) || m.slug).join(", ") }))}${res.failed?.length ? `<br>${ico("alert", "sm")} ${esc(tr("mk.somefailed", { why }))}` : ""}`, res.failed?.length ? 9000 : 5000);
     await loadOverview();
   } catch (err) { toast(`${ico("alert", "sm")} ${esc(err.message)}`, 6000); }
 }

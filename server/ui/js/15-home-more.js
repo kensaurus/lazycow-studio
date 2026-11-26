@@ -1,6 +1,6 @@
 /* ---------- Home (#/home and #/, BL-115) ----------
    What a person needs first. Someone new (no footage, no reel or no network yet) gets four setup cards in order:
-   connect a network, add footage, make a first reel, book a first post. Each ticks itself from what the studio sees
+   add footage, make a first reel, connect a network, book a first post. Each ticks itself from what the studio sees
    (they replace the old "Your first week" list on Today). Someone returning gets the loop, what goes out next, what
    needs them and last week in one line. Built from the renderers and data the other pages already use; ≤ 1.5 screens. */
 let homeAsked = false;

@@ -37,7 +37,7 @@ ID_RX = re.compile(r"[a-z0-9][a-z0-9-]{0,40}")
 # One typical reel, for "what one reel costs" (the same counts as ai.plan's defaults on a 15 s reel).
 REEL_SECONDS = 15
 TYPICAL = {
-    "voice": {"chars": 60, "what": "about 60 characters of approved words read aloud"},
+    "voice": {"chars": 60, "calls": 2, "what": "about 60 characters of approved words read aloud (two lines)"},
     "music": {"seconds": REEL_SECONDS + 3, "calls": 1, "what": "one 18 s instrumental bed"},
     "sfx": {"seconds": 4, "calls": 2, "what": "natural sound for two silent 2 s shots"},
     "upscale": {"seconds": 6, "calls": 3, "what": "three soft 2 s shots sharpened"},
@@ -95,6 +95,8 @@ def per_reel(cap: str, pid: str | None, mid: str | None, live: dict | None = Non
     q = ai.quantity(unit, seconds=secs, chars=int(t.get("chars", 0)), megapixels=secs * 30 * 1080 * 1920 / 1e6)
     if q == 1.0 and not unit.lower().startswith(("second", "compute", "unit", "minute", "1000 char", "char", "megapixel")):
         q = float(t.get("calls", 1))  # priced per generation / audio / video / request: one per call
+    elif ai.min_quantity(pid, mid):  # each call billed at least a unit (kie.ai's voice lines)
+        q = max(q, ai.min_quantity(pid, mid) * float(t.get("calls", 1)))
     return {"usd": round(float(price["usd"]) * q, 4), "basis": t["what"], "unit": unit, "unitPrice": price["usd"],
             "source": price.get("source"), **({"warning": price["warning"]} if price.get("warning") else {})}
 

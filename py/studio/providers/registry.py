@@ -142,6 +142,8 @@ def validate(data: dict) -> list[str]:
                 out.append(f"{where}: a list price needs usd, unit, source and asOf")
             if price and price.get("validUntil") is not None and not DATE_RX.match(str(price["validUntil"])):
                 out.append(f"{where}: price validUntil must be YYYY-MM-DD")
+            if price and price.get("minQuantity") is not None and not (isinstance(price["minQuantity"], (int, float)) and price["minQuantity"] > 0):
+                out.append(f"{where}: price minQuantity (the least one call is billed, in its unit) must be a number above 0")
     for cap, who in defaults.items():
         if len(who) > 1:
             out.append(f"capability {cap} has {len(who)} defaults ({', '.join(who)}); one only")

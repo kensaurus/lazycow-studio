@@ -65,7 +65,7 @@ The top bar starts at **Home**, then the five sections in the order work moves: 
 
 ### Home
 
-`#/` opens Home. In a new project it shows four setup cards in order: add footage, connect a network, make the first reel, book the first post (the chip in the header counts the same four). Each ticks itself when the studio sees it happen. Once those are done it shows the loop (what runs by itself), the next posts, what needs you, and the last 7 days' views in one line.
+`#/` opens Home. In a new project it shows four setup cards in order: add footage, make the first reel, connect a network, book the first post (no sign-in stands before the first reel) (the chip in the header counts the same four). Each ticks itself when the studio sees it happen. Once those are done it shows the loop (what runs by itself), the next posts, what needs you, and the last 7 days' views in one line.
 
 ### More tools
 

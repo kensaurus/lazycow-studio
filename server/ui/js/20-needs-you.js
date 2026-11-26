@@ -27,7 +27,9 @@ const WN = {
     if (postsLoaded) {
       const now = Date.now(), soon = now + 36 * 3600e3;
       const booked = postsLog.some((p) => ["planned", "scheduled", "queued"].includes(p.status) && p.at && new Date(p.at).getTime() > now && new Date(p.at).getTime() < soon);
-      if (!booked && overview.reels.some((r) => !r.house && reelState(r) === "topost")) add("amber", "gap", tr("next.gap"), { label: tr("wn.plan"), attrs: "data-wnplan" });
+      // Only when an approved reel could go out: a first reel still waiting for review is not "schedule a post" yet
+      // (Plan posts books approved reels only; the review to-do already asks for it).
+      if (!booked && overview.reels.some((r) => !r.house && r.status === "approved" && reelState(r) === "topost")) add("amber", "gap", tr("next.gap"), { label: tr("wn.plan"), attrs: "data-wnplan" });
       const ahead = postsLog.filter((p) => ["planned", "scheduled", "queued"].includes(p.status) && p.network !== "all" && p.at && new Date(p.at).getTime() > now);
       const rep = repeatMap(ahead).size;
       if (rep) add("amber", "rephook", tr(rep === 1 ? "w.repeatsum1" : "w.repeatsum", { n: rep }), { label: tr("w.fix"), href: "#/words" });
@@ -40,7 +42,7 @@ const WN = {
     const approved = overview.reels.filter((r) => !r.house && r.status === "approved" && reelState(r) === "topost").length;
     if (approved) add("todo", "approved", tr(autoView?.settings?.plan?.on ? "wn.approvedauto" : "next.approved", { n: approved, h: String(autoView?.settings?.plan?.hour ?? 9).padStart(2, "0") }), { label: tr("wn.plan"), attrs: "data-wnplan" });
     const thin = (overview.filmNext || []).filter((g) => !g.left);
-    if (thin.length) add("todo", "film", tr("next.film", { t: thin[0].theme, w: thin[0].need, n: thin.length }), { label: tr("wn.film"), href: "#/footage" });
+    if (thin.length) add("todo", "film", tr("next.film", { t: thin[0].title || thin[0].theme, w: thin[0].need, n: thin.length }), { label: tr("wn.film"), href: "#/footage" });
     return out;
   },
   /** Every item, worst first: the server's problems by cause (red, amber), then this page's, then the to-dos. */

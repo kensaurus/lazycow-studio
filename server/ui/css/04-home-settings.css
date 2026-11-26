@@ -52,6 +52,8 @@
   @media (max-width: 1100px) { .mt-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fw-steps.hm-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   @media (max-width: 700px) {
     .hm-grid, .mt-grid, .fw-steps.hm-steps { grid-template-columns: minmax(0, 1fr); }
+    /* The setup header on a phone: ring and words on one row, the bar under them (it squeezed the words to one per line). */
+    .hm-setup .fw-head { grid-template-columns: auto minmax(0, 1fr); } .hm-setup .fw-bar { grid-column: 1 / -1; grid-row: 2; }
     .ev-row { grid-template-columns: 18px minmax(0, 1fr); } .ev-val, .ev-ctl { grid-column: 2; justify-content: flex-start; }
     .ks-adv { display: contents; } .ks-adv > summary { display: none; }
   }

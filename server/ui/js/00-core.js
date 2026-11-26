@@ -157,7 +157,12 @@ const sys = {
     if (on === this.down) return;
     this.down = on;
     if (on) this.say("offline", "bad", tr("sys.offline"), "");
-    else { this.clear("offline"); this.check(); }
+    else {
+      this.clear("offline"); this.check();
+      // Back: a page that failed while the studio was away kept "not answering" and "0 clips" until Try again.
+      // Load it again by itself, unless an edit is open.
+      if ($("#home")?.textContent.includes(tr("sys.noserver")) && !(reel && edit && isDirty())) setTimeout(() => location.reload(), 800);
+    }
     this.paintDot();
   },
   paintDot() {
@@ -767,7 +772,7 @@ function live() {
       if (j.status === "error") { toast(`${ico("alert", "sm")} YouTube: ${esc((j.lines || []).slice(-1)[0] || "upload failed")}`, 9000); loadOverview(); }
       return;
     }
-    if (j.status === "done" && RENDER_KINDS.includes(j.kind)) { toast(`${ico("check", "sm")} ${esc(tr("job.readyreview", { s: j.slug }))}`); loadOverview(); }
+    if (j.status === "done" && RENDER_KINDS.includes(j.kind)) { toast(`${ico("check", "sm")} ${esc(tr("job.readyreview", { s: reelName(j.slug) }))}`); loadOverview(); }  // the headline, not "theme-1126"
     else if (j.status === "error" && !RENDER_KINDS.includes(j.kind)) toast(`${ico("alert", "sm")} ${esc(boardName(j))}: ${esc(plainFail((j.lines || []).slice(-1)[0] || j.label))}`, 8000);
     if ((j.status === "error" || j.status === "cancelled") && atHome()) loadOverview();
   });

@@ -55,6 +55,9 @@ function keySet(k) {
    POST /api/settings {keys: {provider: key}} (checked by the provider's free call first). */
 let aipProv = null;
 const AIP_CORE = new Set(["fal", "openrouter", "together", "own"]);
+/* Services the owner chose under "Add a key for another service" (26 Nov): a key can go in before any job uses the
+   service, e.g. kie.ai as a backup. The row stays for this visit; once saved it stays because the key is there. */
+const aipAdd = new Set();
 const aipHasKey = (pid) => fbView?.providers?.find?.((p) => p.id === pid)?.hasKey ?? aiCredits?.providers?.[pid]?.key;
 const aipKeyUrl = (p) => { const m = /^[a-z0-9.-]+\.[a-z]{2,}(\/[^\s(]*)?/i.exec(p?.keyHint || ""); return m ? "https://" + m[0] : p?.dashboard || ""; };
 function aipExtra() {
@@ -63,9 +66,23 @@ function aipExtra() {
   if (!fbView) loadFb();
   const used = {};
   for (const cap of WF_CAPS) { const c = wfView?.capabilities?.[cap]; if (c?.on && c.provider && !AIP_CORE.has(c.provider)) (used[c.provider] ||= []).push(capName(cap)); }
-  return (aipProv || []).filter((p) => !AIP_CORE.has(p.id) && p.keyEnv && (used[p.id] || aipHasKey(p.id)))
-    .map((p) => [p.id + "_key", "layers", esc(p.name), used[p.id] ? tr("aip_s.uses", { c: used[p.id].join(lang === "ja" ? "、" : ", ") }) : tr("aip_s.idle"), aipKeyUrl(p)]);
+  return (aipProv || []).filter((p) => !AIP_CORE.has(p.id) && p.keyEnv && (used[p.id] || aipHasKey(p.id) || aipAdd.has(p.id)))
+    .map((p) => [p.id + "_key", "layers", esc(p.name), used[p.id] ? tr("aip_s.uses", { c: used[p.id].join(lang === "ja" ? "、" : ", ") }) : tr(aipHasKey(p.id) ? "aip_s.idle" : "aip_s.addhint"), aipKeyUrl(p)]);
 }
+/* One line under the keys: every other service in the registry that takes a key, as a short list to pick from. */
+function aipMore(shown) {
+  const have = new Set(shown.map(([k]) => k.replace(/_key$/, "")));
+  const more = (aipProv || []).filter((p) => !AIP_CORE.has(p.id) && p.keyEnv && !have.has(p.id));
+  if (!more.length) return "";
+  return `<p class="kl-more"><label><span class="meta">${esc(tr("aip_s.addother"))}</span>
+    <select data-aipadd="1"><option value="">${esc(tr("aip_s.pickone"))}</option>${more.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label></p>`;
+}
+document.addEventListener("change", (e) => {
+  const s = e.target.closest?.("[data-aipadd]"); if (!s || !s.value) return;
+  const k = s.value + "_key";
+  aipAdd.add(s.value); keyOpen[k] = true; renderHome(true);
+  setTimeout(() => document.querySelector(`[data-keyform="${CSS.escape(k)}"] input`)?.focus(), 50);
+});
 function renderKeys() {
   if (aiView === null) { aiView = undefined; loadKeys(); }
   if (aiView === undefined) { $("#home").innerHTML = `<div class="pagehead">${crumbs([tr("nav.settings")])}</div>${loadingHtml(tr("nav.keys"))}`; return; }
@@ -93,7 +110,7 @@ function renderKeys() {
   const keysBody = () => `<section class="sheet"><h2>${ico("shield", "sm")} ${tr("key.h")}<span class="count">${ready}/${allKeys.length}</span></h2>
       <p class="credhead"><span class="meta">${creditsAt() ? tr("key.checked", { t: ago(new Date(creditsAt()).toISOString()) }) : aiCredits?.providers ? "" : aiCredits?.error ? esc(aiCredits.error) : tr("key.checking")}</span>
         <button data-credits="1" ${creditsBusy ? "disabled" : ""}>${tr(creditsBusy ? "key.checking" : "key.recheck")}</button></p>
-      <ul class="kled">${allKeys.map(row).join("")}</ul></section>`;
+      <ul class="kled">${allKeys.map(row).join("")}</ul>${aipMore(allKeys)}</section>`;
   const capsBody = () => aiView && !aiView.unavailable ? `<section class="sheet spend" data-anchor="caps"><h2>${ico("shield", "sm")} ${tr("key.caps")}</h2><p class="meta">${tr("key.capshint")} <a href="#/log/overview">${tr("key.seespend")} ›</a></p>
       <div class="meters">${meter(spent.today ?? 0, caps.daily ?? 0, tr("key.today"))}${meter(spent.total ?? 0, caps.total ?? 20, tr("key.alltime"))}</div>
       <form class="capgrid" data-capform="1">

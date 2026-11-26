@@ -110,8 +110,8 @@ The table above is the default. Which service does each job is data, not code: `
 | --- | --- | --- |
 | `fal_queue` | submit, poll `status_url`, read `response_url` | fal.ai |
 | `async_task` | submit a task, poll it, read the output; every path and state name comes from the registry's `task` block | Replicate, kie.ai, Runway, MiniMax video, Together video, OpenRouter video, Higgsfield, PiAPI, Luma |
-| `sync_http` | one request; the answer is the file, or JSON with the file's URL (`result`) | ElevenLabs, Stability AI, MiniMax speech, OpenRouter speech |
-| `openai_chat` | `POST <base>/chat/completions` | OpenRouter, Together, Gemini (its OpenAI-compatible endpoint), your own model server |
+| `sync_http` | one request; the answer is the file, or JSON with the file's URL (`result`); with `poll` an HTTP 202 and an id first, then the file from `poll.path` (Stable Audio 3.0) | ElevenLabs, Stability AI, MiniMax speech, OpenRouter speech |
+| `openai_chat` | `POST <base>/chat/completions`, or the model's own `path` (kie.ai: one address per model) | OpenRouter, Together, Gemini (its OpenAI-compatible endpoint), kie.ai (Gemini 3.8 Flash), your own model server |
 
 No new adapter was needed for phase 2: a model may name its own `protocol` (OpenRouter's chat is `openai_chat`, its
 `/videos` and `/audio/speech` models are `async_task` and `sync_http`), a provider may send fixed headers on every call
@@ -136,14 +136,14 @@ What is registered (2026-11-18; **bold** = the default, exactly the tools before
 | capability | models |
 | --- | --- |
 | voice | **fal `fal-ai/minimax/speech-02-hd`**; fal `fal-ai/elevenlabs/tts/eleven-v3`; ElevenLabs `eleven_v3`, `eleven_multilingual_v2`, `eleven_flash_v2_5`; Replicate `minimax/speech-2.8-turbo`; kie.ai `elevenlabs/text-to-speech-turbo-2-5`, `elevenlabs/text-to-speech-multilingual-v2`; MiniMax `speech-2.8-hd`, `speech-2.8-turbo` (direct, `Japanese_CalmLady`); OpenRouter `elevenlabs/eleven-v3` (preset voices only) |
-| music | **fal `fal-ai/stable-audio-25/text-to-audio`**; Stability `stable-audio-2.5`; Replicate `stability-ai/stable-audio-2.5`; ElevenLabs `music_v2_5` (`force_instrumental`); kie.ai `ai-music-api/generate` (Suno, unofficial) |
-| sfx | **fal `fal-ai/mmaudio-v2`** (from the picture); ElevenLabs `eleven_text_to_sound_v3` (from words, ≤ 30 s); Stability `stable-audio-2.5` (from words) |
+| music | **fal `fal-ai/stable-audio-25/text-to-audio`**; Stability `stable-audio-2.5`, `stable-audio-3` (≤ 380 s, 8 credits); Replicate `stability-ai/stable-audio-2.5`; ElevenLabs `music_v2_5` (`force_instrumental`); kie.ai `ai-music-api/generate` (Suno, unofficial) |
+| sfx | **fal `fal-ai/mmaudio-v2`** (from the picture); ElevenLabs `eleven_text_to_sound_v3` (from words, ≤ 30 s); Stability `stable-audio-2.5`, `stable-audio-3` (from words) |
 | upscale | **fal `topaz/upscale/video/precision`**; fal `fal-ai/seedvr/upscale/video`; Replicate `topazlabs/video-upscale`; kie.ai `topaz/video-upscale` |
 | slowmo | **fal `fal-ai/rife/video`**; fal `fal-ai/film/video` |
 | img2video | **fal `fal-ai/kling-video/v2.5-turbo/pro/image-to-video`**; Replicate `kwaivgi/kling-v2.6`; kie.ai `kling-2.6/image-to-video`; Runway `gen4_turbo` ($0.05/s), `gen4.5` ($0.12/s); MiniMax `MiniMax-H3` ($0.08/s), `MiniMax-H3-Highspeed` ($0.06/s); Together `Wan-AI/wan2.7-i2v`; OpenRouter `kwaivgi/kling-v3.0-std` ($0.084/s, its `usage.cost` recorded); Higgsfield `kling-video/v2.5-turbo/standard/image-to-video`; Luma `ray-3.2` (no list price: enter yours); PiAPI `kling-2.5-std` (unofficial) |
 | bg-cut | **fal `fal-ai/birefnet/v2/video`** (a mask); Replicate `bria/video-remove-background` (a cut-out with alpha) |
-| vision | **OpenRouter `google/gemini-3.8-flash`**; any OpenRouter model by name; Together `moonshotai/Kimi-K3` and Gemini `gemini-3.8-flash` (still pictures only: picture questions go there when the project picks them; the reviewer keeps watching video on OpenRouter); your own server (from still frames) |
-| llm | Together `openai/gpt-oss-120b`; Gemini `gemini-3.8-flash` (list price until 2026-12-31, then a warning); any OpenRouter, Together, Gemini or own-server model by name. With no pick: OpenRouter with `shared/spec.json` `openrouter.edlModel` |
+| vision | **OpenRouter `google/gemini-3.8-flash`**; any OpenRouter model by name; Together `moonshotai/Kimi-K3`, Gemini `gemini-3.8-flash` and kie.ai `gemini-3-8-flash:vision` (still pictures only: picture questions go there when the project picks them; the reviewer keeps watching video on OpenRouter); your own server (from still frames) |
+| llm | Together `zai-org/GLM-5.3-Flash` (MIT; gpt-oss-120b left Together's serverless list); Gemini `gemini-3.8-flash` (list price until 2026-12-31, then a warning); kie.ai `gemini-3-8-flash` (its full price kept; the actual cost is its `credits_consumed`); any OpenRouter, Together, Gemini or own-server model by name. With no pick: OpenRouter with `shared/spec.json` `openrouter.edlModel` |
 
 **Writing help (`research._llm`: post angles, word ideas) goes through the registry.** It asks the project's `llm`
 block (else OpenRouter with the studio's writing model), prices the question from the registry (`chat_price`: the
@@ -152,14 +152,19 @@ templates answer), and runs inside `charge()` with no slug: the daily budget and
 does not, and the ledger row keeps its purpose (`research`, `words-suggest`) and now its provider. A provider's
 `chat` options are data: OpenRouter `{"jsonMode": true, "extra": {"reasoning": {"effort": "low"}}}`, Gemini
 `{"jsonMode": false, "extra": {"reasoning_effort": "low"}}`, Together `{"jsonMode": false}` (the answer's JSON is read
-from the text, fenced or wrapped). Your own model server still answers instead when it is set and the project picked
+from the text, fenced or wrapped), kie.ai `{"jsonMode": false, "bodyCode": "code", "okCodes": [200], "bodyMessage":
+"msg", "cost": "credits_consumed", "costUnit": "credits"}`: kie.ai answers an error as HTTP 200 with `{"code": 402,
+…}`, read into the shared vocabulary (through `errorKinds`), so an empty kie.ai account hands the question to a backup. Your own model server still answers instead when it is set and the project picked
 nothing else.
 
 **Looked at and left out** (registry `_rejected`, read 2026-11-18): MiniMax music (its paid Music API closed to new users
 on 2026-08-20); Gemini video (Veo 3.1 Preview shut down 2026-10-22; Omni Flash video is not on the OpenAI-compatible
 endpoint); PiAPI music (Suno sunset; Udio on a consumer-account pool, no licence); Together video understanding
 (dedicated endpoints only); Stability image-to-video (its API has none); Veo and Omni Flash through OpenRouter (image-
-conditioned, but their licence passes through OpenRouter unverified here).
+conditioned, but their licence passes through OpenRouter unverified here). Added 2026-11-26: image generation on
+Stability, Together and kie.ai (a reel has no image step, and a made-up picture is a scene the studio never invents);
+kie.ai sound effects (no ElevenLabs sound model there now; only Suno's, unofficial); kie.ai cut-out and slow motion
+(image-only, none); kie.ai's own `video/upscale` (no price on kie.ai/pricing).
 
 Sources (official, read 2026-11-18): docs.dev.runwayml.com/api and /guides/pricing, dev.runway.com/learn/commercial-use;
 platform.minimax.io/docs/api-reference/video-generation-v2-create, -v2-query, speech-t2a-http, /docs/pricing/overview,
@@ -191,12 +196,18 @@ daily limits, reserved, settled):
 4. else the call is refused: 409 `no_price` ("No price is known for … Enter its price in Settings › AI").
 
 The actual cost replaces the estimate when the provider reports it: OpenRouter's `usage.cost` (chat and video),
-kie.ai's `creditsConsumed` (× $0.005 a credit), ElevenLabs' `character-cost` header and MiniMax's
+kie.ai's `creditsConsumed` (tasks) and `credits_consumed` (chat), × $0.005 a credit, ElevenLabs' `character-cost` header and MiniMax's
 `extra_info.usage_characters` (× the list price). MiniMax speech answers HTTP 200 with its error in
 `base_resp.status_code` (like kie.ai): read, so 1008 is "out of credit". Keys: `RUNWAY_API_KEY`, `MINIMAX_API_KEY`,
 `HIGGSFIELD_API_KEY` (`<key id>:<key secret>` as one value), `GEMINI_API_KEY`, `PIAPI_API_KEY`, `LUMA_AGENTS_API_KEY`,
 each checked with a free call before it is saved (Higgsfield has none: an unknown request's status answers 404 to a
 good key, 401 to a bad one). Runway and Luma report their credit balance.
+
+`price.minQuantity` is the least one call is billed, in the price's unit: kie.ai bills each ElevenLabs line as at
+least 1000 characters (a 10-character line cost 6 credits, live check 2026-11-26), so the estimate, a backup's reprice
+and the Workflow page's cost per reel count each line as at least one unit (`measure.lineChars`). Every request sends
+`User-Agent: LazycowStudio/1.0` unless its caller names one: Together's Cloudflare refuses urllib's own with HTTP 403
+"error code: 1010" before the key is read, which was taken for a refused key.
 
 **Calls.** A submit waits at most 60 s and is sent once: a 429 or 503 is asked again after `Retry-After` (up to 3
 times), but a submit that timed out is never sent again, since it may have been accepted and billed (the estimate stays
@@ -249,7 +260,9 @@ Warnings: no key yet, no price known, the licence could not be checked live.
 ### GET /api/ai/voices?provider=elevenlabs&search=…&next=…
 
 `{ "provider": "elevenlabs", "voices": [{ "id", "name", "labels": {"language": "ja", …}, "preview" }], "next": "<token>" }`
-from ElevenLabs `GET /v2/voices` with the saved key (400 `no_key` without one).
+from ElevenLabs `GET /v2/voices` with the saved key (400 `no_key` without one). A provider whose docs give a fixed
+list (registry `voices.fixed`: kie.ai's 20 ElevenLabs voice ids) answers from the registry with no call and no key, and
+`POST /api/ai/select` refuses a voice not on that list (400 `bad_input`).
 
 ## When a service runs out: automatic switch to a backup (py/studio/fallback.py)
 

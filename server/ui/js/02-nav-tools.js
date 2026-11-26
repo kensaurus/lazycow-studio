@@ -191,16 +191,13 @@ function nextSteps() {
     const eta = Math.max(...busy.map((r) => r.job.eta || 0));
     void eta;  // rendering is not a to-do: it lives in the status bar and on Reels › Being made
   }
-  const soon = Date.now() + 36 * 3600e3;
-  const plannedSoon = postsLog.some((p) => ["planned", "scheduled"].includes(p.status) && p.at && new Date(p.at).getTime() > Date.now() && new Date(p.at).getTime() < soon);
   const approved = overview.reels.filter((r) => !r.house && r.status === "approved" && reelState(r) === "topost");
   for (const [k, c] of Object.entries(connections)) if (c?.error && !c.connected) add(1, "bad", "alert", tr("next.reconnect", { n: esc(c.name || k) }), `data-goto="accounts"`);
   const repeats = overview.reels.filter((r) => mayPost(r) && r.sameWords > 0 && reelState(r) !== "posted");
   if (repeats.length) add(2, "warn", "type", tr("next.words", { n: repeats.length }), `data-goto="words"`);
   if (approved.length) add(2, "ok", "send", tr("next.approved", { n: approved.length }), `data-goto="posting"`);
-  else if (!plannedSoon && overview.reels.some((r) => !r.house && reelState(r) === "topost")) add(3, "info", "cal", tr("next.gap"), `data-goto="posting"`);
   const thin = (overview.filmNext || []).filter((g) => !g.left);
-  if (thin.length) add(5, "info", "camera", tr("next.film", { t: esc(thin[0].theme), w: esc(thin[0].need), n: thin.length }), `data-goto="footage"`);
+  if (thin.length) add(5, "info", "camera", tr("next.film", { t: esc(thin[0].title || thin[0].theme), w: esc(thin[0].need), n: thin.length }), `data-goto="footage"`);
   if (!out.length && !overview.reels.some((r) => !r.house)) return "";  // nothing made yet: the empty state asks once
   if (!out.length) add(6, "ok", "clapper", tr("next.make"), `id="toggleMaker"`);
   return `<nav class="nextsteps" aria-label="${tr("next.title")}"><span class="meta">${tr("next.title")}</span>${out.sort((a, b) => a.rank - b.rank).slice(0, 3).map((x) => x.html).join("")}</nav>`;
