@@ -405,7 +405,7 @@ function aiBlocksCard() {
         ${open ? `<div class="ab-choices">${wfChoices(cap)}</div>` : ""}</li>`;
     }).join("")}</ul>`;
   return `<section class="sheet aiblocks" data-anchor="blocks"><h2>${ico("layers", "sm")} ${esc(tr("d_ab.h"))}${v && !v.error ? `<span class="count">${WF_CAPS.filter((c) => v.capabilities[c].on).length}/${WF_CAPS.length}</span>` : ""}</h2>
-    <div class="ab-head"><p class="meta">${esc(tr("d_ab.lead"))} <a href="#/workflow">${esc(tr("d_ab.open"))} ›</a></p>${v && !v.error ? costMeter(v.spend, { compact: true }) : ""}</div>
+    <div class="ab-head"><p class="meta">${esc(tr("d_ab.lead"))}${ftShown("workflow") ? ` <a href="#/workflow">${esc(tr("d_ab.open"))} ›</a>` : ""}</p>${v && !v.error ? costMeter(v.spend, { compact: true }) : ""}</div>
     ${v && !v.error ? aipOutBanner() : ""}${body}${v && !v.error ? wfRejected() : ""}
     <p class="meta ab-fb">${ico("refresh", "sm")} <a href="#/keys/fallback">${esc(tr("ly_ks.t.fallback"))} ›</a></p></section>`;
 }

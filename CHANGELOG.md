@@ -2,6 +2,53 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.29.0 (2026-11-27)
+
+The rest of the first-run walk (a cafe owner, simple mode, no keys): a new project starts from one box and a
+ready-made story instead of a blank form, simple mode shows only what it needs, and every page fits two phone screens.
+
+### Added
+- **Starter stories:** 8 ready-made, editable stories (cafe, guesthouse, campsite, shop, restaurant, and three for
+  any place), in English and Japanese. Make reels shows them when a project has no themes, and *Start from a story*
+  after that; one press saves the story as the project's own theme, ticks it and makes the first reel once 4 or more
+  clips are in. `GET /api/themes/stories`.
+- **Home as one box:** a project with no footage sees "Drop your videos here and we make your first reel" with
+  Choose a folder / Choose files and the starter stories under it; with footage and no reel yet, one *Make your first
+  reel* box. The setup steps stay in the header chip.
+- **Shot words in Japanese:** a shot written in Japanese gets an English search form when it is saved (the AI writing
+  service when one is set up, otherwise a built-in filming glossary that works offline), so Japanese shots find
+  clips; What to film shows Japanese words on the Japanese page.
+- **Folder picker:** type or paste a path (quotes, `~` and a bare drive are fine; a missing folder or a file is
+  refused with the reason), and *Show hidden folders*.
+- **Where should this go?** With no network connected, the first approval asks once which network to connect, or
+  *Not now (keep it approved)*.
+
+### Changed
+- **Simple mode's top bar** keeps the setup chip (while unfinished), Help, the bell, language and one *More* menu
+  (search, refresh, colours, system check, About, Show all tools). The version chip, search box, sync, theme switch,
+  system dot and the key hints in the status bar are full mode only; keyboard shortcuts work in both.
+- **Footage › Add** is one drop zone with Choose a folder; Cloud, phones and the map are under *Other ways* (a way
+  already in use stays in view). *Placed by GPS / Shot here* is asked only when the project has a home place.
+- **Phones (390 × 844, simple mode):** Reels, Settings, More tools, Review and Footage › Add each fit two screens:
+  a reel card is a row on a phone, Settings' network map folds, More tools groups its cards, Review's queue is one row
+  to swipe. Nothing a person can press is hidden.
+- **Simple mode never links to a tool it hides:** Make reels offers the starter stories instead of Research; the
+  Reels loop strip, *Use what worked* (now an on/off switch in place) and Keys & AI no longer link to Workflow.
+
+### Fixed
+- **Approve with no network** said "Approving means it will be posted" and "Would land on TikTok / X Thu 19:00";
+  nothing is ever booked without a connected network, and Review now says the reel is kept.
+- **Settings › Accounts:** the connection check said "No network is in use yet" under "6 networks in use"; it now
+  checks the networks the header counts.
+- **"About 0 more reels possible"** with 32 clips: the estimate counted other clips than Make reels uses. One rule
+  now; no number is shown for a library under 40 usable clips, and it is counted again when a reel is made.
+- **Theme ticks** are kept per project across reloads.
+- **While the studio is away** Footage shows … instead of "0 clips · 0 places · 0 files".
+- **A look-only studio (`STUDIO_QUIET=1`) never makes drafts by itself**, and the daily auto-draft count is per
+  project (it was shared by every project).
+- **Theme badges** update as soon as a theme is saved or deleted (they waited up to ten minutes).
+- **`/api/themes`** refuses a headline over 80 characters (120 in the second language) with a named error.
+
 ## 0.28.0 (2026-11-26)
 
 More AI services to switch between (kie.ai, Stability AI, Together AI), and a first run that a person with no

@@ -413,6 +413,10 @@ paths:
       description: |
         A person types the words, so they are this project's approved words; every line passes the project's own
         copy rules (`GET /api/brand` › rules) or the call fails with 400 naming the field. `shots` empty = general shots.
+        A headline or line longer than its box (80 characters, 120 in the second language) is refused with 400
+        ("hook: at most 80 characters (this one has 95)"). Each shot gets an English search form (`shotsEn`, kept in the
+        saved theme; the picture search reads English): sent with the theme (a starter story has its own), else English
+        as typed and Japanese written by the project's AI writing service when a key is set, else a built-in glossary.
       requestBody:
         required: true
         content:
@@ -428,13 +432,41 @@ paths:
                   properties:
                     title: { type: string, maxLength: 60 }
                     hook: { type: object, properties: { ja: { type: string, maxLength: 80 }, en: { type: string, maxLength: 120 } }, required: [ja] }
-                    lines: { type: array, maxItems: 6, items: { type: object, properties: { ja: { type: string }, en: { type: string } } } }
-                    shots: { type: array, maxItems: 12, items: { type: string, maxLength: 120 }, description: "What to film, one per item (4 or more; empty = general shots)." }
+                    lines: { type: array, maxItems: 6, items: { type: object, properties: { ja: { type: string, maxLength: 80 }, en: { type: string, maxLength: 120 } } } }
+                    shots: { type: array, maxItems: 12, items: { type: string, maxLength: 120 }, description: "What to film, one per item, in any language (4 or more; empty = general shots)." }
+                    shotsEn: { type: array, maxItems: 12, items: { type: string, maxLength: 120 }, description: "Optional: each shot's English search form, in the same order (used when every item is English)." }
                     tags: { type: array, maxItems: 6, items: { type: string } }
                     style: { type: string, enum: [column, centre, lower, split] }
       responses:
-        "200": { description: The saved theme, cleaned., content: { application/json: { schema: { type: object } } } }
+        "200": { description: The saved theme, cleaned (with shotsEn)., content: { application/json: { schema: { type: object } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/themes/stories:
+    get:
+      tags: [Reels and render queue]
+      operationId: listStarterStories
+      summary: Ready-made stories for a project's first reel (shared/starter-stories.json).
+      description: |
+        Make reels offers them when the project has no themes (and under Start from a story). Each is a theme in English
+        and Japanese; saving one is `POST /api/themes` with the headline in the page's language.
+      responses:
+        "200":
+          description: The stories, in the order they are shown.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stories:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, pattern: "^[a-z][a-z0-9-]{0,23}$" }
+                        kind: { type: object, properties: { en: { type: string }, ja: { type: string } } }
+                        about: { type: object, properties: { en: { type: string }, ja: { type: string } } }
+                        icon: { type: string }
+                        theme: { type: object, description: "title, hook and lines {en, ja}; shots (English) and shotsJa; tags; style." }
         "403": { $ref: "#/components/responses/Forbidden" }
   /api/themes/delete:
     post:
@@ -1335,7 +1367,15 @@ paths:
           in: query
           required: true
           schema: { type: string, maxLength: 1024 }
-          description: An absolute folder path (a drive letter or a leading slash), no control characters.
+          description: >-
+            An absolute folder path (a drive letter or a leading slash), no control characters. It may be typed or pasted:
+            surrounding quotes and spaces are dropped, a leading ~ is the home folder, "D:" is the drive's top folder. It must
+            exist and be a folder (400 says which it is not).
+        - name: hidden
+          in: query
+          required: false
+          schema: { type: string, enum: ["1"] }
+          description: 1 lists hidden folders too (a name starting with a dot, AppData and the like), each marked hidden; the recycle bin and System Volume Information never.
       responses:
         "200":
           description: Listing.
@@ -1346,7 +1386,14 @@ paths:
                 properties:
                   path: { type: string }
                   parent: { type: [string, "null"] }
-                  dirs: { type: array, items: {} }
+                  dirs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        path: { type: string }
+                        hidden: { type: boolean, description: Only on hidden folders listed with hidden=1. }
                   media: {}
                   included: {}
         "400": { $ref: "#/components/responses/BadRequest" }
@@ -1577,11 +1624,15 @@ paths:
                       properties:
                         n: { type: integer, minimum: 0 }
                         last: { type: string, format: date-time, nullable: true }
+                  picks:
+                    type: [array, "null"]
+                    items: { type: string }
+                    description: "The themes ticked on Make reels (kept in ui.json); null until any were saved."
         "403": { $ref: "#/components/responses/Forbidden" }
     post:
       tags: [System]
       operationId: setUiLevel
-      summary: "Choose simple (the everyday tools) or full (every tool) for this project."
+      summary: "Choose simple (the everyday tools) or full (every tool) for this project, and/or keep Make reels' ticked themes."
       parameters: [{ $ref: "#/components/parameters/Origin" }]
       requestBody:
         required: true
@@ -1589,9 +1640,10 @@ paths:
           application/json:
             schema:
               type: object
-              required: [level]
+              description: "level, picks, or both. picks alone leaves the level as it is."
               properties:
                 level: { type: string, enum: [simple, full] }
+                picks: { type: array, maxItems: 60, items: { type: string, pattern: "^[a-z][a-z0-9-]{0,23}$" }, description: "Theme keys ticked on Make reels; anything else is dropped." }
       responses:
         "200":
           description: The level and counts after the change (same shape as GET /api/ui).
@@ -1682,11 +1734,18 @@ paths:
       operationId: checkConnections
       summary: Check every connection in use before a post needs it (py/studio/netcheck.py). Read-only.
       description: >-
-        One entry per network booked or posted in the last 30 days. Each entry says whether its sign-in still works,
+        One entry per network booked or posted in the last 30 days, and per network named in `nets` (the networks the
+        project uses, as Settings › Accounts counts them). Each entry says whether its sign-in still works,
         whether it carries every permission the studio uses (YouTube scopes from Google's tokeninfo, Meta permissions
         from debug_token), whether Chrome is linked for the networks it posts, and the latest failed post in the last
         14 days. Each check is ok true (fine), false (posting or a feature fails) or null (worth a look), with the fix
         and, where there is one, a page to open. No token or secret is returned.
+      parameters:
+        - name: nets
+          in: query
+          required: false
+          description: Comma-separated network ids the project uses (for example youtube,tiktok,facebook); each is checked even before anything is booked. Unknown shapes are ignored; at most 30.
+          schema: { type: string, example: "youtube,tiktok,instagram,facebook,x,linkedin" }
       responses:
         "200":
           description: The checks.
@@ -1704,7 +1763,7 @@ paths:
                       properties:
                         network: { type: string }
                         name: { type: string }
-                        via: { type: string, enum: [studio, chrome] }
+                        via: { type: string, enum: [studio, chrome, hand] }
                         account: { type: [string, "null"] }
                         state: { type: string, enum: [ok, warn, bad] }
                         checks:
@@ -2342,6 +2401,7 @@ paths:
                   planning: { type: boolean }
                   checking: { type: boolean }
                   networks: { type: array, items: { type: string } }
+                  ready: { type: object, nullable: true, additionalProperties: { type: boolean }, description: "Per network in networks: can the plan book there now (connected, or Chrome linked for the networks Chrome posts). With none true an approved reel is kept ready and nothing is booked. null when it could not be read." }
                   today: { type: string, format: date }
     post:
       tags: [Posting]

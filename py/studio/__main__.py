@@ -170,6 +170,7 @@ def main() -> None:
     src.add_argument("path", nargs="?", default=None)
     src.add_argument("--mode", default="gps", choices=["gps", "trusted"])
     src.add_argument("--label", default=None)
+    src.add_argument("--hidden", action="store_true", help="ls: list hidden folders too (dot folders, AppData...)")
 
     fo = sub.add_parser("footage", help="footage left, cameras, reuse and what to film next")
     fo.add_argument("action", choices=["health", "cameras"])
@@ -520,7 +521,7 @@ def main() -> None:
         else:
             out = {
                 "roots": lambda: sources.roots(),
-                "ls": lambda: sources.listdir(args.path),
+                "ls": lambda: sources.listdir(args.path, hidden=args.hidden),
                 "discover": lambda: sources.discover(args.path),
                 "add": lambda: sources.add(args.path, args.mode, args.label),
                 "remove": lambda: sources.remove(args.path),

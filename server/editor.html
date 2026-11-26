@@ -58,7 +58,9 @@ NOTES: Edits save as a project JSON and render in the background ("Save & render
    it. One root attribute, set before the first paint; the CSS's dark tokens key on it (no attribute = Auto). */
 (function () { var t = null; try { t = localStorage.getItem("studio.theme"); } catch (e) { /* private window */ }
   if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
-  if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) document.querySelector('meta[name="theme-color"]').setAttribute("content", "#13140f"); })();</script>
+  if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) document.querySelector('meta[name="theme-color"]').setAttribute("content", "#13140f");
+  /* Simple or full (BL-140): the top bar's controls follow it from the first paint (the script sets it again from the server). */
+  try { if (localStorage.getItem("lc.ui.level") === "simple") document.documentElement.setAttribute("data-ui", "simple"); } catch (e) { /* private window */ } })();</script>
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="same-origin">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -72,6 +74,7 @@ NOTES: Edits save as a project JSON and render in the background ("Save & render
 <!--ui:css/03-pages.css-->
 <!--ui:css/04-home-settings.css-->
 <!--ui:css/05-layout.css-->
+<!--ui:css/06-make.css-->
 </style>
 <style>
   /* ---------- fx (24 Nov): Activity log › "Why each clip was picked" in one line a reel, like "Everything the studio did"
@@ -300,6 +303,8 @@ NOTES: Edits save as a project JSON and render in the background ("Save & render
     <button id="themeBtn" class="langbtn themebtn" type="button" title="Colours" aria-label="Colours"><svg class="i sm"><use href="#i-moon"/></svg></button>
     <button id="sysBtn" class="langbtn" title="Can this computer run the studio?" aria-label="System check"><span class="sysdot" id="sysDot"></span><span data-t="sys.short">System</span></button>
     <button id="lang" class="langbtn" title="English / 日本語">日本語</button>
+    <!-- BL-140: simple mode's one menu for the rest of the top bar (search, refresh, colours, system, about, all tools). -->
+    <div class="morewrap"><button id="moreBtn" class="langbtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="moreMenu" title="More" aria-label="More"><span aria-hidden="true">⋯</span></button></div>
     <span class="chip edit-only" id="status">…</span>
     <a class="chip edit-only" id="linkMade" href="#/log/reels"></a>
     <a class="chip edit-only" id="linkPosts" href="#/log/posts"></a>
@@ -307,6 +312,7 @@ NOTES: Edits save as a project JSON and render in the background ("Save & render
     <button id="reject" class="edit-only" title="Reject with a note, then go to the next reel"><svg class="i"><use href="#i-x"/></svg>Reject</button>
     <button id="approve" class="primary edit-only" title="Copy every network's files to Drive ready/, then go to the next reel"><svg class="i"><use href="#i-check"/></svg>Approve</button>
   </header>
+  <div id="moreMenu" class="newspanel moremenu" role="menu" aria-label="More" hidden></div>
   <div class="probstrip" id="probStrip" role="status" hidden></div>
 
   <section class="home" id="home"></section>
@@ -482,4 +488,5 @@ NOTES: Edits save as a project JSON and render in the background ("Save & render
 <!--ui:js/18-editor.js-->
 <!--ui:js/19-making.js-->
 <!--ui:js/20-needs-you.js-->
+<!--ui:js/21-make.js-->
 </script>

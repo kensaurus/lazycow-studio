@@ -22,7 +22,8 @@ FAMILY = [("dji", "dji"), ("gopro", "gopro"), ("canon", "canon"), ("insta360", "
           ("oppo", "phone"), ("sharp", "phone"), ("fujifilm", "camera"), ("nikon", "camera"), ("panasonic", "camera")]
 CLIPS_PER_REEL = 9          # a short reel uses about nine shots (assemble THEMES slots)
 VIDEO_REUSE_CAP = 3         # past this many reels one video starts to look repeated
-VIDEOS_IN_MIXED_REEL = 4    # a reel leaning on photos still needs about four moving shots
+PHOTOS_IN_REEL = 2          # Make reels puts at most 30 % photos in a reel: two of nine shots (studio.assemble)
+FEW_CLIPS = 40              # under this many usable clips Make reels says "reels will repeat": no estimate beside it
 FRESH_DAYS = 30
 
 
@@ -117,6 +118,28 @@ def health(now: datetime | None = None) -> dict:
         return _health(now)
 
 
+def estimate(rows: list[dict]) -> dict:
+    """How many reels the footage holds, counted on the clips Make reels can actually use (studio.assemble.can_use: the
+    same filters, so the two never disagree; BL-134: "about 0 more reels possible" while reels were being made from
+    32 clips, because this counted only videos over 2.5 s with a looser filler line).
+    clips: usable videos; fresh: those in no reel yet; reelsLeft: reels of fresh videos (nine shots each); more: reels
+    still possible before every video is in VIDEO_REUSE_CAP reels (low: videos only; high: with two photos a reel while
+    the photos last), or None when there are fewer than FEW_CLIPS usable clips: Make reels then says reels will
+    repeat, and no number is shown beside it. canMake: at least four usable clips, one a video (a reel's minimum)."""
+    from studio.assemble import SHOTS_MIN, can_use
+
+    usable = [r for r in rows if can_use(r)]
+    videos = [r for r in usable if r["kind"] == "video"]
+    photos = len(usable) - len(videos)
+    fresh = sum(1 for r in videos if not r["usedIn"])
+    room = sum(max(0, VIDEO_REUSE_CAP - len(r["usedIn"])) for r in videos)  # uses left before each video reaches the cap
+    with_photos = min(room // (CLIPS_PER_REEL - PHOTOS_IN_REEL), (room + photos * VIDEO_REUSE_CAP) // CLIPS_PER_REEL)
+    more = None if len(usable) < FEW_CLIPS else {"low": room // CLIPS_PER_REEL, "high": max(room // CLIPS_PER_REEL, with_photos),
+                                                   "cap": VIDEO_REUSE_CAP}
+    return {"clips": len(videos), "usable": len(usable), "fresh": fresh, "reelsLeft": fresh // CLIPS_PER_REEL, "more": more,
+            "canMake": len(usable) >= SHOTS_MIN and bool(videos), "_videos": videos}
+
+
 def _health(now: datetime | None = None) -> dict:
     from studio.assemble import THEMES, film_next
     from studio.library import items
@@ -126,7 +149,8 @@ def _health(now: datetime | None = None) -> dict:
     with connect() as con:
         cams = {r["path"]: r["camera"] for r in con.execute("SELECT path, camera FROM assets")}
     ranch = [r for r in rows if str(r.get("place", "")).startswith("ranch")]
-    clips = [r for r in ranch if r["kind"] == "video" and (r.get("duration") or 0) >= 2.5 and (r.get("junk") or 0) < 0.5]
+    est = estimate(rows)
+    clips = est.pop("_videos")
 
     def cam(r):
         return cams.get(r["path"]) or {"dji": "DJI drone", "phone": "Phone", "canon": "Canon", "gopro": "GoPro", "insta360": "Insta360"}.get(r["device"], "Unknown camera")
@@ -149,9 +173,6 @@ def _health(now: datetime | None = None) -> dict:
     uses = Counter(min(len(r["usedIn"]), 3) for r in clips)
     reuse = {"never": uses[0], "once": uses[1], "twice": uses[2], "3+": uses[3]}
     most = sorted((r for r in clips if len(r["usedIn"]) >= 3), key=lambda r: -len(r["usedIn"]))[:5]
-    fresh = reuse["never"]
-    room = sum(max(0, VIDEO_REUSE_CAP - len(r["usedIn"])) for r in clips)  # uses left before each video reaches the cap
-    more = {"low": room // CLIPS_PER_REEL, "high": room // VIDEOS_IN_MIXED_REEL, "cap": VIDEO_REUSE_CAP}
     thin = {t["theme"]: t for t in film_next()}
     themes = []
     for key, theme in THEMES.items():
@@ -162,11 +183,12 @@ def _health(now: datetime | None = None) -> dict:
             pool = [r for r in items(theme["slots"][0], {"ranch": True, "kind": "video"}, limit=20) if not want or r["device"] in want]
             top = Counter(cam(r) for r in pool).most_common(1)
             camera = top[0][0] if top else ("DJI drone" if "dji" in want else None)
-        themes.append({"theme": key, "title": theme["title_ja"], "need": theme["slots"][0], "left": t["left"] if t else None,
+        themes.append({"theme": key, "title": theme["title_ja"], "need": theme["slots"][0], "needJa": t.get("needJa") if t else None,
+                       "left": t["left"] if t else None,
                        "short": bool(t), "camera": camera})
     shoot = sorted((t for t in themes if t["short"]), key=lambda t: (t["left"], t["theme"]))
     return {
-        "clips": len(clips), "fresh": fresh, "reelsLeft": fresh // CLIPS_PER_REEL, "more": more, "reuse": reuse,
+        **est, "reuse": reuse,
         "mostReused": [{"file": r["file"], "uses": len(r["usedIn"]), "camera": cam(r)} for r in most],
         "cameras": cameras, "unknownCameras": sum(1 for r in ranch if cams.get(r["path"]) is None),  # never read ('' = read, none recorded)
         "shoot": shoot, "themes": len(themes), "asOf": now.isoformat(),

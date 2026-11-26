@@ -44,7 +44,9 @@ import qrcode from "qrcode-generator";
 import { defaultProjectsDir, isRanch, ranchOverlay } from "../shared/ranch.mjs";
 import { createStore as problemStore, findProblems, isNumbersJob, numbersJobProblem, readErrors } from "./problems.mjs";
 import { createTileProxy, DEFAULT_TILE_URL, validTemplate } from "./tiles.mjs";
-import { createUsage, featureIds, keepNetworksOnUpgrade, madeBefore, readLevel, tierOf, writeLevel } from "./uiprefs.mjs";
+import { cleanPicks, createUsage, featureIds, keepNetworksOnUpgrade, madeBefore, readLevel, readPicks, tierOf, writeLevel, writePicks } from "./uiprefs.mjs";
+import { draftsFile, draftsRoom, nextDraftsState, readDraftsState, writeDraftsState } from "./auto-drafts.mjs";
+import { checkFolder, typedFolder } from "./fspick.mjs";
 import { assemblePage, pageFiles } from "./ui.mjs";
 import { approvalRefusal, authFailLine, authLimiter, clientIp, insideRoots, isSlug, overHttps, pathKey, proxyPeer, strayPath, NET_RX, parseRange, readJson, refusal, rejectOptions, serverMode, SLUG_RX, tokenAttempt, tokenCookie, tokenOk, trustRules } from "./trust.mjs";
 
@@ -53,7 +55,8 @@ const SELF = fileURLToPath(import.meta.url);
 // STUDIO_PORT runs a second studio beside the first. Google sign-in returns to this port (a Desktop-type Google app accepts any
 // port on 127.0.0.1: py/studio/youtube.py redirect_uri).
 // STUDIO_QUIET=1: a studio for looking only (tests, a second copy on the same data): no posting, booking, swaps,
-// checks, Chrome link or resumed renders start by themselves (the footage engine does). What a person presses still works.
+// checks, Chrome link, resumed renders or drafts from new footage start by themselves (the footage engine does: what a
+// person adds is still catalogued). What a person presses still works.
 const QUIET = process.env.STUDIO_QUIET === "1";
 const PORT = /^\d{4,5}$/.test(process.env.STUDIO_PORT || "") ? Number(process.env.STUDIO_PORT) : 4317;
 /* What this process is serving. If the files change on disk later, /api/health says the server is stale. */
@@ -1043,8 +1046,9 @@ async function uiView() {
     else if (level === "simple") saved = uiQuietLevel = { level, chosen: false };
     else saved = { level: level || "full", chosen: false };
   }
-  return { level: saved.level, defaulted: !saved.chosen, usage: USAGE.view() };
+  return { level: saved.level, defaulted: !saved.chosen, usage: USAGE.view(), picks: uiQuietPicks || readPicks(UI_FILE) };
 }
+let uiQuietPicks = null;  // a look-only studio keeps Make reels' ticks in memory (BL-136)
 const aiRuns = new Map();
 function ai(action, input = {}) {
   const key = action + " " + JSON.stringify(input);
@@ -1405,33 +1409,31 @@ function startWatch(why) {
    them. At most drafts.perDay a day (Settings › Workflow › Runs by itself: making reels; studio.live "drafts", default
    on, 2), or STUDIO_AUTO_DRAFTS when .env sets it (0 turns it off). They wait in Reels for a person to approve: nothing
    is posted from here. Whether they use what worked is the learn.steer setting (studio.learn.steer_on). The day's
-   count and the last run live in STUDIO_HOME/auto-drafts.json (GET /api/loop shows them). */
+   count and the last run live in the project's own <data>/auto-drafts.json (GET /api/loop shows them; server/auto-drafts.mjs).
+   A look-only studio (STUDIO_QUIET) never drafts, even after a person-pressed folder add or Look for new files (BL-142). */
 const AUTO_DRAFTS_ENV = (() => { const v = pick("STUDIO_AUTO_DRAFTS", ""); return v !== "" && Number.isFinite(+v) ? Math.max(0, Math.min(10, +v)) : null; })();
-const AUTO_DRAFTS_FILE = join(HOME_DIR, "auto-drafts.json");
+const AUTO_DRAFTS_FILE = draftsFile(DATA);
+const AUTO_DRAFTS_LEGACY = join(HOME_DIR, "auto-drafts.json");  // the old count shared by every project: read, never written
 async function draftsPerDay() {
   if (AUTO_DRAFTS_ENV != null) return AUTO_DRAFTS_ENV;
   try { const d = (await liveSettings()).drafts || {}; return d.on === false ? 0 : Math.max(1, Math.min(10, Number(d.perDay) || 2)); } catch { return 2; }
 }
-function draftsState() { try { return JSON.parse(readFileSync(AUTO_DRAFTS_FILE, "utf8")) || {}; } catch { return {}; } }
+function draftsState() { return readDraftsState(AUTO_DRAFTS_FILE, { legacy: AUTO_DRAFTS_LEGACY }); }
 async function autoDrafts(why) {
-  const perDay = await draftsPerDay();
-  if (!perDay) return;
-  const file = AUTO_DRAFTS_FILE, today = new Date().toISOString().slice(0, 10);
-  let state = { day: today, n: 0, themeAt: 0 };
-  try { const s0 = JSON.parse(readFileSync(file, "utf8")); state = { ...state, ...s0, ...(s0.day !== today ? { day: today, n: 0 } : {}) }; } catch { /* first time */ }
-  const room = perDay - state.n;
+  if (QUIET) return;  // STUDIO_QUIET: a look-only studio catalogues what a person adds, but never makes reels by itself
+  const perDay = await draftsPerDay(), today = new Date().toISOString().slice(0, 10);
+  const state = { themeAt: 0, ...draftsState() };
+  const room = draftsRoom({ quiet: QUIET, perDay, state, today });
   if (room <= 0) return;
   try { diskGuard(); } catch { return; }
   const themes = await ask({ cmd: "themes" }).then((t) => (Array.isArray(t) ? t : Object.keys(t || {})).map((x) => (typeof x === "string" ? x : x.key)).filter(Boolean)).catch(() => []);
   if (!themes.length) return;
-  const pickThemes = Array.from({ length: Math.min(room, themes.length) }, (_, i) => themes[(state.themeAt + i) % themes.length]);
+  const pickThemes = Array.from({ length: Math.min(room, themes.length) }, (_, i) => themes[((Number(state.themeAt) || 0) + i) % themes.length]);
   const since = new Date(Date.now() - 4 * 86400e3).toISOString().slice(0, 10);  // the new footage, not the whole library
   // learned left out: the learn.steer setting decides (studio.learn.steer_on); by "auto" marks each reel made: {by: "auto"}.
   const made = await ask({ cmd: "autopilot", themes: pickThemes, since, faces: true, cut: "short", vary: true, by: "auto" }).catch((e) => { console.error(`[auto-drafts] ${e.message || e}`); return []; });
   made.forEach((m) => startRender(m.slug));
-  state = { ...state, day: today, n: state.n + made.length, themeAt: (state.themeAt + pickThemes.length) % themes.length,
-    last: new Date().toISOString(), lastWhy: why, lastMade: made.map((m) => m.slug), lastSteer: made.map((m) => m.steer || null), total: (state.total || 0) + made.length };
-  try { writeFileSync(file, JSON.stringify(state)); } catch { /* best effort */ }
+  writeDraftsState(AUTO_DRAFTS_FILE, nextDraftsState(state, { today, made, picked: pickThemes.length, themeCount: themes.length, why }));
   if (made.length) writeEvent("note", { text: `${made.length} new draft reel${made.length > 1 ? "s" : ""} from ${why}: ${made.map((m) => m.slug).join(", ")}. Review them in Reels.` });
   console.log(`[auto-drafts] ${why}: ${made.map((m) => m.slug).join(", ") || "none"}`);
 }
@@ -2380,10 +2382,16 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/fs/roots") {
       return send(res, 200, await pyResult(["sources", "roots"]));
     }
+    /* One folder's subfolders. The path may be typed or pasted in the picker (BL-141): quotes and a leading ~ are taken,
+       and it must exist and be a folder (server/fspick.mjs). hidden=1 lists hidden folders too (names starting with a dot,
+       AppData and the like; never the recycle bin or System Volume Information). */
     if (req.method === "GET" && url.pathname === "/api/fs/list") {
-      const path = folderArg(url.searchParams.get("path"));
-      if (!path) return send(res, 400, { error: "folder path" });
-      return send(res, 200, await pyResult(["sources", "ls", path]));
+      const typed = typedFolder(url.searchParams.get("path"));
+      const path = typed.path && folderArg(typed.path);
+      if (!path) return send(res, 400, { error: typed.error || "folder path" });
+      const there = checkFolder(path);
+      if (!there.ok) return send(res, 400, { error: there.error });
+      return send(res, 200, await pyResult(["sources", "ls", path, ...(url.searchParams.get("hidden") === "1" ? ["--hidden"] : [])]));
     }
     if (req.method === "POST" && url.pathname === "/api/sources/discover") {
       const path = folderArg((await body(req)).path);
@@ -2492,6 +2500,12 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/ui") return send(res, 200, await uiView());
     if (req.method === "POST" && url.pathname === "/api/ui") {
       const b = await body(req);
+      // The themes ticked on Make reels (BL-136): kept with the level, so a reload keeps them. Sent alone or with a level.
+      if (b.picks !== undefined) {
+        if (!Array.isArray(b.picks)) return send(res, 400, { error: "picks: a list of theme keys" });
+        if (QUIET) uiQuietPicks = cleanPicks(b.picks); else writePicks(UI_FILE, b.picks);
+        if (b.level === undefined) return send(res, 200, await uiView());
+      }
       if (!["simple", "full"].includes(b.level)) return send(res, 400, { error: "level: simple or full" });
       if (QUIET) uiQuietLevel = { level: b.level, chosen: true }; else writeLevel(UI_FILE, b.level, true);
       return send(res, 200, await uiView());
@@ -2907,7 +2921,9 @@ const server = createServer(async (req, res) => {
     /* Check every connection before a post needs it (py/studio/netcheck.py): each sign-in still works, it carries
        every permission the studio uses, and the latest failed post per network, each with the fix. Read-only. */
     if (req.method === "GET" && url.pathname === "/api/connections/check") {
-      try { return send(res, 200, await pyRun("studio.netcheck", "check", { chrome: extensionConnected() }, 90_000, "The connection check")); }
+      // ?nets=a,b: the networks the project uses (Settings › Accounts' "in use", BL-135); each is checked even before a booking.
+      const nets = (url.searchParams.get("nets") || "").split(",").filter((n) => /^[a-z0-9-]{1,40}$/.test(n)).slice(0, 30);
+      try { return send(res, 200, await pyRun("studio.netcheck", "check", { chrome: extensionConnected(), ...(nets.length ? { nets } : {}) }, 90_000, "The connection check")); }
       catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
     }
     /* One-click connect (Bluesky, Facebook): Python asks the network for its own sign-in page and returns the
@@ -2987,10 +3003,12 @@ const server = createServer(async (req, res) => {
         learn: { ...st.learn, env: pick("STUDIO_PERF_STEER", "") !== "", paused: await ask({ cmd: "paused_looks" }).catch(() => null) }, lessons: lessonsWeek() });
     }
     if (req.method === "GET" && url.pathname === "/api/autopost") {
-      const [settings, waiting] = await Promise.all([liveSettings(), ask({ cmd: "live", action: "waiting" })]);
+      // ready: which networks the daily plan can book on right now (autoReady, the same test autoPlan books by). Review
+      // reads it to say what Approve leads to: with none ready an approved reel is kept, and nothing is booked (BL-132).
+      const [settings, waiting, ready] = await Promise.all([liveSettings(), ask({ cmd: "live", action: "waiting" }), autoReady().catch(() => null)]);
       const tz = AUDIENCE_TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
       return send(res, 200, { settings, runs: autoRuns(), waiting, chrome: extensionConnected(), startup: startupState(), planning: !!planning,
-        checking: !!checking, networks: AUTO_NETS, today: todayIn(tz) });
+        checking: !!checking, networks: AUTO_NETS, ready, today: todayIn(tz) });
     }
     if (req.method === "POST" && url.pathname === "/api/autopost") {
       const b = await body(req);
@@ -3151,6 +3169,12 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "GET" && url.pathname === "/api/themes") {
       return send(res, 200, await ask({ cmd: "themes" }));
+    }
+    /* Ready-made stories for a first reel (BL-130, shared/starter-stories.json): Make reels offers them when the project
+       has no themes; one press saves one as the project's own theme (POST /api/themes). */
+    if (req.method === "GET" && url.pathname === "/api/themes/stories") {
+      try { return send(res, 200, { stories: JSON.parse(readFileSync(join(ROOT, "shared", "starter-stories.json"), "utf8")).stories || [] }); }
+      catch { return send(res, 200, { stories: [] }); }
     }
     /* A project's own themes (the theme editor): a headline, lines and what to film. A person types the words, so
        they are approved by being saved; the project's guard checks them. Built-in themes cannot be changed here. */

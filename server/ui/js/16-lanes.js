@@ -289,7 +289,7 @@ function nodeHtml(n, i) {
 }
 function sourceMap() {
   const m = mapNodes();
-  if (!m) return `<div class="smap-wrap"><div class="skel skel-line" style="width:40%"></div></div>`;
+  if (!m || !srcKnown()) return `<div class="smap-wrap"><div class="skel skel-line" style="width:40%"></div></div>`;  // no answer: no "0 places" (BL-138)
   loadMapLib();
   const s = foot.src, last = s.last || {};
   const clips = foot.mapLib ? foot.mapLib.length : null, unused = foot.mapLib ? foot.mapLib.filter((x) => x.u).length : null;
@@ -416,10 +416,25 @@ async function pickerGo(path) {
       const clouds = p.roots.filter((x) => x.kind === "cloud"), held = (foot.src?.sources || []).map((x) => normPath(x.path));
       path = (clouds.find((c) => held.some((h) => h.startsWith(normPath(c.path) + "/"))) || clouds[0])?.path || null;
     }
-    p.list = path ? await api("/api/fs/list?path=" + encodeURIComponent(path)) : null;
+    p.list = path ? await api("/api/fs/list?path=" + encodeURIComponent(path) + (p.hidden ? "&hidden=1" : "")) : null;
+    if (p.list) p.typed = p.list.path;  // the path box follows the folder shown
   } catch (err) { p.error = err.message; }
   p.loading = false; renderHome(true);
 }
+/* BL-141: a folder the buttons cannot reach. A typed or pasted path (the server checks it exists and is a folder:
+   GET /api/fs/list), and "Show hidden folders" (dot folders, AppData) for the list. */
+document.addEventListener("submit", (e) => {
+  if (e.target.id !== "fsType" || !foot.picker) return;
+  e.preventDefault();
+  const v = e.target.querySelector("input")?.value.trim();
+  if (v) { foot.picker.typed = v; pickerGo(v); }
+});
+document.addEventListener("input", (e) => { if (e.target.id === "fsTyped" && foot.picker) foot.picker.typed = e.target.value; });
+document.addEventListener("change", (e) => {
+  if (e.target.id !== "fsHidden" || !foot.picker) return;
+  foot.picker.hidden = e.target.checked;
+  pickerGo(foot.picker.list?.path || null);
+});
 function pickerHtml() {
   const p = foot.picker;
   if (!p) return "";
@@ -435,17 +450,24 @@ function pickerHtml() {
     <div class="pk-body">
       <nav class="pk-roots">${(p.roots || []).map((x) => `<button class="${l && l.path === x.path ? "on" : ""}" data-fsgo="${esc(x.path)}" title="${esc(x.path)}">${ico(x.kind === "cloud" ? "image" : x.kind === "source" ? "pin" : x.kind === "home" ? "folder" : "layers", "sm")}<span>${esc(x.label)}</span></button>`).join("") || (p.loading ? "…" : "")}</nav>
       <section class="pk-main">
-        ${p.error ? `<p class="bad">${ico("alert", "sm")} ${esc(p.error)}</p>` : ""}
+        <div class="pk-type"><form id="fsType" role="search"><label class="sr-only" for="fsTyped">${esc(tr("hm.pk.typed"))}</label>
+          <input id="fsTyped" data-lyfocus="fstyped" type="text" spellcheck="false" autocomplete="off" value="${esc(p.typed || "")}" placeholder="${esc(tr("hm.pk.typedph"))}">
+          <button type="submit">${esc(tr("hm.pk.go"))}</button></form>
+          <label class="pk-hid"><input type="checkbox" id="fsHidden" ${p.hidden ? "checked" : ""}> ${esc(tr("hm.pk.hidden"))}</label></div>
+        ${p.error ? `<p class="bad" role="alert">${ico("alert", "sm")} ${esc(p.error)}</p>` : ""}
         ${l ? `<div class="pk-crumbs">${l.parent ? `<button data-fsgo="${esc(l.parent)}" title="${esc(tr("src.up"))}">${ico("chev-u", "sm")}</button>` : ""}${crumbsHtml}</div>
           <div class="pk-here"><span class="meta">${tr("src.here", { n: l.media, d: l.dirs.length })}</span><span class="grow"></span>
             ${l.included ? `<span class="chip ok">${ico("check", "sm")}${tr("src.already", { s: esc(l.included.label) })}</span>` : ""}
             <button class="primary" id="fsDiscover" data-path="${esc(l.path)}" ${job?.status === "running" ? "disabled" : ""}>${ico("search", "sm")}${tr("src.look")}</button></div>
           ${job?.status === "running" ? `<div class="jobline s-scheduled">${ico("clock", "sm")} ${esc(job.label || "")}</div>` : ""}
-          ${r ? reportHtml(r) : `<div class="pk-dirs">${l.dirs.map((d) => `<button data-fsgo="${esc(d.path)}" title="${esc(d.path)}">${ico("folder", "sm")}<span>${esc(d.name)}</span></button>`).join("") || `<p class="note">${tr("src.nodirs")}</p>`}</div>`}`
+          ${r ? reportHtml(r) : `<div class="pk-dirs">${l.dirs.map((d) => `<button ${d.hidden ? 'class="hid" ' : ""}data-fsgo="${esc(d.path)}" title="${esc(d.path)}">${ico("folder", "sm")}<span>${esc(d.name)}</span></button>`).join("") || `<p class="note">${tr("src.nodirs")}</p>`}</div>`}`
         : `<p class="note">${p.loading ? "…" : tr("src.start")}</p>`}
       </section>
     </div></div></div>`;
 }
+/* What is in a folder before it is added. Placed by GPS or Shot here is asked only when the project has a home place
+   (BL-133: without one every file is used whatever the answer, "ranch (no home place)"); r.homePlace comes from
+   py/studio/sources.py discover, and an older engine without it asks as before. */
 function reportHtml(r) {
   const k = r.kinds || {}, mode = foot.picker.mode || "gps";
   const tile = (n, label) => `<div class="tile-stat"><b>${n ?? 0}</b><span>${label}</span></div>`;
@@ -456,10 +478,10 @@ function reportHtml(r) {
     <div class="row wrap">${Object.entries(r.years || {}).map(([y, n]) => `<span class="chip">${esc(y)} · ${n}</span>`).join(" ")}</div>
     ${(r.newest || []).length ? `<p class="meta">${tr("src.r.newest")}: ${r.newest.slice(0, 4).map((x) => esc(x.path.split(/[\\/]/).pop())).join(", ")}</p>` : ""}
     ${r.included ? `<p class="note">${ico("check", "sm")} ${tr("src.already", { s: esc(r.included.label) })}</p>` : `
-    <fieldset class="modes"><legend>${tr("src.how")}</legend>
+    ${r.homePlace === false ? `<p class="meta">${ico("info", "sm")} ${esc(tr("hm.noplace"))}</p>` : `<fieldset class="modes"><legend>${tr("src.how")}</legend>
       <label><input type="radio" name="srcMode" value="gps" ${mode === "gps" ? "checked" : ""}> <b>${tr("src.gps")}</b> <span class="meta">${tr("src.gpstip")}</span></label>
       <label><input type="radio" name="srcMode" value="trusted" ${mode === "trusted" ? "checked" : ""}> <b>${trR("src.trusted")}</b> <span class="meta">${trR("src.trustedtip")}</span></label>
-    </fieldset>
+    </fieldset>`}
     <div class="row"><button data-fsgo="${esc(r.path)}">${ico("chev-l", "sm")}${tr("src.back")}</button><span class="grow"></span>
       <button class="primary" id="fsInclude" data-path="${esc(r.path)}" ${r.total ? "" : 'disabled aria-describedby="fsNone"'}>${ico("plus", "sm")}${tr("src.include", { n: r.total })}</button></div>
     ${r.total ? "" : `<p class="note" id="fsNone">${ico("info", "sm")} ${tr("src.nofiles")}</p>`}`}
@@ -469,8 +491,9 @@ async function loadFootage() {
   foot.loading = true;
   const filters = { ranch: true, ...(foot.f === "video" || foot.f === "photo" ? { kind: foot.f } : {}), ...(foot.f === "unused" ? { unused: true } : {}), ...(foot.f === "360" ? { is360: true, ranch: false } : {}) };
   foot.loadedKey = JSON.stringify([foot.q, foot.f]);
-  try { const r = await post("/api/library", { query: foot.q, filters, limit: foot.q ? 300 : 5000 }); foot.items = foot.f === "used" ? r.items.filter((i) => i.usedIn.length || i.inVlogs?.length) : foot.f === "new" ? r.items.filter((i) => tdFoot.base != null && i.id > tdFoot.base) : r.items; foot.error = null; }
-  catch (err) { foot.error = err.message; }
+  try { const r = await post("/api/library", { query: foot.q, filters, limit: foot.q ? 300 : 5000 }); foot.items = foot.f === "used" ? r.items.filter((i) => i.usedIn.length || i.inVlogs?.length) : foot.f === "new" ? r.items.filter((i) => tdFoot.base != null && i.id > tdFoot.base) : r.items; foot.error = null; foot.itemsOk = true; }
+  // BL-138: no answer is no count ("…" until one comes, footKnown), and a studio that was away is asked again once back.
+  catch (err) { foot.error = err.message; foot.itemsOk = false; if (err.offline) foot.away = true; }
   foot.loading = false;
   if (atHome() && page === "footage") renderHome(true);
 }
@@ -588,7 +611,7 @@ function footHealth() {
       <span class="meta">${tr("fh.camline", { v: c.videos, p: c.photos, m: c.minutes, u: c.unused, r: c.recent })} · ${tr("fh.newest")} ${day(c.newest)}</span></div>`).join("")}</div>
     ${h.unknownCameras ? `<p class="meta">${trA("fh.unknown", { n: h.unknownCameras })} <button class="mini" data-fhcams="1">${ico("search", "sm")}${tr("fh.read")}</button></p>` : ""}
     <h4 id="fhShoot" tabindex="-1">${tr("fh.shoot")} · ${h.shoot.length}</h4>
-    ${h.shoot.length ? `<div class="fh-shoot">${(foot.shootAll ? h.shoot : h.shoot.slice(0, 5)).map((t) => `<div class="fh-row"><b>${ico(THEME_ICON[t.theme] || "film", "sm")} ${esc(t.theme)}</b><span class="${t.left ? "" : "bad"}">${t.left ? tr("f.left", { n: t.left }) : tr("f.noneleft")}</span><span>${esc(t.need)}</span><span class="meta">${t.camera ? tr("fh.with", { c: esc(t.camera) }) : ""}</span></div>`).join("")}</div>${h.shoot.length > 5 ? `<button class="rg-more" data-shootall="1">${tr(foot.shootAll ? "grp.showless" : "fh.shootall", { n: h.shoot.length })}</button>` : ""}` : `<p class="meta">${tr("fh.allgood")}</p>`}
+    ${h.shoot.length ? `<div class="fh-shoot">${(foot.shootAll ? h.shoot : h.shoot.slice(0, 5)).map((t) => `<div class="fh-row"><b>${ico(THEME_ICON[t.theme] || "film", "sm")} ${esc(t.theme)}</b><span class="${t.left ? "" : "bad"}">${t.left ? tr("f.left", { n: t.left }) : tr("f.noneleft")}</span><span>${esc(mkNeed(t))}</span><span class="meta">${t.camera ? tr("fh.with", { c: esc(t.camera) }) : ""}</span></div>`).join("")}</div>${h.shoot.length > 5 ? `<button class="rg-more" data-shootall="1">${tr(foot.shootAll ? "grp.showless" : "fh.shootall", { n: h.shoot.length })}</button>` : ""}` : `<p class="meta">${tr("fh.allgood")}</p>`}
   </section>`;
 }
 document.addEventListener("click", async (e) => {

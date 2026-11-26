@@ -86,6 +86,22 @@ export function writeLevel(file, level, chosen = true) {
   return { level, chosen };
 }
 
+/* The themes ticked on Make reels (BL-136: "It is ticked below", then a reload said 0 of 2 picked). Theme keys only
+   (py/studio/assemble.py THEME_KEY), each once, at most 60; a key whose theme was deleted is dropped by the page. */
+const THEME_KEY = /^[a-z][a-z0-9-]{0,23}$/;
+export const cleanPicks = (list) => [...new Set((Array.isArray(list) ? list : []).filter((k) => typeof k === "string" && THEME_KEY.test(k)))].slice(0, 60);
+/** The saved ticks, or null when none were ever saved (the page then starts with nothing ticked). */
+export function readPicks(file) {
+  const v = readJsonFile(file, null);
+  return v && Array.isArray(v.picks) ? cleanPicks(v.picks) : null;
+}
+/** Keep the ticks beside the level (the level and its `chosen` flag are left as they are). Returns the ticks kept. */
+export function writePicks(file, picks) {
+  const kept = cleanPicks(picks);
+  writeJsonFile(file, { ...readJsonFile(file, {}), picks: kept });
+  return kept;
+}
+
 /**
  * Usage counts per id: {id: {n, last}} with `last` an ISO date. hit() takes only an id from `allowed` (anything else is
  * refused, so the file can never grow with made-up names) and writes at most once per `delayMs` (the page reports

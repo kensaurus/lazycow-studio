@@ -1,20 +1,39 @@
-/* ---------- Home (#/home and #/, BL-115) ----------
-   What a person needs first. Someone new (no footage, no reel or no network yet) gets four setup cards in order:
-   add footage, make a first reel, connect a network, book a first post. Each ticks itself from what the studio sees
-   (they replace the old "Your first week" list on Today). Someone returning gets the loop, what goes out next, what
-   needs them and last week in one line. Built from the renderers and data the other pages already use; ≤ 1.5 screens. */
+/* ---------- Home (#/home and #/, BL-115, BL-131) ----------
+   What a person needs first. A project with no footage yet gets one box (BL-131, 26 Nov: "Drop your videos here and we
+   make your first reel": drop, Choose a folder or Choose files, the same way in as Footage › Add) and a row of starter
+   stories under it. Once footage is in, the setup steps live in the header chip (paintStartChip: the same essentials of
+   startSteps) and never stack on Home as cards: someone new sees what needs them and what goes out next, someone
+   returning the loop, what goes out next, what needs them and last week in one line. Built from the renderers and data
+   the other pages already use; ≤ 1.5 screens. */
 let homeAsked = false;
-// Home's cards are the essentials of the one setup list (startSteps in 08-palette-wizard.js), as the header chip counts.
+// The essentials of the one setup list (startSteps in 08-palette-wizard.js), as the header chip counts them.
 function homeSteps() { return essentialSteps(); }
-function homeSetupHtml(steps) {
-  const done = steps.filter((s) => s.ok).length, next = steps.find((s) => !s.ok), pct = Math.round((100 * done) / steps.length);
-  return `<section class="fw hm-setup" aria-labelledby="hmSetupT">
-    <div class="fw-head"><span class="fw-ring" style="--p:${pct}" aria-hidden="true"><b>${done}</b></span><div><h3 id="hmSetupT">${esc(tr("hm.title"))}</h3><span class="meta">${esc(tr("hm.sub", { n: done, of: steps.length }))}</span></div>
-      <div class="fw-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${steps.length}" aria-valuenow="${done}" aria-label="${esc(tr("hm.title"))}"><i style="transform:scaleX(${(done / steps.length).toFixed(3)})"></i></div></div>
-    <ol class="fw-steps hm-steps">${steps.map((s, n) => {
-      const inner = `<span class="fw-tick" aria-hidden="true">${s.ok ? ico("check", "sm") : n + 1}</span><span class="fw-txt">${ico(s.icon)}<b>${esc(tr("d_fw.s." + s.id))}</b><span class="meta">${esc(tr(s.ok ? "d_fw.ok" : "d_fw.d." + s.id))}</span></span>${s.ok ? `<span class="sr-only">${esc(tr("d_fw.ok"))}</span>` : `<span class="btn ${next === s ? "primary" : ""} hm-go">${esc(tr("hm.go"))} ›</span>`}`;
-      return `<li class="${s.ok ? "ok" : ""}${next === s ? " next" : ""}">${s.make ? `<a href="#/reels" data-openmaker="1">${inner}</a>` : `<a href="${s.href}">${inner}</a>`}</li>`;
-    }).join("")}</ol></section>`;
+/* Starter stories: the gallery is on Make reels. When the page has its list (mkStarterStories(): [{id, title, icon?}] in
+   the page's language), Home shows its first four as cards; without it, one link. Each opens Make reels, the story's id in
+   data-starter for the maker to pick up. */
+function homeStoriesHtml() {
+  let list = [];
+  try { list = typeof mkStarterStories === "function" ? (mkStarterStories() || []).filter((s) => s?.id && s?.title).slice(0, 4) : []; } catch { list = []; }
+  const head = `<h3>${ico("film", "sm")}<span>${esc(tr("hm.st.title"))}</span></h3>`;
+  if (!list.length) return `<section class="hm-stories" aria-label="${esc(tr("hm.st.title"))}">${head}<p><a class="btn" href="#/reels" data-openmaker="1">${ico("clapper", "sm")}${esc(tr("hm.st.pick"))} ›</a><span class="meta">${esc(tr("hm.st.hint"))}</span></p></section>`;
+  return `<section class="hm-stories" aria-label="${esc(tr("hm.st.title"))}">${head}
+    <ul class="hm-storyrow">${list.map((s) => `<li><a href="#/reels" data-openmaker="1" data-starter="${esc(s.id)}">${ico(s.icon || "film", "sm")}<b>${esc(s.title)}</b></a></li>`).join("")}</ul>
+    <p><a href="#/reels" data-openmaker="1">${esc(tr("hm.st.pick"))} ›</a></p></section>`;
+}
+/* The one box for a project with no footage: the Footage › Add drop zone, larger. A drop anywhere on the page uploads
+   (takeFiles), and the upload bars show on Footage › Add, where uploadFiles goes. */
+function homeOneHtml() {
+  return `<section class="hm-one" aria-labelledby="hmOneT">${addDropHtml(`<span id="hmOneT">${esc(tr("hm.one.title"))}</span>`, esc(tr("hm.one.sub")), "hm-drop")}</section>${homeStoriesHtml()}`;
+}
+/* The next step once footage is in and no reel is made yet (the setup cards are the header chip's, BL-131): one box,
+   "Make your first reel", that opens the maker on Reels. A project with no themes gets the starter stories under it (the
+   maker shows them too). It goes once any reel of the project's own exists, made or being made. */
+function homeFirstHtml() {
+  const lib = overview.library || {}, n = lib.ranch || lib.total || 0;
+  const none = !!themes && !Object.keys(themes).length;
+  return `<section class="hm-first" aria-labelledby="hmFirstT"><span class="hm-firstico" aria-hidden="true">${ico("clapper")}</span>
+    <div><h3 id="hmFirstT">${esc(tr("hm.first.title"))}</h3><p class="meta">${esc(tr(none ? "hm.first.subnone" : "hm.first.sub", { n: n.toLocaleString() }))}</p></div>
+    <a class="btn primary hm-firstgo" href="#/reels" data-openmaker="1">${ico("clapper", "sm")}${esc(tr("hm.first.go"))}</a></section>${none ? homeStoriesHtml() : ""}`;
 }
 function renderHomePage() {
   const L = lang === "ja" ? "ja-JP" : "en-GB";
@@ -27,6 +46,8 @@ function renderHomePage() {
   }
   loadToday();
   const steps = homeSteps(), isNew = steps.slice(0, -1).some((s) => !s.ok);  // all but the last (booking / YouTube) done = returning
+  // No footage yet: the one box (BL-131); the header chip counts the steps.
+  if (!steps.find((s) => s.id === "footage")?.ok) { $("#home").innerHTML = head + homeOneHtml(); return; }
   // Next posts: what goes out today, else the next few booked.
   const today = wallOf(Date.now()).slice(0, 10), outs = laneData([today]).items.filter((x) => x.state !== "posted");
   const next = outs.length ? outs.slice(0, 4).map((x) => ({ at: null, hm: x.hm, network: x.row, slug: x.slug }))
@@ -40,9 +61,12 @@ function renderHomePage() {
   // Last week in one line (the same number as Today and Results: weekViews).
   const wk = weekViews(), num = (n) => Math.round(n || 0).toLocaleString(L);
   const week = `<a class="hm-week" href="#/results">${ico("wave", "sm")}<b>${esc(tr("hm.week"))}</b><span>${wk ? `${esc(tr("hm.weekline", { n: num(wk.now) }))} · <span class="td-delta ${wk.tone}">${esc(wk.label)}</span>` : todayPerf ? esc(tr("hm.noweek")) : "…"}</span><span class="grow"></span>${esc(tr("nav.results"))} ›</a>`;
+  // Footage is in: the setup steps are the header chip's, not cards here (BL-131), whatever is still to do; with no reel
+  // of the project's own yet, the one next step on top.
+  const first = steps.some((s) => s.id === "reel") && !overview.reels.some((r) => !r.house);
   $("#home").innerHTML = isNew
-    ? `${head}${homeSetupHtml(steps)}<div class="hm-grid">${needBox}${nextBox}</div>`
-    : `${head}${lpaStripHtml()}<div class="hm-grid">${nextBox}${needBox}</div>${week}${steps.every((s) => s.ok) ? "" : homeSetupHtml(steps)}`;
+    ? `${head}${first ? homeFirstHtml() : ""}<div class="hm-grid">${needBox}${nextBox}</div>`
+    : `${head}${lpaStripHtml()}<div class="hm-grid">${nextBox}${needBox}</div>${week}`;
 }
 /* ---------- More tools (#/more, BL-118): the full-mode tools, one step away ----------
    One card per tool from FEATURES: its icon, name, one line on what it is for and how often this project used it
@@ -60,10 +84,13 @@ function uiSwitchHtml() {
 function renderMore() {
   const ids = Object.keys(FEATURES).filter((id) => FEATURES[id].level === "full");
   const card = (id) => `<li><a class="mt-card" href="${ftHref(id)}">${kTile({ icon: ftIcon(id), hue: { reels: 28, posting: 215, results: 145, settings: 262 }[FEATURES[id].sec] ?? 198 })}
-    <span class="mt-txt"><b>${esc(ftName(id))}</b><span class="meta mt-help">${esc(tr(FEATURES[id].help))}</span><span class="meta mt-use">${esc(tr("nav." + FEATURES[id].sec))} · ${esc(uiUsedLine(id))}</span></span></a></li>`;
+    <span class="mt-txt"><b>${esc(ftName(id))}</b><span class="meta mt-help">${esc(tr(FEATURES[id].help))}</span><span class="meta mt-use">${esc(uiUsedLine(id))}</span></span></a></li>`;
+  // BL-139: one short group per section (its name said once, not on every card), so the page fits two phone screens.
+  const SECS = ["reels", "posting", "results", "settings"];
+  const groups = SECS.map((s) => [s, ids.filter((id) => FEATURES[id].sec === s)]).concat([["", ids.filter((id) => !SECS.includes(FEATURES[id].sec))]]).filter(([, l]) => l.length);
   $("#home").innerHTML = `<div class="pagehead">${crumbs([tr("nav.more")])}<span class="meta">${esc(tr("mt.lead"))}</span></div>
     ${uiSwitchHtml()}
-    <ul class="mt-grid">${ids.map(card).join("")}</ul>
+    ${groups.map(([s, l]) => `<section class="mt-sec">${s ? `<h3 class="mt-h">${esc(tr("nav." + s))}<span class="count">${l.length}</span></h3>` : ""}<ul class="mt-grid">${l.map(card).join("")}</ul></section>`).join("")}
     <p class="meta mt-private">${ico("shield", "sm")} ${esc(tr("mt.private"))}</p>`;
 }
 /* A full-mode tool opened by its address in simple mode: it works as always, with one slim line saying so. */
@@ -79,15 +106,15 @@ function uiApply(v) {
   if (!v || !["simple", "full"].includes(v.level)) return;
   uiDefaulted = !!v.defaulted; uiUsage = v.usage || {};
   const changed = v.level !== uiLevel;
-  uiLevel = v.level; lsSet("lc.ui.level", uiLevel);
+  uiLevel = v.level; lsSet("lc.ui.level", uiLevel); uiChrome();
   if (changed && atHome()) renderHome(true);
 }
 function uiLoad() { api("/api/ui").then(uiApply).catch(() => { /* an older server: everything shows, as before */ }); }
 async function uiSetLevel(level) {
   const was = uiLevel;
-  uiLevel = level; lsSet("lc.ui.level", level); if (atHome()) renderHome(true);
+  uiLevel = level; lsSet("lc.ui.level", level); uiChrome(); if (atHome()) renderHome(true);
   try { uiApply(await post("/api/ui", { level })); toast(`${ico(level === "full" ? "grid" : "check", "sm")} ${esc(tr(level === "full" ? "uix.nowfull" : "uix.nowsimple"))}`, 3500); }
-  catch (err) { uiLevel = was; lsSet("lc.ui.level", was); if (atHome()) renderHome(true); toast(`${ico("alert", "sm")} ${esc(err.message)}`, 6000); }
+  catch (err) { uiLevel = was; lsSet("lc.ui.level", was); uiChrome(); if (atHome()) renderHome(true); toast(`${ico("alert", "sm")} ${esc(err.message)}`, 6000); }
 }
 document.addEventListener("change", (e) => { const s = e.target.closest?.("[data-uilevel]"); if (s) uiSetLevel(s.checked ? "full" : "simple"); });
 document.addEventListener("click", (e) => { const b = e.target.closest?.("[data-uilevelset]"); if (b) uiSetLevel(b.dataset.uilevelset); });

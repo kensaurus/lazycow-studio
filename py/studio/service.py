@@ -170,6 +170,13 @@ def _library_rows() -> dict:
 _FILM = {"at": 0.0, "data": []}
 
 
+def _themes_changed() -> None:
+    """A theme saved or deleted: what to film next and the footage health (both per theme, kept ten minutes) are worked
+    out again on the next ask, so the theme badges and the runway show the new theme at once, not ten minutes later."""
+    _FILM["at"] = 0.0
+    _FOOTAGE.pop("data", None)
+
+
 def _film_next() -> list:
     import time
 
@@ -380,6 +387,17 @@ def _apply_preset(project: dict, preset: dict) -> dict | None:
 _FOOTAGE: dict = {}
 
 
+def _reels_stamp() -> tuple:
+    """How many reel files there are and when the newest changed: a reel made or changed uses clips (library usage)."""
+    from studio.config import PROJECTS
+
+    try:
+        times = [f.stat().st_mtime_ns for f in PROJECTS.glob("*.json")]
+    except OSError:
+        return (0, 0)
+    return (len(times), max(times, default=0))
+
+
 def handle(req: dict) -> object:
     cmd = req.get("cmd")
     if "studio.assemble" in sys.modules:  # a theme saved by another process (or by hand) is seen on the next request
@@ -406,8 +424,11 @@ def handle(req: dict) -> object:
 
         from studio import footage
 
-        if req.get("fresh") or not _FOOTAGE.get("data") or _t.time() - _FOOTAGE.get("at", 0) > 600:  # ten minutes
-            _FOOTAGE.update(data=footage.health(), at=_t.time())
+        # Kept ten minutes, and counted again as soon as a reel is made or changed (BL-134: the estimate stayed put
+        # while reels were being made from the clips it counted).
+        stamp = _reels_stamp()
+        if req.get("fresh") or not _FOOTAGE.get("data") or _t.time() - _FOOTAGE.get("at", 0) > 600 or _FOOTAGE.get("stamp") != stamp:
+            _FOOTAGE.update(data=footage.health(), at=_t.time(), stamp=stamp)
         return _FOOTAGE["data"]
     if cmd == "footage_places":  # where the footage was filmed, on a ~100 m grid (read only, kept ten minutes)
         import time as _t
@@ -424,12 +445,15 @@ def handle(req: dict) -> object:
     if cmd == "theme_save":
         from studio.assemble import save_theme
 
-        return {"key": req.get("key"), "theme": save_theme(str(req.get("key") or ""), req.get("theme") or {})}
+        saved = save_theme(str(req.get("key") or ""), req.get("theme") or {})
+        _themes_changed()
+        return {"key": req.get("key"), "theme": saved}
     if cmd == "theme_delete":
         from studio.assemble import delete_theme
 
         if not delete_theme(str(req.get("key") or "")):
             raise ValueError(f"no theme {req.get('key')} of this project to delete (built-in themes cannot be deleted)")
+        _themes_changed()
         return {"deleted": req.get("key")}
     if cmd == "perf_read":  # scores and predictions read the reel list: the warm one here, not a cold process
         from studio import perf

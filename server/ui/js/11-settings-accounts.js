@@ -602,9 +602,12 @@ function accMapHtml(nets, st, { viaChrome, chromeOn, ws }) {
     if (o) detail = amcPanel(o, { viaChrome, chromeOn, how: howName(o.x.how), what: howWhat(o.x.how), sent: sent(o.n), day, fresh: wasShown !== open });
   }
   accMap.shown = open && detail.includes('id="amDetail"') ? open : null;
-  const html = `<section class="panel ammap" aria-labelledby="amTitle"><div class="fh-head"><h3 id="amTitle">${ico("send")} ${tr("am.title")}</h3></div>
+  // BL-139: on a phone the map folds under its title (it ran 945 px of Settings' three screens); the person's choice
+  // to open or close it holds while the page redraws.
+  const mapOpen = accMap.open ?? !matchMedia("(max-width: 760px)").matches;
+  const html = `<details class="panel ammap am-fold" data-amfold ${mapOpen ? "open" : ""}><summary class="fh-head"><h3 id="amTitle">${ico("send")} ${tr("am.title")}</h3><span class="am-foldsum">${esc(tr("am.hub", { n: all.length }))} · ${esc(tr("am.booked", { n: bookedAhead().length }))}</span></summary>
     ${wireMap({ id: "amMap", label: tr("am.label"), hub, cls: "flow-out", branches: groups.map((g) => ({ node: howNode(g), kids: g.list.map(netNode) })) })}
-    ${detail}</section>`;
+    ${detail}</details>`;
   if (moCalm() || !("IntersectionObserver" in window)) { for (const g of groups) { accMap.seen.add("how:" + g.h); for (const o of g.list) accMap.seen.add(o.n); } accMap.seen.add("_hub"); }  // else marked once on screen (moWatch)
   return html;
 }
@@ -626,6 +629,11 @@ document.addEventListener("click", (e) => {
   card.classList.remove("flash"); void card.offsetWidth; card.classList.add("flash");
   setTimeout(() => card.querySelector("button, a, input")?.focus({ preventScroll: true }), 300);
 });
+document.addEventListener("toggle", (e) => {
+  if (!e.target.matches?.("[data-amfold]")) return;
+  accMap.open = e.target.open;
+  if (e.target.open) requestAnimationFrame(() => drawWires());  // the wires are drawn from the laid-out nodes
+}, true);
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || !e.target.closest?.("#amDetail")) return;
   e.preventDefault(); document.querySelector('#amDetail [data-accnode=""]')?.click();
@@ -799,11 +807,14 @@ async function amcTry(n) {
    18 Nov: a Bluesky post failed with a bare 401 (the account's email was not verified) and Story numbers needed a Meta
    permission nobody knew was missing. The check asks each network once when Accounts opens (read-only, about 10 s) and
    lists only what needs a hand, each with its fix and the page to open. */
-let ncView = null, ncBusy = false;
+/* BL-135 (first-run walk 26 Nov): "No network is in use yet" sat under "Main · 6 networks in use". The check now asks
+   about the networks the header counts (every one the project has not switched off, ?nets=), not only the ones already
+   booked or posted, and the request is made again when that list changes. */
+let ncView = null, ncBusy = false, ncNets = [], ncKey = null;
 function runNetCheck() {
   if (ncBusy) return;
-  ncBusy = true; setTimeout(() => { if (page === "accounts" && atHome()) renderHome(true); }, 0);  // through renderHome (drawAccounts alone dropped the Settings tab row), after any draw under way
-  api("/api/connections/check").then((v) => { ncView = v; }, (err) => { ncView = { error: err.message }; })
+  ncBusy = true; ncKey = ncNets.join(","); setTimeout(() => { if (page === "accounts" && atHome()) renderHome(true); }, 0);  // through renderHome (drawAccounts alone dropped the Settings tab row), after any draw under way
+  api("/api/connections/check" + (ncNets.length ? "?nets=" + encodeURIComponent(ncNets.join(",")) : "")).then((v) => { ncView = v; }, (err) => { ncView = { error: err.message }; })
     .finally(() => { ncBusy = false; if (page === "accounts" && atHome()) renderHome(true); });
 }
 /* Track C (24 Nov): the same finding on several networks is one line naming them all ("Your Chrome is not linked" was
@@ -817,8 +828,21 @@ function tcNcGroups(need) {
   }
   return [...g.values()];
 }
-function netCheckHtml(once = []) {
-  if (ncView === null && !ncBusy) runNetCheck();
+/* The check's networks as the page shows them: fine, a step still to do under Needs one step (inStep), or a finding to
+   list. A network in its step keeps only a failed post of its own as a finding (BL-135). */
+function ncSteps(nets, inStep) {
+  const c = { ok: 0, step: 0, warn: 0, bad: 0 }, fine = [], need = [], steps = [];
+  for (const n of nets) {
+    const mine = inStep(n) ? (n.checks || []).filter((x) => x.id === "lastpost") : n.checks || [];
+    const st = mine.some((x) => x.ok === false) ? "bad" : mine.some((x) => x.ok === null) ? "warn" : inStep(n) ? "step" : "ok";
+    c[st]++;
+    if (st === "ok") fine.push(n); else if (st === "step") steps.push(n); else need.push({ ...n, checks: mine });
+  }
+  return { c, fine, need, steps };
+}
+function netCheckHtml(once = [], inUse = []) {
+  ncNets = inUse;
+  if ((ncView === null || ncKey !== inUse.join(",")) && !ncBusy) runNetCheck();
   const V = ncView;
   const head = (state, say) => `<div class="nchead"><h2>${ico(state === "ok" ? "check" : "alert", "sm")}${tr("nc.h")}</h2><span class="meta">${say}</span><span class="grow"></span>
     <button class="linkish" data-netcheck="1" ${ncBusy ? "disabled" : ""}>${ico(ncBusy ? "hourglass" : "refresh", "sm")}${tr(ncBusy ? "nc.checking" : "nc.again")}</button></div>`;
@@ -826,22 +850,21 @@ function netCheckHtml(once = []) {
   if (V.error) return `<section class="netcheck warn">${head("warn", esc(V.error))}</section>`;
   const nets = V.networks || [];
   if (!nets.length) return `<section class="netcheck">${head("ok", tr("nc.none"))}</section>`;
-  // Track C (24 Nov): a network that still needs its one-time check (Needs one step below: the studio cannot see your
-  // Chrome's sign-in from outside) is "worth a look" here too, not "fine" (it said "11 fine" above "Needs one step (4)").
+  // A network the header puts under Needs one step (connect once, link Chrome, check a sign-in once) counts as that step
+  // here, never as "fine" (Track C, 24 Nov: "11 fine" above "Needs one step (4)") nor as a second problem: its sign-in
+  // findings are the step's own row below. Only a failed post of its own is listed again (BL-135).
   const step = new Set(once.map((n) => chOf(n)).concat(once));
-  const isOnce = (n) => n.state === "ok" && (step.has(n.network) || step.has(chOf(n.network)));
-  const k = nets.filter(isOnce).length;
-  const c = { ...(V.counts || {}) }; c.ok = Math.max(0, (c.ok || 0) - k); c.warn = (c.warn || 0) + k;
-  const worst = c.bad ? "bad" : c.warn ? "warn" : "ok";
-  const fine = nets.filter((n) => n.state === "ok" && !isOnce(n)), need = nets.filter((n) => n.state !== "ok"), checkOnce = nets.filter(isOnce);
+  const { c, fine, need, steps } = ncSteps(nets, (n) => step.has(n.network) || step.has(chOf(n.network)));
+  const worst = c.bad ? "bad" : c.warn || c.step ? "warn" : "ok";
   const item = (x) => `<li><span class="${x.ok === false ? "t-bad" : "t-warn"}">${tr(x.ok === false ? "nc.bad" : "nc.warn")}</span> ${esc(x.say)}
     ${x.fix || x.url ? `<span class="ncfix">${esc(x.fix || "")}${x.url ? ` <a href="${escUrl(x.url)}" target="_blank" rel="noopener">${tr("nc.open")} ↗</a>` : ""}</span>` : ""}</li>`;
-  // One row when nothing is wrong (24 Nov, Accounts ≤ 2 screens): the fine networks are the count's tooltip, and the ones
-  // to check once are named on the same line with the full reason as their tooltip.
-  const sep = lang === "ja" ? "・" : ", ";
-  const sum = `<span title="${esc(fine.length ? tr("nc.fine", { list: fine.map((n) => n.name).join(sep) }) : "")}">${tr(k ? "tc.nc.sum" : "nc.sum", { ok: c.ok || 0, warn: c.warn || 0, bad: c.bad || 0 })}</span>`;
-  const onceLine = checkOnce.length ? ` · <span class="t-warn" title="${esc(tr("tc.nc.once", { list: checkOnce.map((n) => n.name).join(sep) }))}">${esc(tr("tc.nc.oncesh", { list: checkOnce.map((n) => n.name).join(sep) }))}</span>` : "";
-  return `<section class="netcheck ${worst}" aria-live="polite">${head(worst, sum + (V.at ? ` · ${esc(whenText(V.at))}` : "") + onceLine)}
+  // One row when nothing is wrong (24 Nov, Accounts ≤ 2 screens): only the counts that are not 0, each naming its
+  // networks in its tooltip ("1 fine · 5 need one step below", the same numbers as Ready and Needs one step above).
+  const sep = lang === "ja" ? "・" : ", ", names = (l) => l.map((n) => n.name).join(sep);
+  const part = (n, key, cls, tip) => (n ? `<span class="${cls}" title="${esc(tip)}">${esc(tr(key, { n }))}</span>` : "");
+  const sum = [part(c.ok, "rv.nc.ok", "", fine.length ? tr("nc.fine", { list: names(fine) }) : ""), part(c.step, "rv.nc.step", "t-warn", tr("rv.nc.steptip", { list: names(steps) })),
+    part(c.warn, "rv.nc.warn", "t-warn", ""), part(c.bad, "rv.nc.bad", "t-bad", "")].filter(Boolean).join(" · ");
+  return `<section class="netcheck ${worst}" aria-live="polite">${head(worst, sum + (V.at ? ` · ${esc(whenText(V.at))}` : ""))}
     ${need.length ? `<ul class="nclist">${tcNcGroups(need).map(({ x, nets: ns }) => `<li><span class="ncnet">${ns.map((n) => `<span class="tc-ncn">${netLogo(n.network, "sm")}${esc(n.name)}${n.account ? ` <span class="meta">${esc(n.account)}</span>` : ""}</span>`).join("")}</span>
       <ul>${item(x)}</ul></li>`).join("")}</ul>` : ""}</section>`;
 }
@@ -1006,7 +1029,7 @@ function drawAccounts() {
 </div>`;
   $("#home").innerHTML = `<div class="pagehead">${crumbs([tr("nav.settings")])}<span class="grow"></span>${ws ? `<button class="wschip" data-wsopen="1" style="--ws:${esc(ws.color)}"><span class="wsdot"></span>${esc(ws.name)}${ico("chev-r", "sm")}</button>` : ""}</div>
     <p class="meta accintro">${tr("acc.intro")}</p>${sum}
-    ${netCheckHtml(by("todo"))}
+    ${netCheckHtml(by("todo"), nets.filter((n) => st[n].group !== "off"))}
     ${accMapHtml(nets.filter((n) => st[n].group !== "off"), st, { viaChrome, chromeOn, ws })}
     ${todo.length ? `<section class="accsec"><h2>${ico("alert", "sm")}${tr("acc.g.todo")}<span class="count">${todo.length}</span></h2><p class="meta">${tr("acc.g.todonote")}</p>
       ${helperTodo.length && helperView?.browser?.mode === "extension" && helperView.browser.connected && !helperView.browser.pending && !waitChrome.length

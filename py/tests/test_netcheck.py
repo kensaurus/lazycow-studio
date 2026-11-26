@@ -54,6 +54,23 @@ def test_check_lists_each_network_with_its_fix_and_survives_one_crash(monkeypatc
     assert unknown["networks"][0]["checks"] == [] and unknown["networks"][0]["state"] == "ok", "no Chrome news: no claim either way"
 
 
+def test_the_networks_the_project_uses_are_in_use_before_anything_is_booked(monkeypatch):
+    """BL-135: Settings › Accounts said "6 networks in use" above a check that said "No network is in use yet" (it only
+    counted booked or posted networks). The page sends its list; each one is checked: the studio's own sign-ins, Chrome
+    for the networks Chrome posts, nothing to claim for one posted by hand. A name that is not a network is dropped."""
+    monkeypatch.setattr(nc, "_fb_checks", lambda: ([nc._check("signin", False, "Facebook is not connected.", "Accounts › Facebook › Connect.")], None))
+    monkeypatch.setattr(nc, "_yt_checks", lambda: ([nc._check("signin", False, "YouTube is not connected.", "Accounts › YouTube › Connect YouTube.")], None))
+    nets = ["youtube", "tiktok", "instagram", "facebook", "x", "linkedin", "../etc", "ＸＸ", 7]
+    out = nc.check({"chrome": False, "nets": nets}, posts=[])
+    by = {n["network"]: n for n in out["networks"]}
+    assert sorted(by) == ["facebook", "instagram", "linkedin", "tiktok", "x", "youtube"]
+    assert by["facebook"]["state"] == "bad" and by["youtube"]["via"] == "studio"
+    assert by["tiktok"]["via"] == "chrome" and "not linked" in by["tiktok"]["checks"][0]["say"]
+    assert by["instagram"]["via"] == "hand" and by["instagram"]["checks"] == [] and by["instagram"]["state"] == "ok"
+    assert sum(out["counts"].values()) == 6
+    assert nc.check({"chrome": None}, posts=[])["networks"] == [], "no list and nothing booked: still nothing in use"
+
+
 def test_facebook_permissions_come_from_debug_token_and_never_leak_the_token(monkeypatch):
     from studio.connectors import facebook as fb
 

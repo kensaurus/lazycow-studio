@@ -1,0 +1,158 @@
+{
+  "_documentation": {
+    "FILE": "shared/starter-stories.json",
+    "PURPOSE": "Ready-made stories for a project's first reel (BL-130): a new project has no themes, and writing a headline, lines and four shots from nothing stops most people. Make reels shows these when the project has none (and under Start from a story); one press saves the story as the project's own, editable theme.",
+    "SHAPE": "stories: [{id, kind {en, ja}, about {en, ja}, icon, theme}]. theme is the theme editor's shape (examples/cafe-kumo/themes.json): title {en, ja}, hook {en, ja} (at most 80 characters each), lines [{en, ja}] (1 to 6, 80 at most), shots [English, what the picture search reads] with shotsJa [the same in Japanese, shown on the Japanese page], tags, style (column, centre, lower or split).",
+    "NOTES": "Generic words only: true of most places of that kind, no prices, numbers or claims a business would have to check. People's faces are left out of reels unless allowed, so shots ask for hands, things and places. The page writes the headline in its own language and the other one as the second language. test/starter-stories.test.mjs and py/tests/test_make_first_run.py check every story."
+  },
+  "stories": [
+    {
+      "id": "cafe",
+      "kind": { "en": "Cafe", "ja": "カフェ" },
+      "about": { "en": "The first cup of the day, slowly.", "ja": "朝の一杯を、ゆっくりと。" },
+      "icon": "clock",
+      "theme": {
+        "title": { "en": "Coffee, made slowly", "ja": "ゆっくり淹れるコーヒー" },
+        "hook": { "en": "Coffee, made slowly.", "ja": "コーヒーは、\nゆっくり淹れる。" },
+        "lines": [
+          { "en": "Every cup by hand.", "ja": "一杯ずつ、手で。" },
+          { "en": "Stay as long as you like.", "ja": "好きなだけ、ゆっくりどうぞ。" }
+        ],
+        "shots": ["pouring coffee into a cup", "steam rising from a cup", "a cafe table by a window", "hands making coffee", "a pastry on a plate", "the cafe door from the street"],
+        "shotsJa": ["カップにコーヒーを注ぐところ", "カップから立つ湯気", "窓際のカフェのテーブル", "コーヒーを淹れる手元", "お皿にのった焼き菓子", "通りから見たお店の入口"],
+        "tags": ["#cafe", "#coffee"],
+        "style": "lower"
+      }
+    },
+    {
+      "id": "guesthouse",
+      "kind": { "en": "Guesthouse or inn", "ja": "宿・ゲストハウス" },
+      "about": { "en": "A quiet room and a slow morning.", "ja": "静かな部屋と、ゆっくりした朝。" },
+      "icon": "moon",
+      "theme": {
+        "title": { "en": "A room to slow down", "ja": "ゆっくりできる部屋" },
+        "hook": { "en": "Stay a night.\nSlow down.", "ja": "一晩泊まって、\nゆっくりと。" },
+        "lines": [
+          { "en": "A quiet room is ready.", "ja": "静かな部屋を用意しています。" },
+          { "en": "Wake up to the morning light.", "ja": "朝の光で目を覚ます。" }
+        ],
+        "shots": ["a neat bedroom with a made bed", "morning light through a window", "the entrance of a guesthouse", "a cup of tea on a table", "a quiet view from the window", "warm lights in the evening"],
+        "shotsJa": ["整えられたベッドのある寝室", "窓から差し込む朝の光", "宿の入口", "テーブルの上のお茶", "窓から見える静かな景色", "夕方の温かい灯り"],
+        "tags": ["#stay", "#travel"],
+        "style": "column"
+      }
+    },
+    {
+      "id": "campsite",
+      "kind": { "en": "Campsite", "ja": "キャンプ場" },
+      "about": { "en": "A fire, the stars and the morning air.", "ja": "焚き火と星空と、朝の空気。" },
+      "icon": "leaf",
+      "theme": {
+        "title": { "en": "A night by the fire", "ja": "焚き火の夜" },
+        "hook": { "en": "Tonight,\nsleep outside.", "ja": "今夜は、\n外で眠ろう。" },
+        "lines": [
+          { "en": "Pitch your tent.", "ja": "テントを張って。" },
+          { "en": "Sit by the fire.", "ja": "火を囲んで。" },
+          { "en": "Wake up to fresh air.", "ja": "朝は澄んだ空気で目覚める。" }
+        ],
+        "shots": ["tents on a grass field", "a campfire at night", "a starry night sky", "morning mist over trees", "hands adding firewood to a fire", "coffee in a camping mug"],
+        "shotsJa": ["芝生に並ぶテント", "夜の焚き火", "星空", "木々にかかる朝の霧", "薪をくべる手元", "キャンプのマグに入ったコーヒー"],
+        "tags": ["#camping", "#outdoors"],
+        "style": "centre"
+      }
+    },
+    {
+      "id": "shop",
+      "kind": { "en": "Shop", "ja": "お店・雑貨店" },
+      "about": { "en": "Things chosen one by one.", "ja": "ひとつずつ選んだ品物。" },
+      "icon": "tag",
+      "theme": {
+        "title": { "en": "Chosen one by one", "ja": "ひとつずつ選んだ品" },
+        "hook": { "en": "Chosen\none by one.", "ja": "ひとつずつ、\n選んでいます。" },
+        "lines": [
+          { "en": "New things on the shelves.", "ja": "新しい品が棚に並びました。" },
+          { "en": "Come and find yours.", "ja": "あなたの一品を探しに。" }
+        ],
+        "shots": ["products on a wooden shelf", "a close-up of a product in hands", "the shop front from the street", "hands wrapping a gift", "a display table in a shop", "the shop sign"],
+        "shotsJa": ["木の棚に並ぶ商品", "手に取った商品のアップ", "通りから見たお店の正面", "贈り物を包む手元", "お店の陳列テーブル", "お店の看板"],
+        "tags": ["#shop", "#shoplocal"],
+        "style": "split"
+      }
+    },
+    {
+      "id": "restaurant",
+      "kind": { "en": "Restaurant", "ja": "レストラン・食堂" },
+      "about": { "en": "From the kitchen to your table.", "ja": "厨房から、テーブルへ。" },
+      "icon": "flame",
+      "theme": {
+        "title": { "en": "From our kitchen", "ja": "厨房から" },
+        "hook": { "en": "Made in our kitchen,\ntoday.", "ja": "今日も、\n厨房で作っています。" },
+        "lines": [
+          { "en": "Fresh ingredients.", "ja": "新鮮な食材で。" },
+          { "en": "Cooked to order.", "ja": "注文を受けてから作ります。" },
+          { "en": "See you at the table.", "ja": "テーブルでお待ちしています。" }
+        ],
+        "shots": ["a chef cooking in a kitchen", "vegetables on a cutting board", "flames under a frying pan", "hands plating food", "a dish served on a table", "the dining room with warm lights"],
+        "shotsJa": ["厨房で料理するシェフ", "まな板の上の野菜", "フライパンの下の炎", "料理を盛り付ける手元", "テーブルに出された料理", "温かい灯りの店内"],
+        "tags": ["#restaurant", "#food"],
+        "style": "lower"
+      }
+    },
+    {
+      "id": "day-here",
+      "kind": { "en": "Any place: a day here", "ja": "どんな場所でも：ここの一日" },
+      "about": { "en": "Morning to evening, in a few shots.", "ja": "朝から夕方まで、いくつかのカットで。" },
+      "icon": "sun",
+      "theme": {
+        "title": { "en": "A day here", "ja": "ここの一日" },
+        "hook": { "en": "A day here.", "ja": "ここの一日。" },
+        "lines": [
+          { "en": "The morning starts early.", "ja": "朝は早くから。" },
+          { "en": "Busy hands all day.", "ja": "一日中、手を動かして。" },
+          { "en": "And a calm evening.", "ja": "そして、静かな夕方。" }
+        ],
+        "shots": ["the building in morning light", "the entrance or front of the building", "a close-up of hands at work", "the main room or space inside", "a view at golden hour or dusk", "a calm wide shot to end on"],
+        "shotsJa": ["朝の光の中の建物", "入口や建物の正面", "作業している手元のアップ", "中のメインの部屋や空間", "夕方や日暮れの景色", "締めくくりの落ち着いた引きの画"],
+        "tags": ["#behindthescenes"],
+        "style": "column"
+      }
+    },
+    {
+      "id": "how-made",
+      "kind": { "en": "Any place: how it is made", "ja": "どんな場所でも：できるまで" },
+      "about": { "en": "The work behind what you make.", "ja": "つくるものの裏側の仕事。" },
+      "icon": "scissors",
+      "theme": {
+        "title": { "en": "How it is made", "ja": "できるまで" },
+        "hook": { "en": "How it is made.", "ja": "こうして、\nできあがります。" },
+        "lines": [
+          { "en": "It starts with good materials.", "ja": "まずは、いい材料から。" },
+          { "en": "Then careful hands.", "ja": "そして、丁寧な手仕事。" },
+          { "en": "Made here, for you.", "ja": "ここで、あなたのために。" }
+        ],
+        "shots": ["raw materials on a table", "a close-up of hands at work", "tools on a workbench", "the work in progress", "the finished product on a table", "a detail that shows what is special here"],
+        "shotsJa": ["テーブルの上の材料", "作業している手元のアップ", "作業台の上の道具", "作っている途中", "テーブルの上の完成品", "ここならではのこだわりの細部"],
+        "tags": ["#handmade", "#howitsmade"],
+        "style": "split"
+      }
+    },
+    {
+      "id": "come-visit",
+      "kind": { "en": "Any place: come and visit", "ja": "どんな場所でも：来てください" },
+      "about": { "en": "The way here, the door, inside.", "ja": "ここまでの道、入口、中の様子。" },
+      "icon": "pin",
+      "theme": {
+        "title": { "en": "Come and visit", "ja": "遊びに来てください" },
+        "hook": { "en": "Come and see us.", "ja": "遊びに\n来てください。" },
+        "lines": [
+          { "en": "The door is open.", "ja": "扉は開いています。" },
+          { "en": "We are glad to see you.", "ja": "お会いできるのを楽しみにしています。" }
+        ],
+        "shots": ["a wide view of the place from outside", "the road leading to the building", "the entrance or front of the building", "the main room or space inside", "a detail that shows what is special here", "a view at golden hour or dusk"],
+        "shotsJa": ["外から見た建物の全景", "建物へ続く道", "入口や建物の正面", "中のメインの部屋や空間", "ここならではのこだわりの細部", "夕方や日暮れの景色"],
+        "tags": ["#visit", "#local"],
+        "style": "centre"
+      }
+    }
+  ]
+}

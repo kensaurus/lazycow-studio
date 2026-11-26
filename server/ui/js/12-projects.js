@@ -354,7 +354,7 @@ function renderLog() {
 /* Footage: the whole tagged library as a portfolio, what is used and what is not. */
 const foot = { items: [], q: "", f: "all", open: null, loading: false, job: null, g: null, session: null, src: null, picker: null };
 async function loadSources() {
-  try { foot.src = await api("/api/sources"); } catch (err) { foot.src = { sources: [], last: {}, watch: {}, error: err.message }; }
+  try { foot.src = await api("/api/sources"); } catch (err) { foot.src = { sources: [], last: {}, watch: {}, error: err.message }; if (err.offline) foot.away = true; }
   if (atHome() && page === "footage") renderHome(true);
 }
 const ago = (iso) => {
@@ -447,11 +447,11 @@ const AH_KIND = { pc: { cls: "k-pc", icon: "home" }, cloud: { cls: "k-cloud", ic
 const normPath = (p) => String(p || "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 foot.mapLib = null; foot.node = null; foot.seen = new Set(); foot.addMore = "";
 function loadMapLib() {
-  if (foot.mapLib || foot.mapLibLoading) return;
+  if (foot.mapLib || foot.mapLibLoading || foot.mapLibErr) return;
   foot.mapLibLoading = true;
   post("/api/library", { query: "", filters: {}, limit: 100000 })
     .then((r) => { foot.mapLib = (r.items || []).map((i) => ({ p: normPath(i.path), u: !(i.usedIn?.length || i.inVlogs?.length) })); })
-    .catch(() => { foot.mapLib = []; })
+    .catch((err) => { foot.mapLibErr = true; if (err.offline) foot.away = true; })  // no answer: "…", not "0 files" (BL-138); asked again once back
     .finally(() => { foot.mapLibLoading = false; if (atHome() && page === "footage") renderHome(true); });
 }
 function mapNodes() {

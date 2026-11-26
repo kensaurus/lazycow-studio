@@ -1,0 +1,56 @@
+  /* ---------- Make reels on a first run (26 Nov, BL-130 and BL-139): the starter stories, and the maker on a phone.
+     Tokens only, so the dark palette carries over. ---------- */
+  .mk-stories { display: grid; gap: 8px; padding: 12px; border: 1px dashed var(--line); border-radius: 10px; margin: 4px 0 6px; }
+  .mk-stories.first { border-style: solid; border-color: var(--line); background: var(--panel); }
+  .mk-st-head { display: flex; align-items: baseline; gap: 4px 10px; flex-wrap: wrap; }
+  .mk-st-head .meta { flex: 1 1 260px; }
+  .mk-st-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+  .mk-sc { display: grid; gap: 3px; align-content: start; text-align: left; padding: 9px 11px; min-height: 0; height: auto;
+    border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--text); cursor: pointer; white-space: normal; }
+  .mk-sc:hover:not(:disabled), .mk-sc:focus-visible { border-color: var(--moss); }
+  .mk-sc:disabled { opacity: .6; cursor: progress; }
+  .mk-sc-k { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--mute); }
+  .mk-sc-h { font-size: 15px; line-height: 1.3; }
+  .mk-sc-a { font-size: 12px; line-height: 1.35; }
+  @media (max-width: 640px) {
+    .mk-stories { padding: 10px; }
+    .mk-st-head .meta { display: none; }
+    .mk-st-grid { grid-template-columns: 1fr 1fr; gap: 6px; }
+    .mk-sc { padding: 7px 8px; }
+    .mk-sc-h { font-size: 13.5px; }
+    .mk-sc-a { display: none; }
+    /* BL-139: Reels on a phone was 3.56 screens with the maker open. Every action stays; the explaining lines fold
+       (the lead, "Use what worked"'s why, "you can keep working"), the chips and the state filter take one row each. */
+    .hero.maker { padding: 12px 12px 10px; }
+    .hero.maker .mk-lead, .hero.maker .lpa-use > .meta, .hero.maker .maker-foot > .meta:last-child { display: none; }
+    .hero.maker .mk-step { margin: 8px 0 6px; gap: 6px; }
+    .hero.maker .mk-picks .chip { padding: 3px 7px; }
+    .hero.maker .maker-foot { margin-top: 6px; gap: 6px; }
+    .hero.maker .note { margin: 4px 0; }
+    .reeltools { gap: 8px; }
+    .reeltools .seg { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scrollbar-width: none; margin: 0; }
+    .reeltools .seg::-webkit-scrollbar { display: none; }
+    .reeltools .seg button { flex: none; }
+    /* Reels on a phone with 3 reels was 2.3 screens (a 9:16 card a reel, two to a row, its actions one per line on a
+       touch screen). A reel is a row here: its picture 96 px wide on the left, the title, checks and every action on
+       the right, the actions on one line. The small ones show their icon; their words stay their name and tip. */
+    .reels { grid-template-columns: minmax(0, 1fr) !important; gap: 8px; }
+    .reels .rcard { display: grid; grid-template-columns: 96px minmax(0, 1fr); contain-intrinsic-size: auto 180px; }
+    .reels .rcard .thumb { width: 96px; aspect-ratio: 9 / 16; align-self: start; }
+    .reels .rcard .thumb .scorebadge { font-size: 10px; padding: 2px 4px; }
+    .reels .rcard .thumb .dur { top: 6px; right: 4px; padding: 3px 4px; font-size: 10px; }
+    .reels .rcard .thumb .spill { font-size: 10px; max-width: calc(100% - 8px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .reels .rcard .body { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 8px 10px; }
+    .reels .rcard .card-acts { position: static; opacity: 1; pointer-events: auto; flex-wrap: nowrap; gap: 4px; margin: auto 0 0; padding: 0; background: none; border: 0; box-shadow: none; }
+    .reels .rcard .card-acts .go { flex: 1 1 auto; min-width: 0; min-height: 36px; }
+    .reels .rcard .card-acts .mini { flex: none; width: 38px; min-height: 36px; padding: 0; gap: 0; font-size: 0; justify-content: center; }
+    .reels .rcard .card-acts .mini svg.i { width: 15px; height: 15px; }
+    /* Reels' own head: its buttons (Start reviewing, Approve all, Make reels) share one row under the title instead of
+       wrapping to two; a long label wraps inside its button. */
+    .rhead { flex-wrap: wrap; row-gap: 6px; }
+    .rhead > .grow { flex-basis: 100%; height: 0; }
+    .rhead > button { flex: 1 1 0; min-width: 0; padding: 6px 8px; white-space: normal; line-height: 1.15; justify-content: center; text-align: center; }
+    .rhead ~ .subtabs { margin-bottom: 10px; }
+    .rhead ~ .lead.monlead { margin-bottom: 12px; }
+    .rhead ~ .lead .reels { gap: 6px; }
+  }
