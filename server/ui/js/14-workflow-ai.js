@@ -192,7 +192,7 @@ function wfVoicePicker() {
   const v = wfVoice;
   return `<div class="wfvoice" role="group" aria-label="${esc(tr("d_wf.voicepick"))}"><b>${esc(tr("d_wf.voicepick"))}</b>
     ${v.error ? `<p class="bad">${ico("alert", "sm")} ${esc(v.error)}</p>` : !v.list ? `<div class="skel skel-line"></div>`
-      : `<div class="row wrap">${v.list.slice(0, 16).map((x) => `<button type="button" data-wfvoice="${esc(x.id)}">${esc(x.name || x.id)}</button>`).join("")}</div>`}
+      : `<div class="row wrap">${v.list.slice(0, 20).map((x) => `<button type="button" data-wfvoice="${esc(x.id)}">${esc(x.name || x.id)}</button>`).join("")}</div>`}
     <button type="button" class="linkish" data-wfvoicex="1">${esc(tr("d_wf.cancel"))}</button></div>`;
 }
 async function wfSelect(body, done) {

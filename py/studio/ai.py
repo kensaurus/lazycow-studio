@@ -454,6 +454,20 @@ def no_price(provider: str, model: str) -> AiError:
 PER_AMOUNT = ("second", "compute", "unit", "minute", "1000 char", "char", "megapixel")
 
 
+def min_quantity(provider: str, model: str) -> float:
+    """The least one call is billed, in the model's price unit (registry price.minQuantity; 0 = none). kie.ai bills a
+    voice line of 10 characters as 1000 (6 credits; live check 26 Nov), so a reel's short lines cost a unit each."""
+    try:
+        return max(0.0, float(((registry.model(provider, model) or {}).get("price") or {}).get("minQuantity") or 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def per_call(unit: str, amounts: list[float], least: float, *, chars: bool = True) -> float:
+    """The billed quantity of several calls, each at least `least` (characters or seconds per call)."""
+    return sum(max(quantity(unit, chars=int(x)) if chars else quantity(unit, seconds=x), least) for x in amounts)
+
+
 def reprice(item: dict, provider: str, model: str, voice: str | None = None) -> dict:
     """A plan item done by another provider's model (a backup, studio.fallback): the same work (item["measure"]:
     seconds, compute seconds, characters, calls) at that provider's own price. Raises no_price."""
@@ -469,6 +483,9 @@ def reprice(item: dict, provider: str, model: str, voice: str | None = None) -> 
     q = quantity(unit, seconds=secs, chars=int(meas.get("chars") or 0), megapixels=secs * 30 * 1080 * 1920 / 1e6)
     if not low.startswith(PER_AMOUNT):
         q = float(meas.get("calls") or 1)
+    elif min_quantity(provider, model):  # each call billed at least a unit (kie.ai's voice lines)
+        least = min_quantity(provider, model)
+        q = per_call(unit, meas["lineChars"], least) if meas.get("lineChars") else max(q, least * float(meas.get("calls") or 1))
     usd = max(round(float(price["unit_price"]) * q, 4), 0.001)
     return {**item, "provider": provider, "model": model, "unit": unit, "unitPrice": price["unit_price"], "quantity": round(q, 3),
             "usd": usd, "priceSource": price["source"], "voice": voice, "fellBackFrom": item["provider"]}
@@ -827,10 +844,11 @@ def plan(slug: str, tools: list[str], options: dict | None = None) -> list[dict]
             if not lines:
                 raise AiError("This reel has no hook or caption lines for a voice to read.", "bad_input", 400)
             chars = sum(len(x["text"]) for x in lines)
-            q = quantity(price["unit"], chars=chars)
+            least = min_quantity(provider, model)  # each line is one call; some services bill a call at least a unit
+            q = per_call(price["unit"], [len(x["text"]) for x in lines], least) if least else quantity(price["unit"], chars=chars)
             items.append({**base, "target": None, "quantity": q, "unit": price["unit"], "unitPrice": price["unit_price"],
                           "usd": max(each(q), 0.001), "cached": False, "what": f"{len(lines)} approved lines read aloud ({chars} characters)",
-                          "priceSource": price["source"], "measure": {"chars": chars, "calls": len(lines)}})
+                          "priceSource": price["source"], "measure": {"chars": chars, "calls": len(lines), "lineChars": [len(x["text"]) for x in lines]}})
     return items
 
 
@@ -919,7 +937,7 @@ def _generate(item: dict, values: dict, files: dict | None = None) -> dict:
         got = async_task.run(ctx, remote, m, base.finish(m.get("input") or {}, vals), deadline)
         return {"url": base.first_url(got["output"]), "raw": got["raw"], "cost": got["cost"], "billed": None, "headers": got.get("headers")}
     if proto == "sync_http":
-        got = sync_http.run(ctx, remote, m, vals)
+        got = sync_http.run(ctx, remote, m, vals, deadline)
         return {"bytes": got["bytes"], "url": got.get("url"), "type": got["type"], "raw": {}, "cost": None, "billed": got["billed"]}
     raise AiError(f"{ctx.name} answers in text ({proto}); it cannot make this step.", "bad_input", 400)
 
@@ -1556,7 +1574,7 @@ def chat_target(cap: str) -> dict | None:
     p, m = registry.provider(pid), _model(pid, mid)
     if base.protocol_of(p, m) != "openai_chat":
         return None
-    return {"provider": pid, "model": mid, "remote": m.get("id") or mid, "url": openai_chat.endpoint(p), "on": b["on"],
+    return {"provider": pid, "model": mid, "remote": m.get("id") or mid, "url": openai_chat.endpoint(p, model=m), "on": b["on"],
             "source": b["source"], "chat": {**(p.get("chat") or {}), **(m.get("chat") or {})}, "openrouter": pid == "openrouter"}
 
 
@@ -1575,7 +1593,7 @@ def _vision_attempt(pid: str, mid: str, images: list[Path], system: str, prompt:
         payload = {"model": mid, "messages": messages, "response_format": {"type": "json_object"}, "max_tokens": max_tokens, "temperature": 0.2,
                    "usage": {"include": True}}
     else:
-        key, price, remote, url = key_for(pid), chat_price(pid, mid), m.get("id") or mid, openai_chat.endpoint(p)
+        key, price, remote, url = key_for(pid), chat_price(pid, mid), m.get("id") or mid, openai_chat.endpoint(p, model=m)
         if price is None:
             raise no_price(pid, mid)
         chat = {**(p.get("chat") or {}), **(m.get("chat") or {})}
@@ -1590,7 +1608,10 @@ def _vision_attempt(pid: str, mid: str, images: list[Path], system: str, prompt:
         status, headers, body = openai_chat.post(_http, url, payload, name, key, timeout=180, openrouter=pid == "openrouter")
         if status >= 400 or body.get("error"):
             raise _provider_error(pid, status if status >= 400 else 502, body.get("error") if isinstance(body.get("error"), dict) else body, headers)
-        actual, tin, tout = openai_chat.usage(body, price)
+        inner = openai_chat.body_status(p, body)  # kie.ai answers 200 with {"code": 402, "msg": …}
+        if inner:
+            raise _provider_error(pid, inner[0], inner[1], headers)
+        actual, tin, tout = openai_chat.usage(body, price, p)
         try:
             return {"out": openai_chat.json_of(openai_chat.text_of(body)), "_tokens": (tin, tout)}, actual
         except (KeyError, IndexError, TypeError, ValueError):
@@ -2300,6 +2321,10 @@ def select(req: dict) -> dict:
         raise AiError("voice: the voice's id as the provider lists it (letters, digits, _ and -).", "bad_input", 400)
     if m and m.get("voiceRequired") and not voice:
         raise AiError(f"{m.get('label') or mid} needs a voice: pick one from the list (/api/ai/voices?provider={pid}).", "no_voice", 400)
+    fixed = ((registry.providers().get(pid) or {}).get("voices") or {}).get("fixed")
+    if voice and m and m.get("capability") == "voice" and isinstance(fixed, list) and voice not in {str(v.get("id")) for v in fixed if isinstance(v, dict)}:
+        raise AiError(f"{m.get('label') or mid} takes only the voices {PROVIDER_NAMES.get(pid, pid)} lists: pick one from /api/ai/voices?provider={pid}.",
+                      "bad_input", 400)
     if m:
         why, note = _licence_check(pid, mid)
         if why:
@@ -2342,13 +2367,19 @@ def save_price(req: dict) -> dict:
 
 
 def voices(req: dict) -> dict:
-    """The voices a provider offers this key (registry `voices`: ElevenLabs GET /v2/voices). {provider, search?, next?}."""
+    """The voices a provider offers this key (registry `voices`: ElevenLabs GET /v2/voices), or the fixed list its docs
+    give (`voices.fixed`: kie.ai's ElevenLabs models take only those ids; no call, no key). {provider, search?, next?}."""
     pid = str(req.get("provider") or "elevenlabs")
     if pid not in registry.providers():
         raise AiError(f"provider: one of {', '.join(registry.providers())}.", "bad_input", 400)
     spec = registry.provider(pid).get("voices")
     if not spec:
         return {"provider": pid, "voices": [], "next": None, "note": f"{PROVIDER_NAMES[pid]} has no voice list; its models name their voices."}
+    if isinstance(spec.get("fixed"), list):
+        q = str(req.get("search") or "").strip().lower()
+        out = [{"id": str(v["id"]), "name": v.get("name") or v["id"], "labels": {}, "preview": None}
+               for v in spec["fixed"] if isinstance(v, dict) and v.get("id") and (not q or q in str(v.get("name") or v["id"]).lower())]
+        return {"provider": pid, "voices": out, "next": None, **({"note": spec["note"]} if spec.get("note") else {})}
     ctx = _ctx(pid)
     if not ctx.key:
         raise AiError(f"Add your {ctx.name} key in Settings › AI to see its voices.", "no_key", 400)

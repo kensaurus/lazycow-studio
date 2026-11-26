@@ -12,7 +12,11 @@
     "openrouter tts voices": "OpenRouter's speech models take only their preset voices (e.g. ElevenLabs v3: sarah, alice …; MiniMax Speech 2.8 lists English voices only), so only ElevenLabs v3 is registered there for Japanese lines.",
     "stability sharpen and cut-out": "Stability's Upscale (Fast, Conservative, Creative) and Remove Background take one image, not a clip (docs.stability.ai/llms.txt and /pricing, read 2026-11-21); a frame-by-frame pass would cost 2-5 credits a frame, and the cut-out must be a moving matte. Not registered for upscale or bg-cut.",
     "openrouter video upscale (FLUX Video Upscale)": "Listed in openrouter.ai/api/v1/videos/models (read 2026-11-21, $0.035 per megapixel-second precise), but neither its page nor the /videos API reference says how the source clip is sent (input_references video_url is documented for Seedance 2 only). Not added until that is documented; it would be the first non-fal sharpen on a saved key.",
-    "slow motion and cut-out on OpenRouter, Together or Stability": "None of the three lists frame interpolation or a video matte (openrouter.ai/api/v1/videos/models, docs.together.ai/docs/serverless-models, docs.stability.ai/pricing, read 2026-11-21): slow motion stays with fal or Replicate, the cut-out with fal or Replicate (Bria)."
+    "slow motion and cut-out on OpenRouter, Together or Stability": "None of the three lists frame interpolation or a video matte (openrouter.ai/api/v1/videos/models, docs.together.ai/docs/serverless-models, docs.stability.ai/pricing, read 2026-11-21): slow motion stays with fal or Replicate, the cut-out with fal or Replicate (Bria).",
+    "image generation (Stability, Together, kie.ai)": "All three sell text-to-image and image editing (docs.stability.ai/pricing, docs.together.ai/docs/serverless-models, docs.kie.ai/llms.txt; read 2026-11-26). Not added: a reel has no image step, and a made-up picture is a scene the studio never invents.",
+    "kie.ai sound effects": "kie.ai no longer lists an ElevenLabs sound-effect model (docs.kie.ai/llms.txt, read 2026-11-26); its only sound maker is Suno's 'Generate sounds', the same unofficial access as its music.",
+    "kie.ai cut-out and slow motion": "kie.ai's background removal (Recraft) takes one image, not a clip, and it lists no frame interpolation (docs.kie.ai/llms.txt, read 2026-11-26).",
+    "kie.ai video upscale (video/upscale)": "Listed (docs.kie.ai/market/kie/video-upscale, read 2026-11-26), but kie.ai/pricing gives it no price; Topaz through kie.ai stays its upscale."
   },
   "staleDays": 90,
   "capabilities": {
@@ -194,8 +198,9 @@
       "docs": ["https://docs.together.ai/reference/chat-completions-1", "https://docs.together.ai/docs/inference/vision/overview",
                "https://docs.together.ai/reference/create-videos", "https://docs.together.ai/docs/inference/videos/reference-and-keyframes",
                "https://docs.together.ai/docs/serverless-models", "https://www.together.ai/models/wan-27-i2v",
-               "https://docs.together.ai/docs/text-to-speech", "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"],
-      "asOf": "2026-11-21",
+               "https://docs.together.ai/docs/text-to-speech", "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+               "https://docs.together.ai/docs/serverless/models", "https://huggingface.co/zai-org/GLM-5.3-Flash/blob/main/LICENSE"],
+      "asOf": "2026-11-26",
       "base": "https://api.together.xyz/v1",
       "auth": {"header": "Authorization", "scheme": "Bearer "},
       "chat": {"jsonMode": false},
@@ -207,9 +212,10 @@
       "balance": {"note": "Together does not report a balance through its API. The dashboard shows it."},
       "freeModels": ["llm"],
       "models": {
-        "openai/gpt-oss-120b": {
-          "capability": "llm", "label": "GPT-OSS 120B (writing help)", "licence": "apache-2.0",
-          "price": {"usd": 0.00000015, "unit": "prompt tokens", "completion": 0.0000006, "source": "docs.together.ai/docs/serverless-models ($0.15 / $0.60 per M tokens)", "asOf": "2026-11-18"}
+        "zai-org/GLM-5.3-Flash": {
+          "capability": "llm", "label": "GLM-5.3 Flash (writing help)", "licence": "mit",
+          "note": "Replaces openai/gpt-oss-120b, which Together's serverless list no longer has (docs.together.ai/docs/serverless/models, read 2026-11-26).",
+          "price": {"usd": 0.00000015, "unit": "prompt tokens", "completion": 0.0000005, "source": "docs.together.ai/docs/serverless/models ($0.15 / $0.50 per M tokens)", "asOf": "2026-11-26"}
         },
         "moonshotai/Kimi-K3": {
           "capability": "vision", "label": "Kimi K3 (looks at still frames; no video)", "licence": "commercial",
@@ -294,8 +300,9 @@
       "keyHint": "platform.stability.ai/dashboard/api-keys",
       "dashboard": "https://platform.stability.ai/dashboard/billing",
       "docs": ["https://docs.stability.ai/api-reference/stable-audio-2/text-to-audio", "https://docs.stability.ai/pricing",
+               "https://docs.stability.ai/api-reference/stable-audio/text-to-audio", "https://docs.stability.ai/api-reference/audio-results/fetch-audio-result",
                "https://docs.stability.ai/api-reference/index", "https://docs.stability.ai/api-reference/user/account-balance", "https://docs.stability.ai/faq"],
-      "asOf": "2026-11-21",
+      "asOf": "2026-11-26",
       "base": "https://api.stability.ai",
       "auth": {"header": "Authorization", "scheme": "Bearer "},
       "check": {"method": "GET", "url": "/v1/user/account"},
@@ -316,6 +323,21 @@
           "price": {"usd": 0.08, "unit": "generations", "source": "docs.stability.ai/pricing (8 credits)", "asOf": "2026-11-17"},
           "path": "/v2beta/audio/stable-audio-2/text-to-audio", "body": "multipart", "accept": "audio/*",
           "input": {"prompt": "{prompt}", "duration": "{seconds:int}", "model": "stable-audio-2.5", "output_format": "wav", "steps": 8}
+        },
+        "stable-audio-3": {
+          "capability": "music", "label": "Stable Audio 3.0 (direct from Stability)", "licence": "commercial", "credit": "Stable Audio 3.0", "maker": "Stability AI",
+          "page": "https://docs.stability.ai/api-reference/stable-audio/text-to-audio", "maxSeconds": 380,
+          "price": {"usd": 0.08, "unit": "generations", "source": "docs.stability.ai/pricing (8 credits; failed generations are not charged)", "asOf": "2026-11-26"},
+          "path": "/v2beta/audio/stable-audio/text-to-audio", "body": "multipart", "accept": "audio/*", "poll": {"path": "/v2beta/audio/results/{id}", "id": "id"},
+          "input": {"prompt": "{prompt}", "duration": "{seconds:int}", "model": "stable-audio-3", "output_format": "wav", "steps": 8}
+        },
+        "stable-audio-3-sfx": {
+          "id": "stable-audio-3",
+          "capability": "sfx", "label": "Stable Audio 3.0 sound (from words)", "licence": "commercial", "credit": "Stable Audio 3.0", "maker": "Stability AI",
+          "maxSeconds": 380,
+          "price": {"usd": 0.08, "unit": "generations", "source": "docs.stability.ai/pricing (8 credits; failed generations are not charged)", "asOf": "2026-11-26"},
+          "path": "/v2beta/audio/stable-audio/text-to-audio", "body": "multipart", "accept": "audio/*", "poll": {"path": "/v2beta/audio/results/{id}", "id": "id"},
+          "input": {"prompt": "{prompt}", "duration": "{seconds:int}", "model": "stable-audio-3", "output_format": "wav", "steps": 8}
         }
       }
     },
@@ -374,8 +396,12 @@
       "keyEnv": "KIE_API_KEY",
       "keyHint": "kie.ai/api-key",
       "dashboard": "https://kie.ai/billing",
-      "docs": ["https://docs.kie.ai/market/quickstart"],
-      "asOf": "2026-11-17",
+      "docs": ["https://docs.kie.ai/market/quickstart", "https://docs.kie.ai/getting-started", "https://docs.kie.ai/market/common/get-task-detail",
+               "https://docs.kie.ai/common-api/quickstart", "https://docs.kie.ai/file-upload-api/upload-file-stream",
+               "https://docs.kie.ai/market/elevenlabs/text-to-speech-turbo-2-5", "https://docs.kie.ai/market/kling/image-to-video",
+               "https://docs.kie.ai/market/topaz/video-upscale", "https://docs.kie.ai/suno-api/generate-music",
+               "https://docs.kie.ai/market/gemini/gemini-3-8-flash-openai", "https://kie.ai/pricing"],
+      "asOf": "2026-11-26",
       "base": "https://api.kie.ai",
       "auth": {"header": "Authorization", "scheme": "Bearer "},
       "creditUsd": 0.005,
@@ -389,15 +415,37 @@
                "done": ["success"], "failed": ["fail"], "output": "data.resultJson.~json.resultUrls.0", "error": "data.failMsg",
                "cost": "data.creditsConsumed", "costUnit": "credits"},
       "errorKinds": {"401": "auth", "402": "out_of_credit", "429": "rate_limited", "430": "rate_limited", "455": "unavailable", "505": "unavailable"},
+      "chat": {"jsonMode": false, "bodyCode": "code", "okCodes": [200], "bodyMessage": "msg", "cost": "credits_consumed", "costUnit": "credits"},
+      "voices": {"fixed": [{"id": "pNInz6obpgDQGcFmaJgB", "name": "Adam - Dominant, Firm"},
+                           {"id": "Xb7hH8MSUJpSbSDYk0k2", "name": "Alice - Clear, Engaging Educator"},
+                           {"id": "pqHfZKP75CvOlQylNhV4", "name": "Bill - Wise, Mature, Balanced"},
+                           {"id": "nPczCjzI2devNBz1zQrb", "name": "Brian - Deep, Resonant and Comforting"},
+                           {"id": "N2lVS1w4EtoT3dr4eOWO", "name": "Callum - Husky Trickster"},
+                           {"id": "IKne3meq5aSn9XLyUdCD", "name": "Charlie - Deep, Confident, Energetic"},
+                           {"id": "iP95p4xoKVk53GoZ742B", "name": "Chris - Charming, Down-to-Earth"},
+                           {"id": "onwK4e9ZLuTAKqWW03F9", "name": "Daniel - Steady Broadcaster"},
+                           {"id": "cjVigY5qzO86Huf0OWal", "name": "Eric - Smooth, Trustworthy"},
+                           {"id": "JBFqnCBsd6RMkjVDRZzb", "name": "George - Warm, Captivating Storyteller"},
+                           {"id": "SOYHLrjzK2X1ezoPC6cr", "name": "Harry - Fierce Warrior"},
+                           {"id": "cgSgspJ2msm6clMCkdW9", "name": "Jessica - Playful, Bright, Warm"},
+                           {"id": "FGY2WhTYpPnrIDTdsKH5", "name": "Laura - Enthusiast, Quirky Attitude"},
+                           {"id": "TX3LPaxmHKxFdv7VOQHJ", "name": "Liam - Energetic, Social Media Creator"},
+                           {"id": "pFZP5JQG7iQjIQuC4Bku", "name": "Lily - Velvety Actress"},
+                           {"id": "XrExE9yKIg1WjnnlVkGX", "name": "Matilda - Knowledgable, Professional"},
+                           {"id": "SAz9YHcvj6GT2YYXdXww", "name": "River - Relaxed, Neutral, Informative"},
+                           {"id": "CwhRBWXzGAHq8TQ4Fs17", "name": "Roger - Laid-Back, Casual, Resonant"},
+                           {"id": "EXAVITQu4vr4xnSDxMaL", "name": "Sarah - Mature, Reassuring, Confident"},
+                           {"id": "bIHbv24MWmeRgasZH58o", "name": "Will - Relaxed Optimist"}],
+                 "note": "kie.ai's ElevenLabs models take only these voice ids (docs.kie.ai/market/elevenlabs/text-to-speech-turbo-2-5, read 2026-11-26)."},
       "models": {
         "elevenlabs/text-to-speech-turbo-2-5": {
           "capability": "voice", "label": "ElevenLabs Turbo 2.5 (through kie.ai; Japanese)", "licence": "commercial", "voiceRequired": true, "maxChars": 5000,
-          "price": {"usd": 0.03, "unit": "1000 characters", "source": "kie.ai/pricing (6 credits per 1K characters)", "asOf": "2026-11-17"},
+          "price": {"usd": 0.03, "unit": "1000 characters", "minQuantity": 1, "source": "kie.ai/pricing (6 credits per 1K characters; a 10-character line was billed 6 credits, live check 2026-11-26)", "asOf": "2026-11-26"},
           "input": {"text": "{text}", "voice": "{voice}", "language_code": "ja"}
         },
         "elevenlabs/text-to-speech-multilingual-v2": {
           "capability": "voice", "label": "ElevenLabs Multilingual v2 (through kie.ai)", "licence": "commercial", "voiceRequired": true, "maxChars": 5000,
-          "price": {"usd": 0.06, "unit": "1000 characters", "source": "kie.ai/pricing (12 credits per 1K characters)", "asOf": "2026-11-17"},
+          "price": {"usd": 0.06, "unit": "1000 characters", "minQuantity": 1, "source": "kie.ai/pricing (12 credits per 1K characters; assumed billed per 1K like Turbo 2.5, which was checked live 2026-11-26)", "asOf": "2026-11-26"},
           "input": {"text": "{text}", "voice": "{voice}"}
         },
         "kling-2.6/image-to-video": {
@@ -418,6 +466,23 @@
           "note": "kie.ai's music API is third-party access to Suno with no partnership the studio could confirm. Never a default; pick it only knowingly.",
           "price": {"usd": 0.06, "unit": "generations", "source": "kie.ai/pricing (12 credits)", "asOf": "2026-11-17"},
           "input": {"model": "V6", "prompt": "{prompt}", "custom_mode": false, "instrumental": true}
+        },
+        "gemini-3-8-flash": {
+          "capability": "llm", "protocol": "openai_chat", "label": "Gemini 3.8 Flash (through kie.ai; writing help)", "licence": "commercial",
+          "path": "/gemini-3-8-flash-openai/v1/chat/completions",
+          "note": "kie.ai's OpenAI-compatible chat: one address per model; the cost comes back as credits_consumed.",
+          "price": {"usd": 4.5e-07, "unit": "prompt tokens", "completion": 2.25e-06,
+                    "source": "kie.ai/gemini-3-8-flash (45 / 225 credits per M tokens at 50% off until 2026-12-31; the full price is kept so the limits are never under-reserved)",
+                    "asOf": "2026-11-26"}
+        },
+        "gemini-3-8-flash:vision": {
+          "id": "gemini-3-8-flash",
+          "capability": "vision", "protocol": "openai_chat", "label": "Gemini 3.8 Flash (through kie.ai; looks at still frames)", "licence": "commercial",
+          "path": "/gemini-3-8-flash-openai/v1/chat/completions",
+          "note": "Pictures go as image_url parts; the reviewer that watches whole videos stays on OpenRouter.",
+          "price": {"usd": 4.5e-07, "unit": "prompt tokens", "completion": 2.25e-06,
+                    "source": "kie.ai/gemini-3-8-flash (45 / 225 credits per M tokens at 50% off until 2026-12-31; the full price is kept so the limits are never under-reserved)",
+                    "asOf": "2026-11-26"}
         }
       }
     },

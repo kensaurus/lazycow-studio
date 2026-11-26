@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 EL = "sk_0123456789abcdef0123456789abcdef0123456789abcdef"
 RP = "r8_0123456789abcdefABCDEF0123456789abcdef"
 KIE = "0123456789abcdef0123456789abcdef"
+KIE_VOICE = "Xb7hH8MSUJpSbSDYk0k2"  # Alice, one of the voice ids kie.ai lists for its ElevenLabs models
 ST = "sk-0123456789abcdefABCDEF0123456789abcdefABCD"
 RW = "key_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 MM = "mm0123456789abcdefABCDEF0123456789abcdefABCD"
@@ -234,14 +235,17 @@ def test_kie_voice_reads_its_result_json_and_records_the_credits_it_reports(penv
     with pytest.raises(ai.AiError) as err:
         ai.select({"capability": "voice", "provider": "kie", "model": "elevenlabs/text-to-speech-turbo-2-5"})
     assert err.value.code == "no_voice"
-    ai.select({"capability": "voice", "provider": "kie", "model": "elevenlabs/text-to-speech-turbo-2-5", "voice": "jpVoice01abc"})
+    with pytest.raises(ai.AiError) as err:  # kie.ai's ElevenLabs models take only the voice ids its docs list (registry voices.fixed)
+        ai.select({"capability": "voice", "provider": "kie", "model": "elevenlabs/text-to-speech-turbo-2-5", "voice": "jpVoice01abc"})
+    assert err.value.code == "bad_input" and "takes only the voices kie.ai lists" in str(err.value)
+    ai.select({"capability": "voice", "provider": "kie", "model": "elevenlabs/text-to-speech-turbo-2-5", "voice": KIE_VOICE})
     ai.run({"slug": "day-test", "tools": ["voice"]})
     created = fake.find("createTask")
     assert len(created) == 2 and created[0]["body"] == {"model": "elevenlabs/text-to-speech-turbo-2-5",
-                                                        "input": {"text": "山にこもって、どこまで進むか。", "voice": "jpVoice01abc", "language_code": "ja"}}
+                                                        "input": {"text": "山にこもって、どこまで進むか。", "voice": KIE_VOICE, "language_code": "ja"}}
     assert "taskId=task_kie_123" in fake.find("recordInfo")[0]["url"]
     v = projects.load("day-test")["voice"]
-    assert v["voiceId"] == "jpVoice01abc" and len(v["lines"]) == 2 and all(line["file"].endswith(".mp3") for line in v["lines"])
+    assert v["voiceId"] == KIE_VOICE and len(v["lines"]) == 2 and all(line["file"].endswith(".mp3") for line in v["lines"])
     r = rows()[-1]
     assert r["provider"] == "kie" and r["usd"] == round(2 * 2.4 * 0.005, 6) and r["note"].startswith("actual"), "kie's creditsConsumed, in USD"
 
@@ -249,7 +253,7 @@ def test_kie_voice_reads_its_result_json_and_records_the_credits_it_reports(penv
 def test_kie_errors_inside_an_http_200_are_read_from_the_body(penv, monkeypatch):
     make_reel(penv, monkeypatch=monkeypatch)
     monkeypatch.setattr(ai, "locked", lambda slug: False)
-    ai.select({"capability": "voice", "provider": "kie", "model": "elevenlabs/text-to-speech-turbo-2-5", "voice": "jpVoice01abc"})
+    ai.select({"capability": "voice", "provider": "kie", "model": "elevenlabs/text-to-speech-turbo-2-5", "voice": KIE_VOICE})
     use(monkeypatch, [("POST", "api.kie.ai/api/v1/jobs/createTask", [(200, fx("kie/create_no_credit.json"))])])
     with pytest.raises(ai.AiError) as err:
         ai.run({"slug": "day-test", "tools": ["voice"]})
@@ -778,3 +782,178 @@ def test_picture_questions_go_to_the_vision_model_picked_for_the_project(penv, m
     assert body["messages"][1]["content"][1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
     r = rows()[-1]
     assert (r["provider"], r["purpose"], r["slug"]) == ("together", "ai-vision", "reel-a") and r["usd"] == round(2000 * 0.000003 + 100 * 0.000015, 6)
+
+
+# ---------- kie.ai writing and picture questions, Stability's Stable Audio 3.0, kie.ai's fixed voices (26 Nov) ----------
+
+KIE_CHAT = "https://api.kie.ai/gemini-3-8-flash-openai/v1/chat/completions"
+
+
+def kie_answer(content: str, credits: float) -> dict:
+    """kie.ai's chat answer (docs.kie.ai/market/gemini/gemini-3-8-flash-openai): OpenAI's shape plus credits_consumed."""
+    return {"id": "chatcmpl-k1", "object": "chat.completion", "choices": [{"index": 0, "message": {"role": "assistant", "content": content}}],
+            "usage": {"prompt_tokens": 1200, "completion_tokens": 300, "total_tokens": 1500}, "credits_consumed": credits}
+
+
+def test_openai_chat_reads_a_models_own_address_an_error_inside_a_200_and_a_cost_in_credits():
+    from studio.providers import openai_chat
+
+    kie = registry.provider("kie")
+    assert openai_chat.endpoint(kie, model=registry.model("kie", "gemini-3-8-flash")) == KIE_CHAT
+    assert openai_chat.endpoint(registry.provider("together")) == "https://api.together.xyz/v1/chat/completions", "no path: base + /chat/completions"
+    assert openai_chat.endpoint(kie, model={"path": "https://elsewhere.example/v1/chat"}) == "https://elsewhere.example/v1/chat"
+    assert openai_chat.body_status(kie, kie_answer("{}", 1)) is None, "a normal answer has no code"
+    assert openai_chat.body_status(kie, {"code": 402, "msg": "Insufficient credits"}) == (402, {"detail": "Insufficient credits (code 402)"})
+    assert openai_chat.body_status(kie, {"code": 455, "msg": "maintenance"})[0] == 503, "kie.ai's own 455 read through errorKinds"
+    assert openai_chat.body_status(registry.provider("together"), {"code": 402}) is None, "only a provider whose chat names bodyCode"
+    assert openai_chat.usage(kie_answer("{}", 4), {"prompt": 1e-6, "completion": 1e-6}, kie) == (4 * 0.005, 1200, 300), "credits x creditUsd"
+    assert openai_chat.usage(kie_answer("{}", 4), {"prompt": 1e-6, "completion": 1e-6}) == (1200 * 1e-6 + 300 * 1e-6, 1200, 300), "without it: tokens"
+
+
+def test_kie_writing_goes_to_its_model_address_and_is_charged_the_credits_it_reports(penv, monkeypatch):
+    from studio import research
+
+    monkeypatch.setattr(research, "HOME", penv / "research")
+    monkeypatch.setattr(research, "daily_budget", lambda: 5.0)
+    calls = []
+
+    def http(method, url, *, data=None, headers=None, timeout=60):
+        calls.append({"url": url, "body": json.loads(data), "headers": {k.lower(): v for k, v in (headers or {}).items()}})
+        return 200, {}, json.dumps(kie_answer('{"angles": [{"title": "霧の朝"}]}', 0.6)).encode()
+    monkeypatch.setattr(research, "_call", http)
+    ai.select({"capability": "llm", "provider": "kie", "model": "gemini-3-8-flash"})
+    assert research._llm("system", "user", purpose="research") == {"angles": [{"title": "霧の朝"}]}
+    c = calls[0]
+    assert c["url"] == KIE_CHAT and c["headers"]["authorization"] == f"Bearer {KIE}" and "response_format" not in c["body"]
+    r = rows()[-1]
+    assert (r["provider"], r["purpose"]) == ("kie", "research") and r["usd"] == round(0.6 * 0.005, 6), "kie.ai's credits_consumed, in USD"
+
+
+def test_kie_out_of_credit_inside_a_200_hands_the_writing_to_a_backup(penv, monkeypatch):
+    from studio import fallback, research
+
+    monkeypatch.setattr(research, "HOME", penv / "research")
+    monkeypatch.setattr(research, "daily_budget", lambda: 5.0)
+    calls = []
+
+    def http(method, url, *, data=None, headers=None, timeout=60):
+        calls.append(url)
+        if "api.kie.ai" in url:
+            return 200, {}, json.dumps({"code": 402, "msg": "Credits insufficient"}).encode()
+        return 200, {}, json.dumps({"choices": [{"message": {"content": '{"angles": []}'}}], "usage": {"prompt_tokens": 10, "completion_tokens": 5}}).encode()
+    monkeypatch.setattr(research, "_call", http)
+    monkeypatch.setattr(ai, "_call", Raw([]))  # nothing else may go out
+    ai.select({"capability": "llm", "provider": "kie", "model": "gemini-3-8-flash"})
+    assert research._llm("system", "user", purpose="research") == {"angles": []}
+    assert calls[0] == KIE_CHAT and len(calls) == 2 and "api.kie.ai" not in calls[1], "asked once, then the backup"
+    assert fallback.state("kie")["kind"] == "out_of_credit", "kie.ai is marked out of credit for every job"
+
+
+def test_kie_picture_questions_send_image_parts_to_its_model_address(penv, monkeypatch):
+    from studio import config
+
+    monkeypatch.setattr(config, "own_llm", lambda vision=False: None)
+    fake = use(monkeypatch, [("POST", "api.kie.ai/gemini-3-8-flash-openai/v1/chat/completions", [(200, kie_answer('{"title": "浅間山"}', 1.2))])])
+    ai.select({"capability": "vision", "provider": "kie", "model": "gemini-3-8-flash:vision"})
+    assert ai.vision_json([jpeg(penv)], "sys", "what is this", "reel-a") == {"title": "浅間山"}
+    body = fake.calls[0]["body"]
+    assert fake.calls[0]["url"] == KIE_CHAT and body["model"] == "gemini-3-8-flash", "the model's id, not its registry key"
+    assert body["messages"][1]["content"][1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+    r = rows()[-1]
+    assert (r["provider"], r["purpose"]) == ("kie", "ai-vision") and r["usd"] == round(1.2 * 0.005, 6)
+
+
+def test_stability_audio_3_answers_202_then_its_file_is_fetched_from_the_result_address(penv, monkeypatch):
+    make_reel(penv, monkeypatch=monkeypatch)
+    monkeypatch.setattr(ai, "locked", lambda slug: False)
+    from studio import sound
+    monkeypatch.setattr(sound, "LIB", penv / "audio")
+    fake = use(monkeypatch, [("POST", "api.stability.ai/v2beta/audio/stable-audio/text-to-audio", [(202, {"id": "gen3abc"})]),
+                             ("GET", "api.stability.ai/v2beta/audio/results/gen3abc",
+                              [(202, {"id": "gen3abc", "status": "in-progress"}), (200, b"RIFFwav3", {"Content-Type": "audio/wav"})])])
+    ai.select({"capability": "music", "provider": "stability", "model": "stable-audio-3"})
+    ai.run({"slug": "day-test", "tools": ["music"]})
+    posts, gets = fake.find("text-to-audio"), fake.find("results/gen3abc")
+    assert len(posts) == 1 and len(gets) == 2, "sent once, then asked until the file is ready"
+    assert 'name="model"\r\n\r\nstable-audio-3' in posts[0]["raw"].decode("utf-8", "replace")
+    assert gets[0]["headers"]["accept"] == "audio/*" and gets[0]["headers"]["authorization"] == f"Bearer {ST}"
+    assert "content-type" not in gets[0]["headers"], "the result is fetched with a plain GET"
+    assert len(SLEPT) == 2, "a wait before each check"
+    assert rows()[-1]["usd"] == 0.08 and rows()[-1]["provider"] == "stability"
+
+
+def test_kie_voices_are_the_fixed_list_its_docs_give_with_no_call_and_no_key(penv, monkeypatch):
+    use(monkeypatch, [])  # any call would fail the test
+    got = ai.voices({"provider": "kie"})
+    assert len(got["voices"]) == 20 and {"id": KIE_VOICE, "name": "Alice - Clear, Engaging Educator", "labels": {}, "preview": None} in got["voices"]
+    assert [v["id"] for v in ai.voices({"provider": "kie", "search": "sarah"})["voices"]] == ["EXAVITQu4vr4xnSDxMaL"]
+
+
+def test_the_three_services_are_choices_and_backups_by_capability(penv, monkeypatch):
+    from studio import fallback
+    from studio import workflow as wf
+
+    monkeypatch.setattr(ai, "_call", Raw([]))
+    view = wf.view()
+    offered = {cap: {(c["provider"], c["model"]) for c in view["capabilities"][cap]["choices"]} for cap in registry.CAPABILITIES}
+    assert {("kie", "gemini-3-8-flash"), ("together", "zai-org/GLM-5.3-Flash")} <= offered["llm"]
+    assert {("kie", "gemini-3-8-flash:vision"), ("together", "moonshotai/Kimi-K3")} <= offered["vision"]
+    assert {("stability", "stable-audio-3"), ("stability", "stable-audio-2.5")} <= offered["music"]
+    assert ("stability", "stable-audio-3-sfx") in offered["sfx"]
+    kie_llm = next(c for c in view["capabilities"]["llm"]["choices"] if c["provider"] == "kie")
+    assert kie_llm["hasKey"] and kie_llm["perReel"]["usd"] is not None and not kie_llm["priceNeeded"]
+    assert ("kie", "gemini-3-8-flash") in {(x["provider"], x["model"]) for x in fallback.chain("llm", ("together", "zai-org/GLM-5.3-Flash"))["items"]}
+    assert ("stability", "stable-audio-3") in {(x["provider"], x["model"]) for x in fallback.chain("music")["items"]}
+
+
+def test_every_request_names_the_studio_as_its_user_agent_unless_the_caller_did(monkeypatch):
+    """Together's Cloudflare refuses urllib's own User-Agent (HTTP 403 "error code: 1010", seen live 26 Nov), which the
+    studio read as a refused key. Both HTTP paths (studio.providers.http and research, the writing help) send their own."""
+    import urllib.request
+
+    from studio import research
+    from studio.providers import http as phttp
+
+    seen = []
+
+    class Answer:
+        status, headers = 200, {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self, *a):
+            return b"{}"
+
+    def urlopen(req, timeout=None, context=None):
+        seen.append(req.get_header("User-agent"))
+        return Answer()
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    phttp._call("GET", "https://api.together.xyz/v1/models", headers={"Authorization": "Bearer x"})
+    research._call("POST", "https://api.together.xyz/v1/chat/completions", data=b"{}", headers={"Content-Type": "application/json"})
+    phttp._call("GET", "https://example.org/", headers={"user-agent": "Mine/2"})
+    assert seen == [phttp.USER_AGENT, phttp.USER_AGENT, "Mine/2"] and "urllib" not in phttp.USER_AGENT.lower()
+
+
+def test_kie_voice_is_priced_at_least_a_unit_a_line_as_it_bills(penv, monkeypatch):
+    """kie.ai billed a 10-character line 6 credits (a whole 1000 characters; live check 26 Nov): registry
+    price.minQuantity makes the estimate, a backup's reprice and Settings › Workflow's cost per reel say so."""
+    from studio import workflow as wf
+
+    make_reel(penv, monkeypatch=monkeypatch)
+    monkeypatch.setattr(ai, "_call", Raw([]))
+    ai.select({"capability": "voice", "provider": "kie", "model": "elevenlabs/text-to-speech-turbo-2-5", "voice": KIE_VOICE})
+    est = ai.estimate({"slug": "day-test", "tools": ["voice"]})
+    item = est["tools"][0]["items"][0]
+    lines = item["measure"]["lineChars"]
+    assert len(lines) == 2 and all(n < 1000 for n in lines) and item["usd"] == round(2 * 0.03, 4), "two short lines: two units"
+    assert ai.reprice({**item, "provider": "fal"}, "kie", "elevenlabs/text-to-speech-turbo-2-5")["usd"] == round(2 * 0.03, 4)
+    assert ai.reprice(item, "elevenlabs", "eleven_flash_v2_5")["usd"] < 0.03, "a service without a minimum: by the character"
+    assert wf.per_reel("voice", "kie", "elevenlabs/text-to-speech-turbo-2-5")["usd"] == round(2 * 0.03, 4)
+    assert ai.min_quantity("fal", "fal-ai/minimax/speech-02-hd") == 0.0
+    bad = copy.deepcopy(registry.load())
+    bad["providers"]["kie"]["models"]["elevenlabs/text-to-speech-turbo-2-5"]["price"]["minQuantity"] = -1
+    assert any("minQuantity" in p for p in registry.validate(bad))

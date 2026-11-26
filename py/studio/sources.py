@@ -122,6 +122,10 @@ def all_sources() -> list[dict]:
 
     seen, out = [], []
     (DATA / "imports").mkdir(parents=True, exist_ok=True)  # the studio's own; empty until a first pick
+    if Path(SOURCE) == DATA / "footage":
+        # The default footage folder is the studio's own too: a new studio showed it in red as "folder not found"
+        # (drive unplugged?) before anyone had a chance to put a file in it. A folder set by a person is never made.
+        Path(SOURCE).mkdir(parents=True, exist_ok=True)
 
     def push(path, mode, label, origin, key=""):
         if any(_same(path, s) for s in seen):

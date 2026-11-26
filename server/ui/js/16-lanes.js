@@ -461,7 +461,8 @@ function reportHtml(r) {
       <label><input type="radio" name="srcMode" value="trusted" ${mode === "trusted" ? "checked" : ""}> <b>${trR("src.trusted")}</b> <span class="meta">${trR("src.trustedtip")}</span></label>
     </fieldset>
     <div class="row"><button data-fsgo="${esc(r.path)}">${ico("chev-l", "sm")}${tr("src.back")}</button><span class="grow"></span>
-      <button class="primary" id="fsInclude" data-path="${esc(r.path)}" ${r.total ? "" : "disabled"}>${ico("plus", "sm")}${tr("src.include", { n: r.total })}</button></div>`}
+      <button class="primary" id="fsInclude" data-path="${esc(r.path)}" ${r.total ? "" : 'disabled aria-describedby="fsNone"'}>${ico("plus", "sm")}${tr("src.include", { n: r.total })}</button></div>
+    ${r.total ? "" : `<p class="note" id="fsNone">${ico("info", "sm")} ${tr("src.nofiles")}</p>`}`}
   </div>`;
 }
 async function loadFootage() {

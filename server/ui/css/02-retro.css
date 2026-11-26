@@ -556,6 +556,7 @@
   .kl-use .bar { flex: 0 0 140px; height: 8px; background: var(--panel3); overflow: hidden; } .kl-use .bar i { display: block; height: 100%; background: var(--moss); transform-origin: left; }
   .kl-use .bar.low i { background: var(--bad); }
   .credhead { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; }
+  .kl-more { margin: 8px 0 0; } .kl-more label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   /* Posting: bookings with older words, one ruled list. */
   .stalebox { margin: 0 0 12px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 8px 0; }
   .stalebox .sb-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; font-size: 14px; }
@@ -685,7 +686,9 @@
   .lb-card.planner > .pk-head:first-child, .wsbox > .dh:first-child { background: var(--ink); color: var(--bg); border: 0; }
   .lb-card.planner > .pk-head:first-child { margin: 0 -16px 12px; padding: 8px 16px; }
   .wsbox { padding: 0 16px 16px; } .wsbox > .dh:first-child { margin: 0 -16px 12px; padding: 9px 16px; }
-  .pk-head h3, .wsbox > .dh b { font: 700 12.5px/1.3 var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--bg); margin: 0; display: flex; align-items: center; gap: 8px; }
+  .pk-head h3, .wsbox > .dh b { font: 700 12.5px/1.3 var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--text); margin: 0; display: flex; align-items: center; gap: 8px; }
+  /* Paper-coloured words only on the ink bars; the folder picker's head has no bar, and its title was invisible. */
+  .lb-card.planner > .pk-head h3, .wsbox > .dh b { color: var(--bg); }
   .pk-head h3 svg, .wsbox > .dh svg, .modal .dialog > h3 svg { color: var(--t-amber); }
   .lb-card.planner > .pk-head button, .wsbox > .dh button { color: var(--bg); background: transparent; border-color: color-mix(in srgb, var(--bg) 35%, transparent); }
   .lb-card.planner > .pk-head button:hover, .wsbox > .dh button:hover { background: var(--t-bg2); }

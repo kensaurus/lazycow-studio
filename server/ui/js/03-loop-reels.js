@@ -518,6 +518,8 @@ document.addEventListener("click", async (e) => {
    approved words; the server checks them against the project's own rules and says which field is wrong. ---------- */
 let themeEditing = null;
 const themeSlug = (s) => String(s || "").normalize("NFKD").replace(/[^\x00-\x7f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").replace(/^[^a-z]+/, "").slice(0, 24);
+/** A theme as a person reads it: the first line of its title (the key, "theme-2", is only the studio's own name for it). */
+const themeTitle = (k) => String(themes?.[k]?.title || themes?.[k]?.edit?.hook?.ja || "").split("\n")[0].trim() || k;
 function themeLineRow(ja = "", en = "") {
   return `<div class="tline"><input name="lineJa" maxlength="80" value="${esc(ja)}" aria-label="${esc(tr("th.line"))}" placeholder="${esc(tr("th.line"))}">
     <input name="lineEn" maxlength="120" value="${esc(en)}" aria-label="${esc(tr("th.second"))}" placeholder="${esc(tr("th.second"))}">
@@ -529,10 +531,12 @@ function openThemeEditor(key) {
   themeEditing = key;
   const f = $("#themeForm");
   f.reset();
-  $("#themeTitleText").textContent = key ? tr("th.edittitle", { k: key }) : tr("th.new");
+  $("#themeTitleText").textContent = key ? tr("th.edittitle", { k: themeTitle(key) }) : tr("th.new");
   f.hookJa.value = t?.hook?.ja || ""; f.hookEn.value = t?.hook?.en || "";
   $("#themeLines").innerHTML = (t?.lines?.length ? t.lines : [{}, {}]).map((l) => themeLineRow(l.ja || "", l.en || "")).join("");
   f.shots.value = (t?.shots || []).join("\n");
+  // An example in the empty boxes, so a first theme is not a blank page (hints only: nothing is saved from them).
+  f.hookJa.placeholder = tr("th.hookph"); f.shots.placeholder = tr("th.shotsph");
   f.tags.value = (t?.tags || []).join(" ");
   f.style.value = t?.style || "column";
   $("#themeDelete").hidden = !key;
@@ -548,7 +552,8 @@ async function saveThemeForm() {
     shots: f.shots.value.split(/\r?\n/).map((x) => x.trim()).filter(Boolean), tags: f.tags.value.split(/\s+/).filter(Boolean), style: f.style.value };
   let key = themeEditing;
   if (!key) {
-    const base = themeSlug(theme.hook.en || theme.lines[0]?.en || "") || "theme";
+    // Named from the headline in either box: an English headline typed in the first box made "theme", "theme-2"…
+    const base = themeSlug(theme.hook.en || theme.hook.ja || theme.lines[0]?.en || theme.lines[0]?.ja || "") || "theme";
     key = base; for (let n = 2; themes && themes[key]; n++) key = `${base.slice(0, 20)}-${n}`;
   }
   const err = $("#themeErr");
@@ -560,7 +565,7 @@ async function saveThemeForm() {
     themes = await api("/api/themes");
     autoThemes?.add(key);
     closeThemeEditor();
-    toast(`${ico("check", "sm")} ${esc(tr("th.saved", { k: key }))}`, 4000);
+    toast(`${ico("check", "sm")} ${esc(tr("th.saved", { k: themeTitle(key) }))}`, 4000);
     renderHome(true);
   } catch (e2) { err.textContent = e2.message; err.hidden = false; }
 }
