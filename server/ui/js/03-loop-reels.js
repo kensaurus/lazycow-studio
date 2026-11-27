@@ -427,7 +427,11 @@ function makerHtml() {
   const keys = Object.keys(themes || {}), n = autoThemes?.size || 0;
   const thin = keys.filter((k) => footageOf(k)?.left === 0);
   const lib = overview.library?.ranch ?? 0;
-  const tooLittle = overviewLoaded && lib < 40;
+  // BL-145: fewer clips than one reel needs is said under Make (mkWhyHtml), with the button greyed; this line is for a
+  // library that can make reels, just not many different ones.
+  const tooLittle = overviewLoaded && lib >= MK.need && lib < 40;
+  mkFitLoad();
+  const block = mkMakeBlock([...(autoThemes || [])].filter((k) => themes?.[k]));
   return `<div class="hero maker">
       <div style="flex:1;min-width:0">
         <h2>${tr("act.make")}</h2>
@@ -446,13 +450,14 @@ function makerHtml() {
         ${themes && perfView?.features?.theme ? `<p class="note">${esc(tr("lpa_a.r.key"))}</p>` : ""}
         ${thin.length ? `<p class="note">${ico("camera", "sm")} ${tr("make.thinnote", { n: thin.length })} <button class="linkbtn" data-goto="footage">${tr("make.seewhat")}</button></p>` : ""}
         <div class="mk-step"><span class="mk-num">2</span><b>${tr("make.step2")}</b></div>
-        ${lpaPresetHtml()}${lpaUseHtml()}${makerEstimate()}
-        <button class="primary big" id="autoGo" ${n && sys.health?.verdict !== "blocked" ? "" : "disabled"}>${ico("clapper")}${n ? tr(n === 1 ? "make.go1" : "make.go", { n }) : tr("make.pickfirst")}${autoWaiting ? ` <span class="meta">· ${tr("make.waiting", { n: autoWaiting })}</span>` : ""}</button>
-        <details class="mk-more"><summary class="meta">${ico("layers", "sm")} ${tr("make.more")} <span class="meta">· ${esc(tr(autoCut === "long" ? "make.cutlong" : "make.cutshort"))}${autoVary ? " · " + esc(tr("make.vary")) : ""}${autoFaces ? " · " + esc(tr("make.facesshort")) : ""}</span></summary>
+        ${lpaPresetHtml()}${lpaUseHtml()}${makerEstimate()}${mkWhyHtml(block)}
+        <button class="primary big" id="autoGo" ${n && !block && sys.health?.verdict !== "blocked" ? "" : "disabled"}${block || MK.fail ? ' aria-describedby="mkWhy"' : ""}>${ico("clapper")}${n ? tr(n === 1 ? "make.go1" : "make.go", { n }) : tr("make.pickfirst")}${autoWaiting ? ` <span class="meta">· ${tr("make.waiting", { n: autoWaiting })}</span>` : ""}</button>
+        <details class="mk-more"><summary class="meta">${ico("layers", "sm")} ${tr("make.more")} <span class="meta">· ${esc(tr(cutKey(autoCut)))}${autoVary ? " · " + esc(tr("make.vary")) : ""}${autoFaces ? " · " + esc(tr("make.facesshort")) : ""}</span></summary>
           <div class="row" role="radiogroup" aria-label="${esc(tr("make.cut"))}"><span class="meta">${tr("make.cut")}</span>
             <label class="toggle ${autoCut === "short" ? "on" : ""}"><input type="radio" name="autoCut" value="short" ${autoCut === "short" ? "checked" : ""}>${ico("film", "sm")}${tr("make.cutshort")}</label>
+            <label class="toggle ${autoCut === "walk" ? "on" : ""}"><input type="radio" name="autoCut" value="walk" ${autoCut === "walk" ? "checked" : ""}>${ico("camera", "sm")}${tr("make.cutwalk")}</label>
             <label class="toggle ${autoCut === "long" ? "on" : ""}"><input type="radio" name="autoCut" value="long" ${autoCut === "long" ? "checked" : ""}>${ico("list", "sm")}${tr("make.cutlong")}</label>
-            <span class="meta">${tr(autoCut === "long" ? "make.cutlonghint" : "make.cutshorthint")}</span></div>
+            <span class="meta">${tr(cutKey(autoCut) + "hint")}</span></div>
           <div class="row">
             <label class="meta" title="${esc(tr("make.varytip"))}"><input type="checkbox" id="autoVary" ${autoVary ? "checked" : ""}> ${tr("make.vary")}</label>
             <label class="meta"><input type="checkbox" id="autoFaces" ${autoFaces ? "checked" : ""}> ${tr("make.faces")}</label>
@@ -509,7 +514,7 @@ document.addEventListener("click", async (e) => {
       autoCut = Math.random() < 0.75 ? "short" : "long";
       autoVary = true;
       pk.classList.remove("rolled"); void pk.offsetWidth; pk.classList.add("rolled");
-      toast(`<span aria-hidden="true">⚄</span> ${esc(tr("make.rolled", { n: autoThemes.size, d: autoDays === 365 ? tr("make.year") : tr("make.days", { n: autoDays }), c: tr(autoCut === "long" ? "make.cutlong" : "make.cutshort") }))}`, 4000);
+      toast(`<span aria-hidden="true">⚄</span> ${esc(tr("make.rolled", { n: autoThemes.size, d: autoDays === 365 ? tr("make.year") : tr("make.days", { n: autoDays }), c: tr(cutKey(autoCut)) }))}`, 4000);
       return renderHome(true);
     }
     autoThemes = new Set(pk.dataset.autoPick === "all" ? keys : pk.dataset.autoPick === "fresh" ? keys.filter((k) => footageOf(k)?.left !== 0) : []);
@@ -600,7 +605,7 @@ function makerEstimate() {
   const n = autoThemes?.size || 0, h = sys.health;
   if (!n || !h) return "";
   const busy = overview.reels.filter(busyJob).length;
-  const total = (n * (autoCut === "long" ? 2.2 : 1) + busy) * (h.buildSeconds || 400);
+  const total = (n * (autoCut === "long" ? 2.2 : autoCut === "walk" ? 1.8 : 1) + busy) * (h.buildSeconds || 400);
   const disk = h.checks.find((c) => c.id === "disk");
   const room = /about (\d+) more/.exec(disk?.found || "")?.[1];
   const blocked = h.verdict === "blocked";
@@ -678,10 +683,10 @@ function wordsLine(r) {
   return "";
 }
 /* Posting: one row per reel, one square per network. */
-/* Posting health: one chip per network that says how it gets posted and whether anything needs a person. */
+/* Posting health: one chip per network that says how it gets posted and whether anything needs a person. "N need
+   attention" is What needs you's sign-in count (WN.signinCount, BL-146): the two said 2 and 3 for the same networks. */
 function healthStrip() {
   const DAY = 864e5, now = Date.now();
-  let needs = 0;
   const chips = POST_NETS.filter((n) => !chanOf(n)?.off).map((n) => {
     const c = connections[n === "youtube" ? "youtube" : n];
     const out = postsLog.filter((p) => p.network === n && (p.status === "posted" || p.status === "scheduled" || p.status === "queued") && p.at);
@@ -689,7 +694,6 @@ function healthStrip() {
     const last = out.filter((p) => new Date(p.at).getTime() <= now).map((p) => p.at).sort().pop();
     const lastTxt = next ? tr("hl.next", { t: whenText(next) }) : last ? tr("hl.last", { t: whenText(last) }) : tr("hl.none");
     let cls = "hand", label = tr("hl.helper"), go = "";
-    const attention = () => { if (go) needs++; };
     if (n === "youtube") { cls = yt.connected ? "ok" : "todo"; label = yt.connected ? tr("hl.studio") : tr("hl.connect"); go = yt.connected ? "" : "accounts"; }
     else if (c?.connected && c.until && new Date(c.until).getTime() - now < 3 * DAY) { cls = "warn"; label = tr("hl.soon"); go = "accounts"; }
     else if (c?.connected) { cls = "ok"; label = tr("hl.studio"); }
@@ -697,10 +701,9 @@ function healthStrip() {
     else if (c) { cls = "todo"; label = tr("hl.connect"); go = "accounts"; }
     const newest = postsLog.filter((p) => p.network === n).sort((x, y) => (y.id || 0) - (x.id || 0))[0];  // a token that died shows up as a refused post
     if (newest?.status === "failed" && /expired|revoked|connect \S+ again/i.test(newest.note || "")) { cls = "bad"; label = tr("hl.fix"); go = "accounts"; }
-    attention();
     return `<${go ? `button data-goto="${go}"` : "span"} class="hchip h-${cls}" title="${esc(c?.error || lastTxt)}">${netLogo(n, "sm")}<span><b>${esc(NET_NAME[n] || n)}</b><span class="meta">${label} · ${lastTxt}</span></span></${go ? "button" : "span"}>`;
   });
-  const open = hsOpen ?? needs > 0;
+  const needs = WN.signinCount(), open = hsOpen ?? needs > 0;
   return `<details class="pfold hfold" ${open ? "open" : ""}><summary>${tr("hl.sum", { n: chips.length })}${needs ? ` · <span class="warnline">${tr(needs === 1 ? "hl.attn1" : "hl.attn", { n: needs })}</span>` : ""}</summary><div class="hstrip" role="list" aria-label="${esc(tr("hl.title"))}">${chips.join("")}</div></details>`;
 }
 /* Posting in three tabs (#/posting/<tab>[/<network>]): what goes out and when, every reel against every network,

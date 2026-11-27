@@ -44,6 +44,7 @@ The page shows a **Getting started** list until each step is done. The steps, in
 3. **Settings › Keys & AI › This project**. Type your name, link and hashtags, and the words the studio must never use.
 4. **Reels › Make reels**. A new project has no themes yet: pick the ready-made story closest to your place (cafe, guesthouse or inn, campsite, shop, restaurant, or one for any place) and its first reel is made. Or press **Write my own**: a headline, two or three true lines, and the kind of shots each line needs.
 5. **Make reels**. Each reel takes about six minutes. You can keep working.
+   Under **More**, the length: the short loop (13-25 s), the long explainer (40-60 s) or **Site walk (25-40 s)**: five long, slow moving shots with the headline from the first frame and the loop ending, the cut that keeps viewers like a camera time-lapse. A site walk needs at least three video clips of about 6 s or more; film slow, steady shots of 10 s or longer for it.
 6. **Reels › To review**. Watch each reel. Press **Approve** or **Reject**.
 7. **Settings › Accounts**. Connect each network once.
 8. **Posting › Plan posts**. The studio books your approved reels, one post a day per network.
@@ -65,7 +66,7 @@ The top bar starts at **Home**, then the five sections in the order work moves: 
 
 ### Home
 
-`#/` opens Home. A project with no footage yet shows one box: **Drop your videos here and we make your first reel**. Drop files on it, press **Choose a folder** (the folder picker, on Footage › Add) or **Choose files**. Under it, **Pick a starter story** opens Make reels and its ready-made story ideas. Once footage is in, the setup steps live in the chip in the header (add footage, make the first reel, connect a network, book the first post; no sign-in stands before the first reel). Each ticks itself when the studio sees it happen, and the chip goes away when all four are done. Until the project has a reel of its own, Home puts one next step on top: **Make your first reel** (**Open Make reels**; a project with no themes yet gets the starter stories under it). Home then shows what needs you and the next posts, and once the first steps are done, the loop (what runs by itself) and the last 7 days' views in one line.
+`#/` opens Home. A project with no footage yet shows one box: **Drop your videos here and we make your first reel**. Drop files on it, press **Choose a folder** (the folder picker, on Footage › Add) or **Choose files**. When the project's footage folder already holds photos or videos the studio has not read, a box above it says how many, with **Read these N files now** (a new studio reads its folder by itself a few seconds after it first starts; a look-only studio never reads by itself, so there the button is the way). In the folder picker, a folder that is already one of your footage folders offers **Check for new files here**, then **Read these N files now**. Under the drop box, **Pick a starter story** opens Make reels and its ready-made story ideas; the cards are Cafe, Guesthouse or inn, Campsite, Shop and **Any place**, for a place that is none of those. Once footage is in, the setup steps live in the chip in the header (add footage, make the first reel, connect a network, book the first post; no sign-in stands before the first reel: until you approve your first reel, What needs you and Posting hold back sign-in and connect reminders for networks, and the first review comes first). Each ticks itself when the studio sees it happen, and the chip goes away when all four are done. Until the project has a reel of its own, Home puts one next step on top: **Make your first reel** (**Open Make reels**; a project with no themes yet gets the starter stories under it). Home then shows what needs you and the next posts, and once the first steps are done, the loop (what runs by itself) and the last 7 days' views in one line.
 
 ### More tools
 
@@ -187,11 +188,17 @@ On **What to try next**, **Predicted and actual** shows each measured post as a 
 
 **Ready** (networks with nothing left to do) folds to one line with their logos while anything needs a step; click it for the cards. On a phone the map **How each network gets its post** starts folded under its title (how many networks are in use and booked); press the title to open it. Under the map, **Needs one step** is one row per network with one main button: **Open … in my Chrome**, **Connect**, or, for a sign-in that ends before posts booked after it, **Add app password** (its form opens in the row; **Sign in again instead** is the other way). Its badge then says **Connected · expires 1 Dec**. **Ready** is one small card per network: its account, how it posts and one line; **How to post here · Settings** folds the playbook, the on/off switch and **Disconnect**.
 
-The six networks most people post to (YouTube Shorts, TikTok, Instagram, Facebook, X and LinkedIn) come first, and a new project starts with those six on. The others fold under **More networks (N)**, two to a row with their on/off switch; the fold opens by itself when one of them is on.
+The six networks most people post to (YouTube Shorts, TikTok, Instagram, Facebook, X and LinkedIn) come first, and a new project starts with those six on. Bluesky, which the studio posts to itself, is under **More networks**: it needs your Bluesky account and an app password, so you turn it on when you want it. Posting's **N need attention** counts the same sign-ins as What needs you. The others fold under **More networks (N)**, two to a row with their on/off switch; the fold opens by itself when one of them is on.
 
 **Connection check** at the top asks every network the project uses (the same ones the map counts as in use, even before anything is booked) and counts the same way as the groups below: a network still under **Needs one step** counts as **need one step below**, never as fine, so it reads for example "1 fine · 5 need one step below" beside "1 Ready · 5 Needs one step"; the same finding on several networks is one line naming them all.
 
 The Facebook card also says whether **Instagram Stories** are on: every reel booked on YouTube then goes out as a story (shown for 24 hours) at the same time. They use the Facebook connection; **Connect again with Instagram** asks for the two Instagram permissions.
+
+**Instagram reels go out from the studio too** once that Facebook connection carries *instagram_content_publish* (and the Instagram professional account is linked to the Page). The Instagram card then says **The studio sends each reel to Instagram at its time, with its post text**, the plan books Instagram like the other daily networks (12:00 and 19:00 Japan time), and the studio sends each reel at its time with the reel's Instagram post text as the caption (at most 30 hashtags and 2,200 characters). Without the permission nothing changes: Instagram stays a reminder you post in the Instagram app, and the Facebook card's **More** says why. Instagram allows a limited number of posts through the API a day; when they are used up the reel is not sent and the posting log says so.
+
+**Post Instagram reels as trial reels first** (on the Instagram card): a trial reel is shown to people who do not follow you yet; when it does well, Instagram shares it with your followers too. It is on by default for an account under 1,000 followers and off above that; switch it on or off for this project. With it off, each reel goes to your profile, the Feed and the Reels tab at once.
+
+**Publish your Meta app once you are connected.** A new Meta app starts in *Development mode*, and reels an app posts while in development may be shown to almost nobody (the studio's own reels read 0 plays for nine days that way). Connect first, then on developers.facebook.com › My apps › your app add a privacy policy URL (App settings › Basic) and press **Publish**, until it shows *Mode: Live*. The Facebook card and **What needs you** say *Your Meta app is still in development* while it is not. Your Page stays connected after publishing: the Page token made with the App secret does not run out. The **Connect with Facebook** window works only while the app is in development (Meta allows its `http://localhost` return address only then), so with a Live app connect again through **Other way**: paste a token from Graph API Explorer.
 
 | Tab | What it is for |
 |:--|:--|
@@ -298,7 +305,7 @@ Two more jobs run with no switch on that list:
 
 **Reels › Make reels**: tick themes, choose how recent the footage should be, then press **Make N reels**. **Surprise me** picks a random set of themes, a footage window and a cut. Each card shows its progress; you can keep working. A reel takes about six minutes. The themes you tick stay ticked for this project, after a reload too.
 
-**Start from a story** shows eight ready-made stories by kind of place, in English and Japanese. One press saves the story as your own theme (headline and lines in the page's language; change any word later with the pencil) and makes its first reel, or ticks it ready to make when there is no footage yet. A project with no themes shows them straight away; Home's first-run stories open the same thing.
+**Start from a story** shows eight ready-made stories by kind of place, in English and Japanese. One press saves the story as your own theme (headline and lines in the page's language; change any word later with the pencil) and makes its first reel when at least four different clips fit it, or ticks it ready to make. **Make N reels** stays grey, with the reason under it, while the library holds fewer than four clips or none of the ticked themes finds four that fit; the reason stays on the page (also after a press that made nothing) with **Use an Any place story** and **Add footage**. What to film next shows each story's shots in Japanese on the Japanese page, whichever language you picked the story in. A project with no themes shows them straight away; Home's first-run stories open the same thing.
 
 **What to film** can be written in Japanese. The studio's picture search reads English, so each Japanese line gets an English search form when the theme is saved: written by your AI service when a key is set, otherwise from a built-in list of common filming words (it works with no key). The page keeps your own words, and Footage › Film next shows them on the Japanese page. A Japanese word typed in the footage search box is read the same way. Headlines and lines stop at 80 characters (120 in the second language); a longer one is refused by name.
 
@@ -572,7 +579,11 @@ Open the reel, then **Exports**, then the network. Press **Copy text** and **Dow
 
 ### Instagram
 
-The studio does not post to Instagram. Approved reels appear in the ready folder (`STUDIO_READY`, by default `<data>\ready`) under `<date>_<reel>\instagram\`, with the text in a file next to the video. Point `STUDIO_READY` at a shared Drive folder if someone else posts them.
+With Facebook connected and its Instagram permissions allowed (**Settings › Accounts › Facebook**, see above), the studio posts reels to Instagram itself: as trial reels first while **Post Instagram reels as trial reels first** is on, and an Instagram Story beside each reel booked on YouTube. Its numbers (plays, reach, likes, comments, shares, saves and average watch time) are read into **Results** like Facebook's; allow *instagram_manage_insights* when you connect.
+
+Without those permissions the studio does not post to Instagram. Approved reels appear in the ready folder (`STUDIO_READY`, by default `<data>\ready`) under `<date>_<reel>\instagram\`, with the text in a file next to the video. Point `STUDIO_READY` at a shared Drive folder if someone else posts them, and type their numbers in **Results** (or import a CSV).
+
+**A send that fails for a passing reason is tried again.** When the studio sends a post itself (Instagram reels and Stories, Bluesky, a Facebook post due now) and it fails on a dropped connection, a network error or an upload that did not finish, the post waits and is sent again 5 minutes later, then 10 minutes after that. The posting log says *retry 1/2 after …* meanwhile. After the third failure, or for a post more than an hour late, it stays **failed** with the reason and *(tried 3 times)*. A clear refusal (a missing permission, a sign-in that ran out, the network's rules or rate limit, a missing file) is never tried again: fix what it says and book it again.
 
 ### Add new footage
 
@@ -665,7 +676,7 @@ The studio's code changed on disk. Press **Restart the studio**. During a long j
 | Network | What to do |
 |:--|:--|
 | YouTube | **Connect YouTube** again |
-| Facebook | **Connect with Facebook** again (the sign-in lasts about 60 days) |
+| Facebook | **Connect with Facebook** again (the sign-in lasts about 60 days). If your Meta app is published (Live), use **Other way** and paste a token from Graph API Explorer: the sign-in window works only for an app in development |
 | Bluesky | **Sign in with Bluesky** again (it lasts about two weeks) |
 | X, TikTok, Google Maps, LINE, LinkedIn | Open the site in your normal Chrome and sign in |
 
@@ -727,7 +738,7 @@ A studio started with `STUDIO_PROJECT` is pinned to that project. Switch project
 
 - Post a reel nobody approved.
 - Make a new version live without a person's press.
-- Post to Instagram, or to a network switched off in Settings.
+- Post to Instagram without the Instagram permissions on your Facebook connection, or to a network switched off in Settings.
 - Write new claims about your place or business. Every line comes from your approved words.
 - Change or delete your original footage.
 - Spend money on AI over the limits in **Settings › Keys & AI**.

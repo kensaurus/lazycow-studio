@@ -156,9 +156,11 @@ test("BL-133: Placed by GPS or Shot here is asked only when the project has a ho
 
 /* ---------- BL-131: Home is one box for a project with no footage; the setup cards never stack on Home ---------- */
 function homeModel(mkStarterStories) {
-  const env = { tr: (k) => k, esc: (s) => String(s).replace(/</g, "&lt;").replace(/"/g, "&quot;"), ico: () => "", mkStarterStories };
+  // foot.look: the folder was looked at and holds nothing new (BL-144's card is then not drawn; test/first-run-2.test.mjs).
+  const env = { tr: (k) => k, esc: (s) => String(s).replace(/</g, "&lt;").replace(/"/g, "&quot;"), ico: () => "", mkStarterStories,
+    foot: { look: { at: Date.now(), new: 0, sources: [] } }, api: () => new Promise(() => {}), atHome: () => true, page: "home", renderHome: () => {}, srcName: (s) => s.label };
   const names = Object.keys(env);
-  return new Function(...names, `${body("addDropHtml")}\n${body("homeStoriesHtml")}\n${body("homeOneHtml")}\nreturn { homeStoriesHtml, homeOneHtml };`)(...names.map((k) => env[k]));
+  return new Function(...names, `${body("addDropHtml")}\n${body("homeStoriesHtml")}\n${body("homeLookLoad")}\n${body("homeFoundHtml")}\n${body("homeOneHtml")}\nreturn { homeStoriesHtml, homeOneHtml };`)(...names.map((k) => env[k]));
 }
 
 test("BL-131: no footage yet: Home is the one drop box (Choose a folder, Choose files) and the starter stories under it", () => {

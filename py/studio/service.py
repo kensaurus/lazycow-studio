@@ -113,6 +113,7 @@ def _overview() -> dict:
             "madeBy": reel.get("made_by", "house reel" if slug in house else ""),
             "style": reel.get("style", "column"),
             "look": reel.get("look"),
+            "variant": reel.get("variant"),  # the cut: None (short loop), b-explainer, site-walk; Review labels it
             "checks": shot_checks(reel, rows, faces_used, status),
             "bpm": reel.get("bpm"),
             "blurFaces": bool(reel.get("blurFaces")),
@@ -191,6 +192,23 @@ def _film_next() -> list:
 def _library_counts() -> dict:
     _library_rows()
     return _COUNTS["data"]
+
+
+_FIT: dict = {}
+
+
+def _theme_fit(keys: list[str] | None, faces: bool) -> dict:
+    """How many different clips each theme's next reel would find (studio.assemble.theme_fit, BL-145), kept while the
+    library, the reels and the themes stay the same (and at most two minutes)."""
+    import time
+
+    from studio.assemble import MIN_SHOTS, THEMES, theme_fit
+
+    want = sorted(k for k in (keys if keys is not None else list(THEMES)) if k in THEMES)
+    sig = json.dumps([want, faces, _library_counts(), _reels_stamp(), {k: THEMES[k].get("slots") for k in want}], default=str)
+    if _FIT.get("sig") != sig or time.time() - _FIT.get("at", 0) > 120:
+        _FIT.update(sig=sig, at=time.time(), data=theme_fit(want, faces))
+    return {"fit": _FIT["data"], "need": MIN_SHOTS}
 
 
 WEAK_MATCH = 0.20  # the bottom ~5% of picks (1,579 shots, Nov 2026); editor.html roleText uses the same line
@@ -300,10 +318,15 @@ def vary_look(project: dict, theme_style: str, rng, theme_look: str | None = Non
     return project
 
 
+# Make reels' cuts (POST /api/autopilot cut, the MCP make_reels tool) and the variant each makes (shared/spec.json).
+CUTS = {"short": None, "long": "b-explainer", "walk": "site-walk"}
+
+
 def _autopilot(themes: list[str], since: str | None, faces: bool, cut: str = "short", vary: bool = False, learned: bool = False,
                by: str = "person", preset: dict | None = None) -> list[dict]:
     """Propose one reel per theme from the newest footage. Rendering is queued by the server.
-    cut "long" makes the 40-60 s explainer for LinkedIn and Facebook instead of the short loop;
+    cut "long" makes the 40-60 s explainer for LinkedIn and Facebook instead of the short loop; cut "walk" the 25-40 s
+    site walk (few long, calm shots, like a camera time-lapse: assemble.walk_theme);
     vary gives each reel a different text layout and effects (vary_look).
     by: "auto" when the studio made it by itself from new footage (review.mjs autoDrafts), else "person". Every reel
     keeps made: {by, at, steer: {mode, why, whyJa, picks}} (the Review page says why it looks the way it does).
@@ -312,9 +335,10 @@ def _autopilot(themes: list[str], since: str | None, faces: bool, cut: str = "sh
     import random
     from datetime import date, datetime, timedelta
 
-    from studio.assemble import THEMES, assemble
+    from studio.assemble import THEMES, WALK_LOOKS, assemble
     from studio.projects import load, save
 
+    cut = cut if cut in CUTS else "short"
     since = since or (date.today() - timedelta(days=60)).isoformat()
     made = []
     if not THEMES:
@@ -323,21 +347,23 @@ def _autopilot(themes: list[str], since: str | None, faces: bool, cut: str = "sh
     for key in themes or list(THEMES):
         if key not in THEMES:
             continue
-        base = f"{key}-{date.today().strftime('%m%d')}" + ("-long" if cut == "long" else "")
+        base = f"{key}-{date.today().strftime('%m%d')}" + {"long": "-long", "walk": "-walk"}.get(cut, "")
         slug, n = base, 2
         while load(slug):
             slug, n = f"{base}-{n}", n + 1
-        project = assemble(THEMES[key], slug, allow_faces=faces, since=since, variant="b-explainer" if cut == "long" else None)
-        project.update({"theme": key, "music": "auto", "sfx": cut != "long", "made_by": project["made_by"].replace("assembler", "autopilot")})
+        project = assemble(THEMES[key], slug, allow_faces=faces, since=since, variant=CUTS[cut])
+        project.update({"theme": key, "music": "auto", "sfx": cut == "short", "made_by": project["made_by"].replace("assembler", "autopilot")})
         if vary:
             night = bool({"night", "fire"} & set(THEMES[key].get("boost", {}).get("tags", [])))
             vary_look(project, THEMES[key].get("style", "column"), random.Random(project["seed"]), THEMES[key].get("look"), night, learned)
-            if cut == "long":
+            if cut != "short":
                 project["sfx"] = False
         if preset:
             asked = _apply_preset(project, preset)
             if asked:
                 project["made"] = {"steer": asked}
+        if cut == "walk" and project.get("look") not in WALK_LOOKS:
+            project["look"] = None  # Vary the look and presets draw punch, glitch or freeze too: a site walk stays calm
         steer = (project.get("made") or {}).get("steer") or {"mode": "theme", "why": "The theme's own look: Vary the look was off.",
                                                               "whyJa": "テーマ本来の見た目（「見た目を変える」がオフ）。"}
         project["made"] = {"by": "auto" if by == "auto" else "person", "at": datetime.now().astimezone().isoformat(timespec="seconds"), "steer": steer}
@@ -347,7 +373,7 @@ def _autopilot(themes: list[str], since: str | None, faces: bool, cut: str = "sh
 
             note_lesson("reel", slug, mode=steer.get("mode"), why=steer.get("why"), by=project["made"]["by"],
                               picks=steer.get("picks") or {})
-        made.append({"slug": slug, "theme": key, "clips": len(project["shots"]), "style": project.get("style"), "sfx": project.get("sfx"),
+        made.append({"slug": slug, "theme": key, "cut": cut, "clips": len(project["shots"]), "style": project.get("style"), "sfx": project.get("sfx"),
                      "steer": steer.get("mode")})
     return made
 
@@ -621,9 +647,12 @@ def handle(req: dict) -> object:
 
         # learned: what the run says (Make reels' "Use what worked"); not said (MCP, API, older pages): the setting.
         learned = req.get("learned")
-        return _autopilot(req.get("themes") or [], req.get("since"), bool(req.get("faces")), "long" if req.get("cut") == "long" else "short", bool(req.get("vary")),
+        return _autopilot(req.get("themes") or [], req.get("since"), bool(req.get("faces")), req.get("cut") if req.get("cut") in CUTS else "short", bool(req.get("vary")),
                           steer_on() if learned is None else bool(learned), "auto" if req.get("by") == "auto" else "person",
                           req.get("preset") if isinstance(req.get("preset"), dict) else None)
+    if cmd == "fit":
+        keys = req.get("themes")
+        return _theme_fit([str(k) for k in keys] if isinstance(keys, list) else None, bool(req.get("faces")))
     if cmd == "ping":
         return {"ok": True}
     raise ValueError(f"unknown command {cmd}")

@@ -284,7 +284,7 @@ const TOOLS = [
         themes: { type: "array", items: { type: "string" }, description: "Theme keys from list_themes. Leave out for every theme." },
         since: { type: "string", pattern: DATE, description: "Use footage shot on or after this date (YYYY-MM-DD). Default: the last 60 days." },
         faces: { type: "boolean", default: false, description: "Allow clips with faces (they then need consent or Blur faces before approval)." },
-        cut: { type: "string", enum: ["short", "long"], default: "short", description: "short = the looping reel; long = a 40-60 s explainer for LinkedIn and Facebook." },
+        cut: { type: "string", enum: ["short", "long", "walk"], default: "short", description: "short = the looping reel (13-25 s); long = a 40-60 s explainer for LinkedIn and Facebook; walk = a 25-40 s site walk: five long, calm shots (5-9 s each) like a camera time-lapse, for Shorts, Reels and TikTok." },
         vary: { type: "boolean", default: true, description: "Give each reel a different text layout and effects." },
       },
       additionalProperties: false,

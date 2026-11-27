@@ -6,7 +6,12 @@ OVERVIEW: `connections()` lists every connector with its status and the fields i
           (never the stored secrets). `publish(slug, network, at, post_id)` picks the network's
           file and post text from the reel's drafts, then either posts now, lets the network
           hold the schedule (Facebook), or queues it for the studio to send at `at` (Bluesky).
-          `run_due()` sends queued posts whose time has come; the server calls it every minute.
+          `run_due()` sends queued posts whose time has come; the server calls it every minute. A send that fails
+          on a passing error (no connection, the network's 5xx, an upload that did not finish) is tried again twice,
+          a few minutes apart, before it is kept as failed (BL-156; `passing`, RETRY_IN).
+          Instagram reels ("instagram") go through the Facebook connection's Instagram account
+          (studio.connectors.instagram_reel) only while it can publish there; until then connections() leaves
+          Instagram out and it is posted by hand, as before.
           `unbook(post_id)` takes a Facebook booking back with nothing in its place (row "dropped").
 DEPENDENCIES: studio.connectors (one module per network), studio.posting, studio.reels
 USAGE: python -m studio publish SLUG NETWORK [--at 2026-11-15T19:00+09:00] [--id 12]
@@ -17,6 +22,7 @@ NOTES: A post the network refuses is kept as "failed" with the reason, so it sho
 from __future__ import annotations
 
 import os
+import re
 import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -44,12 +50,20 @@ def connections(port: int = 4317) -> dict:
             st = mod.status()
         except Exception as err:  # a broken token must not hide the other networks
             st = {"connected": False, "account": None, "error": str(err)}
+        if getattr(mod, "LISTED_ONLY_CONNECTED", False) is True and not st.get("connected"):
+            # Instagram reels without instagram_content_publish: the network stays as it was (posted by hand), and the
+            # Facebook card says why (igReels), instead of a red "connect Instagram" with nothing of its own to press.
+            out.setdefault("_why", {})[net] = st.get("error")
+            continue
         try:
             one = mod.signin(port) if hasattr(mod, "signin") else None
         except Exception:
             one = None
         out[net] = {"name": mod.NAME, "how": mod.HOW, "fields": mod.FIELDS, "links": getattr(mod, "LINKS", []), "canSchedule": bool(mod.can_schedule),
                     "signin": one, **st}
+    why = out.pop("_why", {})
+    if "facebook" in out and "instagram" in why:
+        out["facebook"]["igReels"] = {"connected": False, "error": why["instagram"]}
     return out
 
 
@@ -309,13 +323,53 @@ def run_due() -> list[dict]:
         return _run_due() if mine else []
 
 
+# BL-156: on 25 Nov a Story failed with "could not reach Facebook ([Errno 10053] An established connection was aborted
+# ...)" and on 26 Nov with "Instagram 400 (the upload did not finish)"; both stayed failed although a second try would
+# have gone out. A queued send that fails on a passing error is tried again RETRY_IN minutes later (twice), as long as
+# it is within RETRY_WINDOW of its time; a clear refusal (permission, an expired sign-in, the network's rules, a rate
+# limit, a missing file) is never tried again.
+RETRY_IN = (5, 10)                  # minutes before the 2nd and the 3rd try
+RETRY_WINDOW = timedelta(hours=1)   # no retry for a post more than this late
+_PASSING = re.compile(r"could not reach|timed out|time-?out|connection (?:was )?(?:aborted|reset|refused|closed)|Errno 1005\d|Errno 1006\d"
+                      r"|temporarily unavailable|the upload did not finish|could not process the (?:video|reel)|still processing"
+                      r"|(?:Facebook|Instagram|Bluesky|HTTP) 5\d\d", re.I)
+_REFUSAL = re.compile(r"permission|not allowed|lacks|expired|revoked|not connected|connect (?:Facebook|Bluesky|again)|sign-?in"
+                      r"|policy|spam|rate limit|limit of|too many|\(#(?:10|190|200|368)\)|OAuthException|is missing|render the reel"
+                      r"|no \S+ (?:file|post text)|not approved|at most|larger", re.I)
+
+
+def passing(err) -> bool:
+    """Is this failure worth a second try a few minutes later? A passing network error is; a refusal is not."""
+    text = str(err)
+    return bool(_PASSING.search(text)) and not _REFUSAL.search(text)
+
+
+def _retry_or_fail(row: dict, err: Exception, now: datetime) -> dict:
+    """After a failed send (already kept as failed): queue it again for another try, or leave it failed saying how many."""
+    pid, why = int(row["id"]), str(err)[:300]
+    tries = (posting.retry_of(row.get("note")) or (0, None))[0]
+    at = _when(row.get("at"))
+    if passing(err) and tries < len(RETRY_IN) and (not at or now - at <= RETRY_WINDOW):
+        after = now + timedelta(minutes=RETRY_IN[tries])
+        posting.requeue(pid, tries + 1, len(RETRY_IN), after, why)
+        return {"id": row["id"], "status": "retrying", "error": why, "retryAt": after.isoformat(timespec="minutes"),
+                "network": row["network"], "slug": row["slug"]}
+    if tries:
+        posting.settle(pid, "failed", note=f"{why} (tried {tries + 1} times)"[:400])
+    return {"id": row["id"], "status": "failed", "error": why, "network": row["network"], "slug": row["slug"]}
+
+
 def _run_due() -> list[dict]:
     from studio import live
 
     results = []
+    now = _now()
     for pid in live.catch_up()["missed"]:
         results.append({"id": pid, "status": "missing", "error": "missed while the studio was not running"})
     for row in posting.due():
+        retry = posting.retry_of(row.get("note"))
+        if retry and retry[1] and retry[1] > now:
+            continue  # its next try is not yet due
         try:
             if row["network"] == "photo-story":  # a photo post's Story (studio.stills), not a reel
                 from studio import stills
@@ -328,5 +382,5 @@ def _run_due() -> list[dict]:
             # it goes out on the next run after a person approves it again.
             results.append({"id": row["id"], "status": "held", "error": str(err), "network": row["network"], "slug": row["slug"]})
         except Exception as err:
-            results.append({"id": row["id"], "status": "failed", "error": str(err), "network": row["network"], "slug": row["slug"]})
+            results.append(_retry_or_fail(row, err, now))
     return results

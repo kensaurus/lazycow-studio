@@ -5,7 +5,8 @@ OVERVIEW: One `posts` table in the catalog. YouTube rows are written by studio.y
           when it uploads. Every other network is posted by a person: the studio keeps a
           planned time (the reminder), and "Mark posted" stores the live link.
           `skip(slug)` marks a reel "not to be posted" (network "all", status "skipped").
-          `ics()` turns a plan into a calendar reminder file.
+          `ics()` turns a plan into a calendar reminder file. `requeue` / `retry_of`: a studio-sent post that failed on
+          a passing error waits in the queue for another try (studio.publish BL-156).
 DEPENDENCIES: studio.db
 USAGE: python -m studio posts list | plan SLUG NETWORK --at 2026-11-08T19:00 |
        done ID --url URL | drop ID | ics ID
@@ -15,6 +16,7 @@ NOTES: Times are stored with their offset (with_offset: a bare time is this PC's
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 
 from studio.db import connect
@@ -256,6 +258,31 @@ def settle(post_id: int, status: str, url: str = "", remote_id: str = "", note: 
         _ready(con)
         con.execute("UPDATE posts SET status = ?, url = COALESCE(NULLIF(?, ''), url), remote_id = COALESCE(NULLIF(?, ''), remote_id), note = ? WHERE id = ?",
                     (status, url, remote_id, note, post_id))
+
+
+RETRY_NOTE = re.compile(r"^retry (\d+)/(\d+) after (\S+?): ")
+
+
+def retry_of(note: str | None) -> tuple[int, datetime | None] | None:
+    """(tries so far, when the next one is due) of a queued post that failed on a passing error and waits for another
+    try (studio.publish BL-156), from its note "retry 1/2 after 2026-11-27T19:05+09:00: <why>"; None for any other."""
+    m = RETRY_NOTE.match(note or "")
+    if not m:
+        return None
+    try:
+        after = datetime.fromisoformat(m.group(3))
+    except ValueError:
+        return int(m.group(1)), None
+    return int(m.group(1)), after if after.tzinfo else after.astimezone()
+
+
+def requeue(post_id: int, tries: int, of: int, after: datetime, why: str) -> None:
+    """Back in the queue for another try after `after`, at the same booked time (a Story stays matched to its YouTube
+    booking), the reason kept in the note so the Posting page says what happened."""
+    note = f"retry {tries}/{of} after {after.isoformat(timespec='minutes')}: {why}"[:400]
+    with connect() as con:
+        _ready(con)
+        con.execute("UPDATE posts SET status = 'queued', note = ? WHERE id = ?", (note, post_id))
 
 
 def skip(slug: str, on: bool = True) -> None:

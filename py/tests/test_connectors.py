@@ -64,7 +64,7 @@ def test_registry_has_both_networks_and_refuses_unknown_ones():
     for mod in connectors.REGISTRY.values():
         assert mod.NAME and mod.HOW and isinstance(mod.can_schedule, bool)
         assert all({"key", "label", "secret", "placeholder"} <= set(f) for f in mod.FIELDS)
-        assert any(f["secret"] for f in mod.FIELDS) or mod.NAME == "Instagram Stories"  # it rides on Facebook's sign-in
+        assert any(f["secret"] for f in mod.FIELDS) or mod.NAME in ("Instagram Stories", "Instagram Reels")  # they ride on Facebook's sign-in
     with pytest.raises(ValueError):
         connectors.get("myspace")
 

@@ -522,7 +522,10 @@ const PLAN_NETS = () => POST_NETS.filter((n) => chanOf(n) && !chanOf(n).off);  /
 /* What each network can really do from here. Booked for real: YouTube, the studio's own posts, and the sites your Chrome
    schedules (each only so far ahead, the same limits as server/helper.mjs). Anything else stays a reminder. */
 const CHROME_NETS = { x: 365, tiktok: 10, gbp: 180, "line-oa": 180, linkedin: 90, pinterest: 9 };  // same as helper.mjs MAX_DAYS_AHEAD
-const STUDIO_NETS = ["facebook", "bluesky"];
+/* Sent by the studio through its own connection. Instagram reels only while the Facebook connection can publish to the
+   linked Instagram account (connections.instagram is listed only then: py/studio/publish.py connections); without it
+   Instagram stays a reminder you post by hand. */
+const STUDIO_NETS = { includes: (n) => n === "facebook" || n === "bluesky" || (n === "instagram" && !!connections?.instagram?.connected) };
 const BOOK_AHEAD = { ...CHROME_NETS, facebook: 29 };  // days ahead each site accepts a booking (Facebook refuses reels beyond 29)
 const PLAN_WEEKLY = ["linkedin", "line-oa"];  // at most one a week: its first slot, never within 7 days of another
 const planBooks = (n) => n === "youtube" || n in CHROME_NETS || STUDIO_NETS.includes(n);

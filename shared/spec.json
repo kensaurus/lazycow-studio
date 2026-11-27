@@ -6,9 +6,10 @@
   "loudnessLufs": -14,
   "brand": { "moss": "#4d6b52", "paper": "#faf8f1", "ink": "#1c1a14", "display": "Shippori Mincho" },
   "variants": {
-    "_note": "Cut families per network (docs/research/2026-11-08-networks-variants.md §3). channels.json names each network's family. a-loop is today's edit; b-explainer is made by Make reels > Cut > Long explainer (py/studio/assemble.py long_theme) and packaged only for b-explainer channels; c-silent uses the 16:9 master (captions are already burnt in); long-tour is a separate, hand-made project.",
+    "_note": "Cut families per network (docs/research/2026-11-08-networks-variants.md §3). channels.json names each network's family. a-loop is today's edit; b-explainer is made by Make reels > Cut > Long explainer (py/studio/assemble.py long_theme) and packaged only for b-explainer channels; site-walk is made by Make reels > Cut > Site walk (assemble.py walk_theme): few long, calm shots like a camera time-lapse, packaged for the same channels as a-loop; c-silent uses the 16:9 master (captions are already burnt in); long-tour is a separate, hand-made project.",
     "a-loop": { "aspects": ["9x16"], "targetSec": [13, 25], "captions": "lines", "audio": "music" },
     "b-explainer": { "aspects": ["4x5", "9x16"], "targetSec": [40, 60], "captions": "every claim", "audio": "music, no effects" },
+    "site-walk": { "aspects": ["9x16"], "targetSec": [25, 40], "shotSec": [5, 9], "captions": "lines", "audio": "music, no effects" },
     "c-silent": { "aspects": ["16x9"], "targetSec": [10, 30], "captions": "burnt in", "audio": "optional" },
     "long-tour": { "aspects": ["16x9"], "targetSec": [180, 300], "manual": true }
   },

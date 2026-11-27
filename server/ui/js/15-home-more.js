@@ -13,17 +13,45 @@ function homeSteps() { return essentialSteps(); }
    data-starter for the maker to pick up. */
 function homeStoriesHtml() {
   let list = [];
-  try { list = typeof mkStarterStories === "function" ? (mkStarterStories() || []).filter((s) => s?.id && s?.title).slice(0, 4) : []; } catch { list = []; }
+  try {
+    // The first four kinds of business, then the first story for any kind of place (BL-145: "Any place", the story a
+    // place that is none of those starts from).
+    const all = typeof mkStarterStories === "function" ? (mkStarterStories() || []).filter((s) => s?.id && s?.title) : [];
+    list = all.filter((s) => !s.any).slice(0, 4).concat(all.filter((s) => s.any).slice(0, 1));
+  } catch { list = []; }
   const head = `<h3>${ico("film", "sm")}<span>${esc(tr("hm.st.title"))}</span></h3>`;
   if (!list.length) return `<section class="hm-stories" aria-label="${esc(tr("hm.st.title"))}">${head}<p><a class="btn" href="#/reels" data-openmaker="1">${ico("clapper", "sm")}${esc(tr("hm.st.pick"))} ›</a><span class="meta">${esc(tr("hm.st.hint"))}</span></p></section>`;
   return `<section class="hm-stories" aria-label="${esc(tr("hm.st.title"))}">${head}
-    <ul class="hm-storyrow">${list.map((s) => `<li><a href="#/reels" data-openmaker="1" data-starter="${esc(s.id)}">${ico(s.icon || "film", "sm")}<b>${esc(s.title)}</b></a></li>`).join("")}</ul>
+    <ul class="hm-storyrow">${list.map((s) => `<li${s.any ? ' class="any"' : ""}><a href="#/reels" data-openmaker="1" data-starter="${esc(s.id)}"${s.any ? ` title="${esc(s.title)}"` : ""}>${ico(s.icon || "film", "sm")}<b>${esc(s.any ? tr("fr.any") : s.title)}</b></a></li>`).join("")}</ul>
     <p><a href="#/reels" data-openmaker="1">${esc(tr("hm.st.pick"))} ›</a></p></section>`;
 }
+/* BL-144: footage already in the project's folders and not read yet (a new project pointed at a full folder, or a
+   look-only studio, which reads nothing by itself). GET /api/sources?look=1 diffs the folders now (names only), at most
+   every 20 s while Home shows the one box; the card reads them in one press (POST /api/sources/watch). */
+function homeLookLoad() {
+  const l = foot.look;
+  if (l?.busy || (l && Date.now() - l.at < 20_000)) return;
+  foot.look = { ...(l || {}), busy: true, at: Date.now() };
+  api("/api/sources?look=1").then((v) => { foot.look = { at: Date.now(), new: v?.last?.new || 0, sources: v?.last?.sources || [] }; },
+    () => { foot.look = { at: Date.now(), new: 0, sources: [] }; })
+    .finally(() => { if (atHome() && page === "home" && foot.look?.new) renderHome(true); });
+}
+function homeFoundHtml() {
+  homeLookLoad();
+  const n = foot.look?.new || 0, job = foot.job, reading = job?.status === "running" && job.kind === "watch";
+  if (!n && !reading) return "";
+  const where = (foot.look?.sources || []).filter((s) => s.new > 0).map((s) => srcName(s)).join(", ");
+  const progress = `${esc(job?.label || tr("fr.reading"))}${job?.of ? ` · ${job.done || 0}/${job.of}` : ""}`;
+  return `<section class="hm-first hm-found" aria-labelledby="hmFoundT"><span class="hm-firstico" aria-hidden="true">${ico("layers")}</span>
+    <div><h3 id="hmFoundT">${esc(reading ? tr("fr.foundreading") : tr(n === 1 ? "fr.found1" : "fr.found", { n }))}</h3>
+      <p class="meta" role="status">${reading ? `${ico("clock", "sm")} ${progress}` : esc(tr("fr.foundsub", { w: where || tr("src.l.rootAny") }))}</p></div>
+    ${reading ? "" : `<button type="button" class="primary hm-firstgo" data-srcwatch="1" data-srcread="1">${ico("download", "sm")}${esc(tr(n === 1 ? "fr.read1" : "fr.readn", { n }))}</button>`}</section>`;
+}
 /* The one box for a project with no footage: the Footage › Add drop zone, larger. A drop anywhere on the page uploads
-   (takeFiles), and the upload bars show on Footage › Add, where uploadFiles goes. */
+   (takeFiles), and the upload bars show on Footage › Add, where uploadFiles goes. Files already in the project's folder
+   come first (BL-144). */
 function homeOneHtml() {
-  return `<section class="hm-one" aria-labelledby="hmOneT">${addDropHtml(`<span id="hmOneT">${esc(tr("hm.one.title"))}</span>`, esc(tr("hm.one.sub")), "hm-drop")}</section>${homeStoriesHtml()}`;
+  return `${homeFoundHtml()}<section class="hm-one" aria-labelledby="hmOneT">${addDropHtml(`<span id="hmOneT">${esc(tr("hm.one.title"))}</span>`, esc(tr("hm.one.sub")), "hm-drop")}</section>${homeStoriesHtml()}`;
 }
 /* The next step once footage is in and no reel is made yet (the setup cards are the header chip's, BL-131): one box,
    "Make your first reel", that opens the maker on Reels. A project with no themes gets the starter stories under it (the

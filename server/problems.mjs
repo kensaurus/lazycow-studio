@@ -102,9 +102,34 @@ export function aiHealthProblems(health) {
  * all at nothing, on the account in use now). One source, so Needs you and Plan posts never disagree (24 Nov: Needs you
  * said TikTok was unseen while planning kept booking it, and the 0s were on an account deleted that day).
  */
+// What to check first when one network stops showing posts that it used to show.
+const QUIET_HINT = {
+  facebook: { en: "If your Meta app is still in development (developers.facebook.com › My apps shows its Mode), reels it posts can reach only the app's own people: open the app, press Publish, and check it says Mode: Live. Then compare one reel posted from the Facebook app by hand.",
+    ja: "Metaアプリがまだ開発モードなら（developers.facebook.com › マイアプリ にモードが出ます）、そのアプリから投稿したリールはアプリの関係者にしか届かないことがあります。アプリを開いて「公開」を押し、モードが「ライブ」になったか確かめてください。そのあと、Facebookアプリから手で1本投稿して比べてください。",
+    fix: { label: "Open my Meta apps", href: "https://developers.facebook.com/apps/" }, fixJa: "Metaのマイアプリを開く" },
+  tiktok: { en: "TikTok shows a video first to people near where it was posted from: post one from the TikTok app on a phone in your own country and compare.",
+    ja: "TikTokは、投稿した場所の近くの人に先に見せます。自分の国でスマホのTikTokアプリから1本投稿して比べてください。" },
+};
+
 export function reachProblems(reach, { paused = true } = {}) {
   const out = [];
   for (const v of reach?.networks || []) {
+    if (!v?.stalled && v?.quiet?.posts >= 3) {
+      // Went quiet (perf.reach "quiet"): the latest posts got nothing although earlier ones were seen. Not paused:
+      // the next post is how to tell whether a fix worked.
+      const n = v.network, name = netName(n), k = v.quiet.posts, h = QUIET_HINT[n] || {};
+      const metric = v.hasViews === false ? "likes, reposts or replies" : "views", metricJa = v.hasViews === false ? "いいね・リポスト・返信" : "再生";
+      out.push({
+        id: `quiet:${n}`, level: "amber", group: "numbers",
+        title: `${name} stopped showing your posts`,
+        detail: `Your last ${k} ${name} posts (since ${when(v.quiet.since)}) have 0 ${metric}, although earlier ones were seen. That is the account or the way posts reach it, not the reels. ${h.en || `Check the account on ${name} and compare its own numbers.`}`,
+        fix: h.fix || { label: "See reach on Results", href: "#/results" }, ...(REACH[n] ? { also: REACH[n] } : {}), dismissable: true,
+        ja: { title: `${name}が投稿を表示しなくなりました`,
+          detail: `${name}の最近の投稿${k}件（${whenJa(v.quiet.since)}以降）は、どれも${metricJa}が0です。それより前の投稿は見られていました。リールではなく、アカウントか届け方の問題です。${h.ja || `${name}でアカウントを確かめ、そちらの数字と比べてください。`}`,
+          fix: h.fixJa || "結果で届き方を見る", ...(REACH_JA[n] ? { also: REACH_JA[n] } : {}) },
+      });
+      continue;
+    }
     if (!v?.stalled) continue;
     const n = v.network, name = netName(n), m = Number(v.measured) || 0;
     const metric = v.hasViews === false ? "likes, reposts or replies" : "views", metricJa = v.hasViews === false ? "いいね・リポスト・返信" : "再生";
@@ -258,6 +283,20 @@ export function findProblems({ posts = [], reviews = [], parts = [], connections
   //    24 Nov: YouTube's refresh token died (invalid_grant: the Google app was in Testing mode, 7-day sign-ins) and
   //    Results said so, but this list said nothing.
   out.push(...signedOut(connections, readErrors, posts, now).filter((x) => !out.some((o) => o.id === x.id)));
+  // 8. A Meta app that is still in development (py/studio/connectors/facebook.py app_mode: no privacy policy URL, so
+  //    Meta cannot have published it). 27 Nov: every reel from 18 Nov on read 0 plays from such an app.
+  const fbApp = connections?.facebook?.connected && connections.facebook.appMode;
+  if (fbApp?.mode === "development") {
+    out.push({
+      id: "fbapp:development", level: "amber",
+      title: "Your Meta app is still in development",
+      detail: `Facebook reels the studio posts through "${fbApp.name}" may be shown to almost nobody until the app is published. On developers.facebook.com add a privacy policy URL (App settings › Basic), press Publish, and check it says Mode: Live. Your Page stays connected: the studio's Page token keeps working. To connect again later, use Other way and paste a token from Graph API Explorer (the sign-in window works only in development).`,
+      fix: { label: "Publish the Meta app", href: fbApp.publish || "https://developers.facebook.com/apps/" }, dismissable: true,
+      ja: { title: "Metaアプリがまだ開発モードです",
+        detail: `スタジオが「${fbApp.name}」から投稿するFacebookのリールは、アプリを公開するまでほとんど誰にも表示されないことがあります。developers.facebook.comで、アプリの設定 › ベーシック にプライバシーポリシーのURLを入れ、「公開」を押して、モードが「ライブ」になったか確かめてください。ページの接続はそのままで、スタジオのページトークンは使えます。あとでつなぎ直すときは「別の方法」でグラフAPIエクスプローラーのトークンを貼り付けてください（サインイン画面は開発モードでしか使えません）。`,
+        fix: "Metaアプリを公開する" },
+    });
+  }
   return sort(out);
 }
 

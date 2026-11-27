@@ -36,10 +36,12 @@
   .hm-stories { margin-top: 14px; }
   .hm-stories > h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font: 700 13px/1.3 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
   .hm-stories > p { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin: 0; }
-  .hm-storyrow { list-style: none; margin: 0 0 8px; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .hm-storyrow { list-style: none; margin: 0 0 8px; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
   .hm-storyrow a { display: flex; align-items: center; gap: 8px; min-height: 56px; padding: 10px 12px; border: 1px solid var(--line); background: var(--panel); color: var(--text); text-decoration: none; }
   .hm-storyrow a:hover, .hm-storyrow a:focus-visible { border-color: var(--ink); }
-  @media (max-width: 700px) { .hm-storyrow { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ah-drop.hm-drop { min-height: 0; padding: 22px 14px; } }
+  .hm-storyrow li.any a { border-style: dashed; }  /* BL-145: the story for any kind of place, after the four kinds */
+  .hm-found { margin: 0 0 14px; }  /* BL-144: files already in the folder, above the drop box */
+  @media (max-width: 700px) { .hm-storyrow { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hm-storyrow li.any { grid-column: 1 / -1; } .ah-drop.hm-drop { min-height: 0; padding: 22px 14px; } }
   .mt-grid { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
   .mt-card { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; height: 100%; padding: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--text); text-decoration: none; }
   .mt-card:hover, .mt-card:focus-visible { border-color: var(--ink); transform: translateY(-1px); }

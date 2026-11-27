@@ -753,8 +753,15 @@ function insCards() {
   const V = insView, out = [];
   if (!V || V.error) return out;
   const y = V.youtube, cv = V.convert, rel = V.related || { done: 0, of: 0, items: [] };
+  // Engaged views when YouTube Analytics gives them (a plain view is any start or replay since March 2025).
+  if (y?.kept) {
+    const o = y.kept.outside, low = o ? y.kept.pct * 1.5 < o.pct : y.kept.pct < 15;
+    out.push({ k: "kept", tone: low ? "warn" : "info", icon: "eye", t: tr(low ? "in.keep.t" : "in.keep.tok"),
+      big: o ? `${y.kept.pct} %<small> ${tr("in.vs")} ${o.pct} %</small>` : `${y.kept.pct} %`,
+      sub: tr(o ? "in.keep.sub" : "in.keep.subnone", { n: y.kept.n, o: o?.n || 0 }), act: tr("in.keep.do") });
+  }
   if (y?.hook) out.push({ k: "hook", tone: "good", icon: "type", t: tr("in.hook.t", { p: esc(y.hook.phrase) }), big: insVs(y.hook.with.median, y.hook.without.median),
-    sub: tr("in.hook.sub", { a: y.hook.with.n, b: y.hook.without.n }), act: tr("in.hook.do", { p: esc(y.hook.phrase) }) });
+    sub: tr(y.hook.metric === "engaged" ? "in.hook.subeng" : "in.hook.sub", { a: y.hook.with.n, b: y.hook.without.n }), act: tr("in.hook.do", { p: esc(y.hook.phrase) }) });
   const per = (subs, views) => (views ? (1000 * subs) / views : 0);
   if (cv?.live && cv.shorts.views && cv.live.views && per(cv.live.subs, cv.live.views) > per(cv.shorts.subs, cv.shorts.views)) {
     out.push({ k: "live", tone: rel.of && rel.done >= rel.of ? "good" : "warn", icon: "users", t: tr("in.live.t"),
@@ -782,9 +789,14 @@ function insDetail(k) {
   const V = insView, y = V?.youtube;
   const row = (a, b, c = "") => `<li><span class="clamp">${a}</span><b>${b}</b>${c ? `<span>${c}</span>` : "<span></span>"}</li>`;
   const yt = (id) => (id ? `<a href="https://www.youtube.com/shorts/${encodeURIComponent(id)}" target="_blank" rel="noopener">YouTube ↗</a>` : "");
-  if (k === "hook" && y?.hook) return `<p>${tr("in.hook.why", { p: esc(y.hook.phrase), n: y.shorts, l: y.hook.lift })}</p>
-    <ul class="inlist">${y.hook.examples.map((x) => row(`<a href="#/reel/${esc(x.slug)}" lang="ja">${esc(x.opener)}</a>`, insN(x.views), `<span class="meta">${tr("tb.views")}</span>`)).join("")}</ul>
+  if (k === "kept" && y?.kept) return `<p>${tr("in.keep.why", { p: y.kept.pct, o: y.kept.outside?.pct ?? "–" })}</p>`;
+  if (k === "hook" && y?.hook) {
+    const eng = y.hook.metric === "engaged";
+    return `<p>${tr(eng ? "in.hook.whyeng" : "in.hook.why", { p: esc(y.hook.phrase), n: y.shorts, l: y.hook.lift })}</p>
+    ${eng && y.hook.kept ? `<p>${tr("in.hook.kept", { p: esc(y.hook.phrase), a: y.hook.kept.with, b: y.hook.kept.without })}</p>` : ""}
+    <ul class="inlist">${y.hook.examples.map((x) => row(`<a href="#/reel/${esc(x.slug)}" lang="ja">${esc(x.opener)}</a>`, insN(eng ? x.engaged : x.views), `<span class="meta">${tr(eng ? "ch.engaged" : "tb.views")}</span>`)).join("")}</ul>
     <p class="meta">${tr("in.hook.test")}</p>`;
+  }
   if (k === "live" && V.related) {
     const lv = V.convert?.live;
     return `<p>${tr("in.live.why", { live: lv ? `<a href="${escUrl(lv.url)}" target="_blank" rel="noopener" lang="ja">${esc(lv.title)}</a>` : "" })}</p>
@@ -802,7 +814,7 @@ function insDetail(k) {
   if (k === "stories" && V.stories) return V.stories.need ? `<p>${tr("in.story.why")}</p><p><a class="btn" href="#/accounts">${ico("user", "sm")}${tr("nav.accounts")}</a></p>`
     : `<p>${tr("in.story.sum", { v: insN(V.stories.views), r: insN(V.stories.reach), n: V.stories.read })}</p><p class="meta">${tr("in.story.how")}</p>`;
   if (k.startsWith("acct-")) { const a = (V.accounts || []).find((x) => `acct-${x.network}` === k); return a ? `<p>${tr("in.acct.why", { net: esc(NET_NAME[a.network] || a.network), h: esc(a.handle) })}</p><p><a class="btn" href="#/accounts">${ico("user", "sm")}${tr("nav.accounts")}</a></p>` : ""; }
-  if (k === "outside" && V.outside) return `<p>${tr("in.out.why", { n: V.outside.n, m: insN(V.outside.median), s: insN(V.outside.studio) })}</p>`;
+  if (k === "outside" && V.outside) return `<p>${tr("in.out.why", { n: V.outside.n, m: insN(V.outside.median), s: insN(V.outside.studio) })}</p>${V.outside.kept ? `<p>${tr("in.out.kept", { o: V.outside.kept.outside, s: V.outside.kept.studio })}</p>` : ""}`;
   if (k === "model" && predView) return `<p>${tr("in.model.why", { r: predView.spearman.toFixed(2), n: predView.measured })}</p>`;
   return "";
 }
