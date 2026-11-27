@@ -16,3 +16,11 @@ https://kensaur.us in your About screen and README.
 
 Third-party components keep their own licences; see
 docs/THIRD_PARTY_NOTICES.md.
+
+Remotion (https://www.remotion.dev) renders the studio's reels and product
+videos. It is not under the Apache License: it has its own licence
+(remotion-dev/remotion LICENSE.md). It is free for individuals and for
+for-profit companies with up to 3 employees; a company with more than 3
+employees needs a Remotion company licence (https://www.remotion.dev/license)
+to render with this software. That licence is between you and Remotion.
+Lazycow Studio itself stays under the Apache License 2.0.

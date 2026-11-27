@@ -172,7 +172,7 @@ Lazycow Studioは、[kensaurus](https://kensaur.us/?view=portfolio&utm_source=la
 
 スタジオのコードは **[Apache License 2.0](LICENSE)** です。
 
-> **Remotion のライセンスは別です。** 画面の文字を描くのに [Remotion](https://www.remotion.dev) を使っています。Remotion は個人、非営利団体、3人までの会社なら無料です。**4人以上の営利企業がこのスタジオでリールを作るには、[Remotion の会社向けライセンス](https://www.remotion.dev/license)が必要です。** これはあなたと Remotion の間の契約で、スタジオの Apache ライセンスには含まれません。
+> **Remotion のライセンスは別です。** 画面の文字を描くのと、プロダクト動画の書き出しに [Remotion](https://www.remotion.dev) を使っています。Remotion には独自のライセンスがあります（remotion-dev/remotion の `LICENSE.md`）。個人、非営利団体、従業員3人までの営利企業なら無料です。**従業員が4人以上の会社がこのスタジオでリールやプロダクト動画を作るには、[Remotion の会社向けライセンス](https://www.remotion.dev/license)が必要です。** これはあなたと Remotion の間の契約で、スタジオの Apache ライセンスには含まれません。[NOTICE](NOTICE) も見てください。
 
 ほかの部品、モデル、フォント、音楽とそれぞれのライセンスは [THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) にあります。「Lazycow」「Lazycow Studio」という名前とアイコンは kensaurus LLC の商標で、ライセンスの対象外です。フォークするときは、別の名前とアイコンを付けてください（[TRADEMARKS.md](docs/TRADEMARKS.md)）。
 

@@ -403,7 +403,7 @@ Every app, with the story of why it exists: [kensaur.us](https://kensaur.us/?vie
 
 The studio's code is under the **[Apache License 2.0](LICENSE)**.
 
-> **Remotion is not open source in the same way.** The studio uses [Remotion](https://www.remotion.dev) to draw the words on screen. Remotion has its own licence: it is free for individuals, non-profits and companies of up to 3 people. **A for-profit company with more than 3 people needs a [Remotion company licence](https://www.remotion.dev/license) to make reels with the studio.** That licence is between you and Remotion; the studio's Apache licence does not cover it.
+> **Remotion is not open source in the same way.** The studio uses [Remotion](https://www.remotion.dev) to draw the words on screen and to render product videos. Remotion has its own licence (remotion-dev/remotion `LICENSE.md`): it is free for individuals, non-profits and for-profit companies with up to 3 employees. **A company with more than 3 employees needs a [Remotion company licence](https://www.remotion.dev/license) to make reels or product videos with the studio.** That licence is between you and Remotion; the studio's Apache licence does not cover it. See [NOTICE](NOTICE).
 
 Every other component, model, font and piece of music, with its licence, is listed in [THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md). The fonts in `public/fonts` each have their licence file beside them. Each reel's music credit travels with it in `credits.txt`.
 
