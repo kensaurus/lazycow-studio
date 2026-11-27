@@ -735,10 +735,11 @@ function live() {
         const n = j.result?.added ?? j.result?.downloaded ?? null;
         // A timer check that found nothing stays quiet; anything new is worth a toast.
         if (j.kind !== "watch" || n) toast(`${ico("check", "sm")} ${j.slug === "gphotos" ? `Google Photos: ${n ?? ""} new` : esc(tr("src.donemsg", { n: n ?? 0 }))}`, 6000);
-        foot.items = []; foot.loadedKey = null; foot.mapLib = null; loadFootage(); loadOverview(); loadSources();
+        foot.items = []; foot.loadedKey = null; foot.mapLib = null; foot.look = null; loadFootage(); loadOverview(); loadSources();
       }
       if (j.status === "error") toast(`${ico("alert", "sm")} ${esc((j.lines || []).slice(-1)[0] || "failed")}`, 8000);
-      if (atHome() && page === "footage") renderHome(true);
+      // Home shows the reading too (BL-144: its "Read these N files now" on a first start).
+      if (atHome() && (page === "footage" || page === "home")) renderHome(true);
       return;
     }
     if (j.kind === "versions" && /^ver-/.test(j.slug) && j.status !== "running") {
@@ -952,6 +953,9 @@ document.addEventListener("dblclick", (e) => {
 
 /* ---------- home: the flow as five steps, every reel as a card ---------- */
 let themes = null, autoThemes = null, autoDays = 60, autoFaces = false, autoCut = "short", autoVary = true;
+/* The label of a cut: Make reels' choice (short, walk, long) or a reel's own variant (none, site-walk, b-explainer).
+   Its hint is the same key + "hint". */
+const cutKey = (cut) => (cut === "long" || cut === "b-explainer" ? "make.cutlong" : cut === "walk" || cut === "site-walk" ? "make.cutwalk" : "make.cutshort");
 let homeSig = "";
 document.addEventListener("change", (e) => {
   if (e.target.id === "autoDays") autoDays = +e.target.value;

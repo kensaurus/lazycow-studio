@@ -56,7 +56,8 @@ NAME = "Facebook"
 HOW = ("In Graph API Explorer (any Meta app where you are an admin) add pages_show_list, pages_read_engagement, "
        "pages_manage_posts and business_management, press Generate Access Token, tick your business and your Page, and "
        "paste the token here. The studio finds the Page and keeps the Page's own token. Add the app secret once and it "
-       "never expires.")
+       "never expires. Then publish the app (My apps › your app › Publish, so it shows Mode: Live): reels from an app "
+       "still in development may be shown to almost nobody.")
 FIELDS = [
     {"key": "token", "label": "Access token", "secret": True, "placeholder": "EAA…"},
     {"key": "app_secret", "label": "App secret (optional: makes it permanent)", "secret": True, "placeholder": "App settings › Basic › App secret", "optional": True},
@@ -68,7 +69,7 @@ FIELDS = [
 # post() still takes `at` for a direct call, but nothing books ahead on Facebook any more.
 can_schedule = False
 LINKS = [{"label": "Open Graph API Explorer", "url": "https://developers.facebook.com/tools/explorer/"},
-         {"label": "My Meta apps (app secret)", "url": "https://developers.facebook.com/apps/"}]
+         {"label": "My Meta apps (app secret, and Publish: Mode Live)", "url": "https://developers.facebook.com/apps/"}]
 
 VERSION = "v27.0"
 GRAPH = f"https://graph.facebook.com/{VERSION}"
@@ -134,7 +135,45 @@ def status() -> dict:
     problem = _token_problem(creds["token"]) if creds.get("token") else None
     if problem:
         return {"connected": False, "account": account, "error": problem}
-    return {"connected": True, "account": account, "error": None}
+    mode = app_mode()
+    return {"connected": True, "account": account, "error": None, **({"appMode": mode} if mode else {})}
+
+
+# ---------- the Meta app's mode ----------
+# 27 Nov 2026: the owner's Meta app had been in Development mode since August, and every reel from 18 Nov on read 0
+# plays. Page owners report in Meta's developer forum that reels an app posts while in Development mode reach only the
+# app's own people, and that the same file posted from the Facebook app is seen. The Graph API has no field for the
+# mode, but Meta will not publish an app (Live) without a privacy policy URL: an app that has none is still in
+# development. One with a URL may be either, so it says "unknown" and Problems watches the plays instead
+# (perf.reach "quiet"). Publishing ends this window's sign-in, though: Meta allows the http://localhost return address
+# only in Development mode, so a Live app reconnects by pasting a token from Graph API Explorer. A Page token made
+# with the App secret does not expire, so most owners never need to.
+_MODE: dict[str, tuple[float, dict | None]] = {}
+_MODE_FOR = 6 * 3600.0
+
+
+def app_mode(now: float | None = None) -> dict | None:
+    """{app, name, mode: "development" | "unknown", publish} for the owner's saved Meta app, or None (no app saved, or
+    Facebook could not be asked: offline says nothing). Asked at most every six hours."""
+    a = app()
+    if not a:
+        return None
+    aid, sec = a
+    now = time.monotonic() if now is None else now
+    hit = _MODE.get(aid)
+    if hit and now - hit[0] < _MODE_FOR:
+        return hit[1]
+    try:
+        code, data, _ = _get(aid, f"{aid}|{sec}", fields="name,privacy_policy_url")
+    except Exception:  # noqa: BLE001 - offline is not a mode
+        return None
+    out = None
+    if code == 200:
+        out = {"app": aid, "name": str(data.get("name") or aid),
+               "mode": "unknown" if str(data.get("privacy_policy_url") or "").strip() else "development",
+               "publish": f"https://developers.facebook.com/apps/{aid}/go_live/"}
+    _MODE[aid] = (now, out)
+    return out
 
 
 def disconnect() -> None:
@@ -386,9 +425,10 @@ def _login_error(status_: int, body: bytes, port: int) -> str:
     msg, code, sub = str(err.get("message") or ""), err.get("code"), err.get("error_subcode")
     low = msg.lower()
     if code == 191 or "redirect_uri" in low or "redirect uri" in low or "url blocked" in low or sub == 36008:
-        return ("Facebook would not send you back to the studio. In your app on developers.facebook.com open Facebook Login › "
-                f"Settings and add {redirect_uri(port)} under Valid OAuth Redirect URIs (an app in Development mode allows it "
-                "by itself), then press Connect with Facebook again.")
+        return ("Facebook would not send you back to the studio. Meta allows this window's return address "
+                f"({redirect_uri(port)}) only while your app is in Development mode, and a published (Live) app cannot list "
+                "it. Use Other way: paste a token from Graph API Explorer (it works with a Live app). Or switch the app "
+                "to Development for a minute, connect, then publish it again.")
     if code in (1, 101) or "client secret" in low or "client_secret" in low:
         return ("Facebook did not accept the saved App secret (it may have been reset). Paste the App ID and App secret again "
                 "under Use another Meta app, then press Connect with Facebook again.")

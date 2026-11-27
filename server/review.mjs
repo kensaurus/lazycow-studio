@@ -38,7 +38,7 @@ import { setLinkWanted, autoReconnect, beginConnect, browserState, cancelConnect
 import { buildId, folderBytes, freeDiskBytes, judgeSystem, LIMITS, medianSeconds, etaSeconds, probeEncoders, resolveTool, systemFacts } from "./health.mjs";
 import { openDrop, closeDrop, dropState, DROP_TYPES, saveUpload } from "./dropbox.mjs";
 import { bookedBeforeNewWords, classify, pickNext, noteStart, noteResult, YT_PER_DAY } from "./swap.mjs";
-import { AUTO_NETS, CHROME_NETS, fitsNetwork, planAhead, postSlots, todayIn, withAccount } from "./autoplan.mjs";
+import { AUTO_NETS, CHROME_NETS, fitsNetwork, OPTIONAL_NETS, planAhead, postSlots, readyMap, retryAfter, todayIn, withAccount } from "./autoplan.mjs";
 import { setStartup, startupState } from "../scripts/autostart.mjs";
 import qrcode from "qrcode-generator";
 import { defaultProjectsDir, isRanch, ranchOverlay } from "../shared/ranch.mjs";
@@ -48,6 +48,7 @@ import { cleanPicks, createUsage, featureIds, keepNetworksOnUpgrade, madeBefore,
 import { draftsFile, draftsRoom, nextDraftsState, readDraftsState, writeDraftsState } from "./auto-drafts.mjs";
 import { checkFolder, typedFolder } from "./fspick.mjs";
 import { assemblePage, pageFiles } from "./ui.mjs";
+import { firstStartRead } from "./first-start.mjs";
 import { approvalRefusal, authFailLine, authLimiter, clientIp, insideRoots, isSlug, overHttps, pathKey, proxyPeer, strayPath, NET_RX, parseRange, readJson, refusal, rejectOptions, serverMode, SLUG_RX, tokenAttempt, tokenCookie, tokenOk, trustRules } from "./trust.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -62,7 +63,7 @@ const PORT = /^\d{4,5}$/.test(process.env.STUDIO_PORT || "") ? Number(process.en
 /* What this process is serving. If the files change on disk later, /api/health says the server is stale. */
 // The server's own code: a change here needs a restart. The page (editor.html) is read fresh on every load, so a change
 // there only needs open pages to reload: it has its own fingerprint (pageBuild), which the page watches.
-const SERVED = [SELF, ...["health.mjs", "helper.mjs", "trust.mjs", "chrome-bridge.mjs", "dropbox.mjs", "swap.mjs", "autoplan.mjs", "problems.mjs", "tiles.mjs", "uiprefs.mjs", "ui.mjs"].map((f) => join(ROOT, "server", f))];
+const SERVED = [SELF, ...["health.mjs", "helper.mjs", "trust.mjs", "chrome-bridge.mjs", "dropbox.mjs", "swap.mjs", "autoplan.mjs", "problems.mjs", "tiles.mjs", "uiprefs.mjs", "ui.mjs", "first-start.mjs"].map((f) => join(ROOT, "server", f))];
 // The page: server/editor.html (the shell) and its parts in server/ui, joined by server/ui.mjs on every load.
 const BUILD = buildId(SERVED);
 const STARTED = Date.now();
@@ -491,16 +492,19 @@ function channelsView() {
     if ((o.off || []).includes(c.id)) c.off = true;
     else if ((o.on || []).includes(c.id)) delete c.off;
     if (o.accounts?.[c.id]) c.account = String(o.accounts[c.id]).slice(0, 80);
+    // Trial reels (py/studio/connectors/instagram_reel.py): true / false as chosen; unset = by the follower count.
+    if (c.id === "instagram" && typeof o.igTrial === "boolean") c.trial = o.igTrial;
   }
   return spec;
 }
-function setNetwork(id, { on, account }) {
+function setNetwork(id, { on, account, trial }) {
   const own = join(DATA, "networks.json");
   let o = existsSync(own) ? JSON.parse(readFileSync(own, "utf8")) : {};
   o.on = (o.on || []).filter((x) => x !== id); o.off = (o.off || []).filter((x) => x !== id); o.accounts = o.accounts || {};
   if (on === true) o.on.push(id); else if (on === false) o.off.push(id);
   // a new account name (an account replaced) starts its "since": reach and Plan posts judge only its own posts
   if (typeof account === "string") o = withAccount(o, id, account.trim() ? cleanName(account) : "");
+  if (id === "instagram" && trial !== undefined) { if (typeof trial === "boolean") o.igTrial = trial; else delete o.igTrial; }
   mkdirSync(DATA, { recursive: true });
   writeFileSync(own, JSON.stringify(o, null, 2));
 }
@@ -853,7 +857,7 @@ setInterval(() => runChecks().catch((e) => console.error(`[checks] ${e.message |
 /* Which networks can book right now: the Chrome ones while the helper is linked to your Chrome, the API ones while connected. */
 async function autoReady() {
   const [conns, yt] = await Promise.all([ask({ cmd: "connections", port: PORT }).catch(() => ({})), ask({ cmd: "yt_status" }).catch(() => ({}))]);
-  return Object.fromEntries(AUTO_NETS.map((n) => [n, CHROME_NETS.includes(n) ? extensionConnected() : n === "youtube" ? !!yt.connected : !!conns[n]?.connected]));
+  return readyMap({ conns, ytConnected: !!yt.connected, chrome: extensionConnected() });
 }
 /* What the planner ranks and skips by (BL-055): each reel's score (/api/perf/scores) and the networks Results › Reach
    marks stalled. Either can be missing (no numbers yet, a slow read): the plan then runs as it did. */
@@ -866,7 +870,9 @@ async function planSignals(st) {
   // not given its 0-100 score.
   const learned = sc?.rankBy === "learned";
   const scores = Object.fromEntries(Object.entries(sc?.scores || {}).map(([k, v]) => [k.replace(/^story-/, ""), learned ? v?.rank : v?.rank ?? v?.score]).filter(([, v]) => Number.isFinite(v)));
-  return { scores, stalled: (reach?.networks || []).filter((n) => n.stalled).map((n) => n.network) };
+  return { scores, stalled: (reach?.networks || []).filter((n) => n.stalled).map((n) => n.network),
+    // measured posts on the account in use now, all at nothing, too early to call stalled (BL-157)
+    unseen: (reach?.networks || []).filter((n) => !n.stalled && n.verdict === "none" && Number(n.measured) > 0).map((n) => n.network) };
 }
 /* The next days' bookings from the approved reels (server/autoplan.mjs). confirm: false = what it would book. */
 let planning = null;
@@ -884,9 +890,9 @@ async function autoPlan({ confirm = true, why = "timer" } = {}) {
     const reels = ms.map((m) => ({ slug: m.slug, headline: headlineOf(m, m.channels?.[0]), networks: chosen.filter((n) => fitsNetwork(m, n, spec)),
       score: sig.scores[m.slug], seconds: m.durationSec }));
     const plan = planAhead({ reels, networks: chosen.filter((n) => ready[n]), posts, timeZone: tz, aheadDays: st.aheadDays,
-      tiktokAheadDays: st.tiktokAheadDays, youtubeLeft: Math.max(0, YT_PER_DAY - autoReplaceState().yt), stalled: sig.stalled, themeDays: st.themeDays ?? 3,
+      tiktokAheadDays: st.tiktokAheadDays, youtubeLeft: Math.max(0, YT_PER_DAY - autoReplaceState().yt), stalled: sig.stalled, unseen: sig.unseen || [], themeDays: st.themeDays ?? 3,
       slots: postSlots(spec, tz), perDay: { tiktok: st.tiktokPerDay ?? 1 } });  // channels.json hours, every 4th booking at another one (BL-102); TikTok up to 4 a day
-    const waiting = chosen.filter((n) => !ready[n]);
+    const waiting = chosen.filter((n) => n in ready && !ready[n]);  // Instagram without its connection is not waited on
     if (!confirm) return { dryRun: true, ...plan, waiting, approved: reels.length };
     for (const s of plan.skipped.filter((x) => x.stalled)) console.log(`[auto-plan] ${s.network} ${s.why}`);
     const batch = { signin: new Set() };
@@ -1456,7 +1462,7 @@ async function tickPosts() {
     if (jobs.get("post-due")?.status === "running") return;
     const rows = await ask({ cmd: "posts" });
     const now = Date.now();
-    if (rows.some((r) => r.status === "queued" && r.at && Date.parse(r.at) <= now)) startTask("post-due", "post", ["publish", "--due"]);
+    if (rows.some((r) => r.status === "queued" && r.at && Date.parse(r.at) <= now && !(retryAfter(r.note) > now))) startTask("post-due", "post", ["publish", "--due"]);
     // Once an hour: an Instagram Story beside every reel booked on YouTube (py/studio/publish.py stories_from_schedule;
     // the owner, 16 Nov). It queues nothing until Instagram is reachable through the Facebook connection.
     if (now - tickPosts.stories > 3600e3 && jobs.get("post-stories")?.status !== "running") {
@@ -1614,6 +1620,9 @@ async function watchSwap(b, job) {
 }
 setInterval(tickReplace, 5 * 60_000);
 setTimeout(tickReplace, 120_000);
+// BL-144: a project never read before (a new one, its folder already full) is read a few seconds after start, so Home
+// does not say "Drop your videos here" over footage that is already there (server/first-start.mjs).
+if (firstStartRead({ quiet: QUIET, watchMinutes: WATCH_MINUTES, data: DATA }).read) setTimeout(() => startWatch("first start"), 5_000);
 if (WATCH_MINUTES > 0) {
   setTimeout(tickWatch, 90_000);  // first look shortly after start, once the helper has loaded
   setInterval(tickWatch, WATCH_MINUTES * 60_000);
@@ -2377,6 +2386,12 @@ const server = createServer(async (req, res) => {
     }
     /* Footage folders: browse any drive, discover a folder before adding it, watch for new files. */
     if (req.method === "GET" && url.pathname === "/api/sources") {
+      // look=1 (BL-144): diff every folder now (names only, nothing catalogued), so Home can offer a new project the files
+      // already in its folder. A look-only studio never reads them by itself; this lets a person read them in one press.
+      if (url.searchParams.get("look") === "1") {
+        const [list, last] = await Promise.all([pyResult(["sources", "list"]), pyResult(["sources", "diff"])]);
+        return send(res, 200, { ...list, last, watch: watchView() });
+      }
       return send(res, 200, { ...(await pyResult(["sources", "list"])), watch: watchView() });
     }
     if (req.method === "GET" && url.pathname === "/api/fs/roots") {
@@ -2545,7 +2560,8 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/channels/set") {
       const b = await body(req);
       if (!NET_RX.test(b.id || "") || !channelsView().channels.some((c) => c.id === b.id)) return send(res, 400, { error: "network id" });
-      setNetwork(b.id, { on: typeof b.on === "boolean" ? b.on : undefined, account: typeof b.account === "string" ? b.account : undefined });
+      if (b.trial !== undefined && (b.id !== "instagram" || (b.trial !== null && typeof b.trial !== "boolean"))) return send(res, 400, { error: "trial: true, false or null, for instagram only" });
+      setNetwork(b.id, { on: typeof b.on === "boolean" ? b.on : undefined, account: typeof b.account === "string" ? b.account : undefined, trial: b.trial });
       return send(res, 200, channelsView());
     }
     /* ---------- projects (workspaces) ---------- */
@@ -3008,7 +3024,7 @@ const server = createServer(async (req, res) => {
       const [settings, waiting, ready] = await Promise.all([liveSettings(), ask({ cmd: "live", action: "waiting" }), autoReady().catch(() => null)]);
       const tz = AUDIENCE_TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
       return send(res, 200, { settings, runs: autoRuns(), waiting, chrome: extensionConnected(), startup: startupState(), planning: !!planning,
-        checking: !!checking, networks: AUTO_NETS, ready, today: todayIn(tz) });
+        checking: !!checking, networks: AUTO_NETS.filter((n) => !OPTIONAL_NETS.includes(n) || ready?.[n]), ready, today: todayIn(tz) });
     }
     if (req.method === "POST" && url.pathname === "/api/autopost") {
       const b = await body(req);
@@ -3175,6 +3191,13 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/themes/stories") {
       try { return send(res, 200, { stories: JSON.parse(readFileSync(join(ROOT, "shared", "starter-stories.json"), "utf8")).stories || [] }); }
       catch { return send(res, 200, { stories: [] }); }
+    }
+    /* How many different clips each theme's next reel would find (BL-145, studio.assemble theme_fit): Make reels greys
+       its button below `need` and says why, instead of failing after the press. */
+    if (req.method === "GET" && url.pathname === "/api/themes/fit") {
+      const list = url.searchParams.get("themes");
+      const keys = list == null ? null : list.split(",").map((k) => k.trim()).filter((k) => /^[a-z][a-z0-9-]{0,23}$/.test(k)).slice(0, 60);
+      return send(res, 200, await ask({ cmd: "fit", themes: keys, faces: url.searchParams.get("faces") === "1" }));
     }
     /* A project's own themes (the theme editor): a headline, lines and what to film. A person types the words, so
        they are approved by being saved; the project's guard checks them. Built-in themes cannot be changed here. */
@@ -3581,7 +3604,7 @@ const server = createServer(async (req, res) => {
       jobs.set(mk.slug, mk); broadcast("job", mk, true);
       for (const t of themesIn) {
         mk.label = `picking footage for ${t}`; broadcast("job", mk, true);
-        try { for (const m of await ask({ cmd: "autopilot", themes: [t], since: b.since || null, faces: !!b.faces, cut: b.cut === "long" ? "long" : "short", vary: b.vary !== false, ...(typeof b.learned === "boolean" ? { learned: b.learned } : {}), ...(preset ? { preset } : {}) })) { made.push(m); startRender(m.slug); } }
+        try { for (const m of await ask({ cmd: "autopilot", themes: [t], since: b.since || null, faces: !!b.faces, cut: ["long", "walk"].includes(b.cut) ? b.cut : "short", vary: b.vary !== false, ...(typeof b.learned === "boolean" ? { learned: b.learned } : {}), ...(preset ? { preset } : {}) })) { made.push(m); startRender(m.slug); } }
         catch (e) { console.error(`[autopilot] ${t}: ${e.message || e}`); mk.lines.push(`${t}: ${String(e.message || e).split(/\r?\n/)[0]}`); }
         mk.done++; broadcast("job", mk, true);
       }

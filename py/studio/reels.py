@@ -220,8 +220,17 @@ def resolve(rel: str) -> Path:
 
 
 # Length per cut (shared/spec.json "variants"): the short loop stays 8-25 s; the long explainer for
-# LinkedIn and Facebook is 30-60 s.
-LENGTH_RULE = {None: (8, 25), "b-explainer": (30, 60)}
+# LinkedIn and Facebook is 30-60 s; the site walk (few long shots, like a camera time-lapse) 25-40 s.
+LENGTH_RULE = {None: (8, 25), "b-explainer": (30, 60), "site-walk": (25, 40)}
+# The longest one shot may run per cut: 4 s on the short loop and the explainer, 9 s on a site walk.
+SHOT_MAX = {None: 4.0, "b-explainer": 4.0, "site-walk": 9.0}
+
+
+def open_on_words(beats: list[dict]) -> list[dict]:
+    """The headline from the first frame: a hook that starts within the first half second (check_reel's rule) starts
+    at 0.0, so the frame the feed shows first carries the words (27 Nov: 83 % of Shorts viewers swipe away; reels whose
+    headline typed in from 0.1 s opened on a frame with no words). src/Story.tsx draws a hook at 0.0 whole, at once."""
+    return [{**b, "startSec": 0.0} if b.get("kind") == "hook" and float(b.get("startSec") or 0) <= 0.5 else b for b in beats]
 
 
 def check_reel(reel: dict) -> list[str]:
@@ -241,7 +250,7 @@ def check_reel(reel: dict) -> list[str]:
             problems.append(f"photo held too long: {shot['src']} {shot['sec']}")
         if abs(shot["sec"] / GRID - round(shot["sec"] / GRID)) > 1e-6:
             problems.append(f"off the {GRID}s grid: {shot['src']} {shot['sec']}")
-        if shot["sec"] > 4.0:
+        if shot["sec"] > SHOT_MAX.get(reel.get("variant"), SHOT_MAX[None]):
             problems.append(f"shot too long: {shot['src']} {shot['sec']}")
     total = sum(s["sec"] for s in reel["shots"])
     lo, hi = LENGTH_RULE.get(reel.get("variant"), LENGTH_RULE[None])
@@ -827,7 +836,7 @@ def build(slug: str, reel: dict | None = None, out: Path | None = None, candidat
     ltall, lwide, lmeta = render_layers(reel, ROOT / "public" / "mezz" / reel["slug"], bool(reel.get("blurFaces")))
     total = sum(s["sec"] for s in reel["shots"])
     bed = _bed(reel, total)
-    beats = spoken_spans(place_words(reel), reel.get("voice"), reel.get("spokenWords", True))
+    beats = open_on_words(spoken_spans(place_words(reel), reel.get("voice"), reel.get("spokenWords", True)))
     stage_ = staging(reel)  # look, recipe, kicker, loop (src/looks.tsx); the theme's when the project has none
     if stage_["recipe"] == "countdown" and not any(b.get("n") for b in beats):
         beats = number_lines(beats)

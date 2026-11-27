@@ -13,6 +13,10 @@
  *        src/looks.tsx; without them this is the house reel, unchanged.
  *        `typeKit`, `palette` and `motion` (src/typekit.ts, shared/type-kits.json) dress the words: type pairing,
  *        colours, how they arrive. Missing: Shippori Mincho and Cormorant on paper, typed in, as before.
+ *        Words from frame 0 (27 Nov 2026): a headline that starts at 0.0 s (every render since: py/studio/reels.py
+ *        open_on_words) stands whole on the first frame, with its English and kicker; `motion` still dresses the lines'
+ *        kit and an older reel's typed-in headline. With `loop`, it comes back over the loop ending so the last frame
+ *        matches the first (shared/looks.mjs opensShown, headlineAlpha).
  */
 import React from "react";
 import {
@@ -34,8 +38,9 @@ import { enFont, kitOf, motionOf, paletteOf, useKitFonts, type Kit, type Motion,
 import { spokenStates } from "../shared/spoken.mjs";
 import {
   EmberOverlay, FilmOverlay, HoldShot, ImpactShot, JumpShot, KickerLine, LettersOpen, LoopTail, Meter, MirrorShot, MonoShot, MoveShot, Numeral, OVERLAP, PrintShot, PulseShot, StepShot, PunchFlash, PunchShot, Rail, SplitShots, TypedHook, Weave,
-  cutFrames, isMoveLook, parseMeter, type Kicker, type Look, type Recipe,
+  LoopTailCtx, cutFrames, isMoveLook, parseMeter, type Kicker, type Look, type Recipe,
 } from "./looks";
+import { LOOP_FRAMES, headlineAlpha } from "../shared/looks.mjs";
 
 const PAPER = "#faf8f1";
 /* Word-by-word captions: the word being said is warm amber, words still to come are dimmed, said words are paper. */
@@ -263,7 +268,8 @@ const wipeClip = (frame: number, from: number, vertical: boolean) => {
 const Hook: React.FC<{ beat: StoryBeat; style: TextStyle }> = ({ beat, style }) => {
   const { width, height, fps } = useVideoConfig();
   const frame = useCurrentFrame();
-  const { alpha, live } = useBeatProgress(beat);
+  // Whole from frame 0 when it starts there (no fade, no letters arriving), and back over the loop ending.
+  const { alpha, live, shown } = headlineAlpha(beat, frame, fps, { tail: React.useContext(LoopTailCtx) });
   const { k, p, m } = useDress();
   if (!live) return null;
   const columns = beat.ja.split("\n");
@@ -298,11 +304,12 @@ const Hook: React.FC<{ beat: StoryBeat; style: TextStyle }> = ({ beat, style }) 
         }}
       >
         {columns.map((col, c) => (
-          <div key={c} style={m === "wipe" ? { clipPath: wipeClip(frame, startFrame + 4 + c * 7, L.vertical) } : undefined}>
+          <div key={c} style={m === "wipe" && !shown ? { clipPath: wipeClip(frame, startFrame + 4 + c * 7, L.vertical) } : undefined}>
             {[...col].map((ch, j) => {
               const state = said?.[at + j];
               if (j === [...col].length - 1) at += [...col].length + 1;
-              const { opacity, transform, filter } = letterIn(m, frame, startFrame + 4, index++, c);
+              const arrive = letterIn(m, frame, startFrame + 4, index++, c);
+              const { opacity, transform, filter } = shown ? { opacity: 1, transform: undefined, filter: undefined } : arrive;
               return (
                 <span
                   key={index}
@@ -333,7 +340,7 @@ const Hook: React.FC<{ beat: StoryBeat; style: TextStyle }> = ({ beat, style }) 
           textAlign: enAlign,
           color: p.enColor,
           textShadow: SHADOW,
-          opacity: interpolate(frame, [startFrame + 14, startFrame + 28], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) * alpha,
+          opacity: (shown ? 1 : interpolate(frame, [startFrame + 14, startFrame + 28], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })) * alpha,
         }}
       >
         {beat.en}
@@ -497,13 +504,16 @@ export const Story: React.FC<StoryProps> = ({ shots9x16, shots16x9, layers9x16 =
     );
   const total = shots.reduce((a, s) => a + Math.round(s.durationSec * fps), 0);
   const counted = beats.filter((b) => b.kind === "line" && b.n).length;
+  const looped = loop && look !== "split" && shots.length > 1;
+  const tail = React.useMemo(() => (looped ? { from: Math.max(0, total - LOOP_FRAMES), to: total } : null), [looped, total]);
   return (
     <DressCtx.Provider value={dress}>
+    <LoopTailCtx.Provider value={tail}>
     <AbsoluteFill style={{ background: "#14160f" }}>
       {bed ? <Audio src={staticFile(bed.src)} volume={bed.volume} /> : null}
       {look === "film" ? <Weave>{layers}</Weave> : layers}
       {(width > height ? layers16x9 : layers9x16).length ? <LayerTrack layers={width > height ? layers16x9 : layers9x16} /> : null}
-      {loop && look !== "split" && shots.length > 1 ? <LoopTail first={shots[0]} total={total} /> : null}
+      {looped ? <LoopTail first={shots[0]} total={total} /> : null}
       {look === "film" ? <FilmOverlay cuts={cutFrames(shots, fps)} /> : null}
       {look === "ember" ? <EmberOverlay /> : null}
       {look === "punch" ? <PunchFlash beats={beats} /> : null}
@@ -542,6 +552,7 @@ export const Story: React.FC<StoryProps> = ({ shots9x16, shots16x9, layers9x16 =
       ) : null}
       {look === "letters" && beats.find((b) => b.kind === "hook") ? <LettersOpen text={beats.find((b) => b.kind === "hook")!.ja} /> : null}
     </AbsoluteFill>
+    </LoopTailCtx.Provider>
     </DressCtx.Provider>
   );
 };

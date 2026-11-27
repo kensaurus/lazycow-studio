@@ -2,7 +2,7 @@
   "_documentation": {
     "FILE": "shared/starter-stories.json",
     "PURPOSE": "Ready-made stories for a project's first reel (BL-130): a new project has no themes, and writing a headline, lines and four shots from nothing stops most people. Make reels shows these when the project has none (and under Start from a story); one press saves the story as the project's own, editable theme.",
-    "SHAPE": "stories: [{id, kind {en, ja}, about {en, ja}, icon, theme}]. theme is the theme editor's shape (examples/cafe-kumo/themes.json): title {en, ja}, hook {en, ja} (at most 80 characters each), lines [{en, ja}] (1 to 6, 80 at most), shots [English, what the picture search reads] with shotsJa [the same in Japanese, shown on the Japanese page], tags, style (column, centre, lower or split).",
+    "SHAPE": "stories: [{id, kind {en, ja}, about {en, ja}, icon, any?, theme}]. any: true for a story that fits any kind of place (Home shows the first as an Any place card; Make reels offers it when a story finds too few clips, BL-145). theme is the theme editor's shape (examples/cafe-kumo/themes.json): title {en, ja}, hook {en, ja} (at most 80 characters each), lines [{en, ja}] (1 to 6, 80 at most), shots [English, what the picture search reads] with shotsJa [the same in Japanese, shown on the Japanese page], tags, style (column, centre, lower or split).",
     "NOTES": "Generic words only: true of most places of that kind, no prices, numbers or claims a business would have to check. People's faces are left out of reels unless allowed, so shots ask for hands, things and places. The page writes the headline in its own language and the other one as the second language. test/starter-stories.test.mjs and py/tests/test_make_first_run.py check every story."
   },
   "stories": [
@@ -100,6 +100,7 @@
     },
     {
       "id": "day-here",
+      "any": true,
       "kind": { "en": "Any place: a day here", "ja": "どんな場所でも：ここの一日" },
       "about": { "en": "Morning to evening, in a few shots.", "ja": "朝から夕方まで、いくつかのカットで。" },
       "icon": "sun",
@@ -119,6 +120,7 @@
     },
     {
       "id": "how-made",
+      "any": true,
       "kind": { "en": "Any place: how it is made", "ja": "どんな場所でも：できるまで" },
       "about": { "en": "The work behind what you make.", "ja": "つくるものの裏側の仕事。" },
       "icon": "scissors",
@@ -138,6 +140,7 @@
     },
     {
       "id": "come-visit",
+      "any": true,
       "kind": { "en": "Any place: come and visit", "ja": "どんな場所でも：来てください" },
       "about": { "en": "The way here, the door, inside.", "ja": "ここまでの道、入口、中の様子。" },
       "icon": "pin",

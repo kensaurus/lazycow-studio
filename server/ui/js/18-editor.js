@@ -71,9 +71,11 @@ function rules() {
   const photos = edit.shots.filter((s) => s.kind === "photo").length;
   if (photos > 0.3 * edit.shots.length) out.push(`too many photos (${photos}/${edit.shots.length})`);
   const T = total();
-  const [lo, hi] = edit.variant === "b-explainer" ? [30, 60] : [8, 25];  // the long explainer's own range (py reels.LENGTH_RULE)
+  // Each cut's own range and longest shot (py reels.LENGTH_RULE, SHOT_MAX): the long explainer 30-60 s, the site walk 25-40 s of shots up to 9 s.
+  const [lo, hi] = edit.variant === "b-explainer" ? [30, 60] : edit.variant === "site-walk" ? [25, 40] : [8, 25];
+  const most = edit.variant === "site-walk" ? 9 : 4;
   if (T < lo || T > hi) out.push(`length ${T.toFixed(1)} s (keep ${lo}–${hi} s)`);
-  if (edit.shots.some((s) => s.sec > 4)) out.push("a shot over 4 s");
+  if (edit.shots.some((s) => s.sec > most)) out.push(`a shot over ${most} s`);
   if (!edit.beats.some((b) => b.kind === "hook" && b.startSec <= 0.5)) out.push("no hook in the first 0.5 s");
   return out;
 }
@@ -1199,23 +1201,30 @@ const PROB_CAUSE = {
 };
 const sort3 = (items) => [...items].sort((a, b) => ({ red: 0, amber: 1, info: 2 }[a.level] ?? 3) - ({ red: 0, amber: 1, info: 2 }[b.level] ?? 3));
 const PROB = {
-  items: [], open: false,
+  raw: [], open: false,
+  /* The problems in the page's language at the moment they are read (BL-149): the server says each in both languages
+     (`ja`), and so do this page's own lines. They used to be put into the language once, when loaded: after a switch
+     back to English, Home still read "アカウントを開く ›" until the next load. A problem recorded before the server said
+     both stays in English. */
+  get items() {
+    const ja = lang === "ja";
+    return sort3(this.raw.map((it) => (ja && it.ja ? { ...it, title: it.ja.title || it.title, detail: it.ja.detail || it.detail,
+      fix: it.fix && { ...it.fix, label: it.ja.fix || it.fix.label }, also: it.also && { ...it.also, label: it.ja.also || it.also.label } } : it)));
+  },
+  set items(v) { this.raw = Array.isArray(v) ? v : []; },
   async load() {
     let items;
     try { items = (await (await fetch("/api/problems")).json()).items || []; } catch { return; }
-    // the server says each problem in both languages (`ja`); a problem recorded before that stays in English
-    const ja = lang === "ja";
-    items = items.map((it) => (ja && it.ja ? { ...it, title: it.ja.title || it.title, detail: it.ja.detail || it.detail,
-      fix: it.fix && { ...it.fix, label: it.ja.fix || it.fix.label }, also: it.also && { ...it.also, label: it.ja.also || it.also.label } } : it));
     // a numbers read that stopped breaks nothing (only numbers are late): amber, in "Numbers" (also one kept from before)
     items = items.map((it) => (/^job:(helper-perf|perf)(-|$)/.test(it.id) ? { ...it, level: it.level === "red" ? "amber" : it.level, group: "numbers" } : it));
-    this.items = sort3([...items, ...(await this.local())]);
+    this.raw = [...items, ...(await this.local())];
     this.draw();
   },
   /* What only this page knows: a network booked through your Chrome that nobody has checked is signed in there (your
-     "I'm signed in" lives in this browser). One line each, until it is checked on Settings › Accounts. */
+     "I'm signed in" lives in this browser). One line each, until it is checked on Settings › Accounts. Said in both
+     languages, like the server's. */
   async local() {
-    const ja = lang === "ja", out = [];
+    const out = [];
     if (!channelsSpec?.channels) return out;
     if (!helperView || Date.now() - (this.helperAt || 0) > 10 * 60_000) { try { helperView = await api("/api/helper"); this.helperAt = Date.now(); } catch { /* no helper: nothing to say */ } }
     for (const n of ["line-oa", "pinterest", "linkedin", "x", "tiktok", "gbp"]) {
@@ -1225,10 +1234,12 @@ const PROB = {
       if (seen === true || (seen === null && said && Date.now() - said < 30 * 864e5)) continue;
       const name = NET_NAME[n] || n;
       out.push({ id: `check:${n}`, level: "amber", local: true, first: new Date().toISOString(), dismissable: false,
-        title: ja ? `${name}：Chromeでのサインインを一度確認してください` : `${name} needs a one-time sign-in check`,
-        detail: ja ? `スタジオは外から${name}にサインインしているか分かりません。Settings › Accounts で「Open ${name} in my Chrome」を押し、自分のアカウントが表示されたら「I'm signed in」を押してください。`
-          : `The studio cannot tell from outside whether your Chrome is signed in to ${name}. On Settings › Accounts press "Open ${name} in my Chrome"; if it shows your account, press "I'm signed in".`,
-        fix: { label: ja ? "アカウントを開く" : "Open Accounts", href: "#/accounts" } });
+        title: `${name} needs a one-time sign-in check`,
+        detail: `The studio cannot tell from outside whether your Chrome is signed in to ${name}. On Settings › Accounts press "Open ${name} in my Chrome"; if it shows your account, press "I'm signed in".`,
+        fix: { label: "Open Accounts", href: "#/accounts" },
+        ja: { title: `${name}：Chromeでのサインインを一度確認してください`,
+          detail: `スタジオは外から${name}にサインインしているか分かりません。設定 › アカウントで「Open ${name} in my Chrome」を押し、自分のアカウントが表示されたら「I'm signed in」を押してください。`,
+          fix: "アカウントを開く" } });
     }
     return out;
   },

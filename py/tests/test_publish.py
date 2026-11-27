@@ -302,3 +302,109 @@ def test_facebook_reels_are_held_by_the_studio_not_booked_on_facebook():
     from studio.connectors import facebook
 
     assert facebook.can_schedule is False
+
+
+# ---------- BL-156: a send that failed on a passing error is tried again ----------
+
+ABORTED = ("could not reach Facebook ([Errno 10053] An established connection was aborted by the software in your host "
+           "machine); check the internet connection")
+
+
+class Flaky(Fake):
+    """Fails with the given reasons in turn, then posts."""
+
+    def __init__(self, errors):
+        super().__init__(can_schedule=False)
+        self.errors = list(errors)
+
+    def post(self, video, text, at=None):
+        self.calls.append((video, text, at))
+        if self.errors:
+            raise RuntimeError(self.errors.pop(0))
+        return {"url": "https://example.com/p/2", "remote_id": "r2", "scheduled": False}
+
+
+def _due_now(slug, minutes_ago=1):
+    """One queued post due now, the only one (earlier tests leave theirs in the shared catalog)."""
+    from studio.db import connect
+    with connect() as con:
+        con.execute("UPDATE posts SET status = 'dropped' WHERE status = 'queued'")
+    pid = posting.queue(slug, "bluesky", (datetime.now(timezone.utc) + timedelta(hours=2)).astimezone().isoformat(timespec="minutes"))
+    with connect() as con:
+        con.execute("UPDATE posts SET at = ? WHERE id = ?",
+                    ((datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).astimezone().isoformat(timespec="minutes"), pid))
+    return pid
+
+
+def _mine(results, pid):
+    return [r for r in results if r["id"] == pid]
+
+
+def test_the_two_failures_of_25_and_26_nov_are_passing_and_a_refusal_is_not():
+    assert publish.passing(ABORTED)
+    assert publish.passing("Instagram 400 (the upload did not finish)")
+    assert publish.passing("Instagram could not process the video (ERROR); check the file (9:16, under 60 s)")
+    assert publish.passing("Instagram 503: Service temporarily unavailable")
+    assert publish.passing("could not reach Bluesky (timed out); check the internet connection")
+    for no in ("Facebook 400: (#200) The user hasn't authorized the application (the token lacks pages_manage_posts or you are not allowed to post on this Page)",
+               "Facebook 400: Error validating access token (the token expired or was revoked; connect Facebook again with a new Page token)",
+               "Instagram 400: (#10) Application does not have permission for this action (the upload did not finish)",
+               "Facebook 400: (#4) Application request limit reached (Facebook's rate limit; try again later)",
+               "the video v.mp4 is missing; render the reel first", "Bluesky is not connected", "rate limited"):
+        assert not publish.passing(no), no
+
+
+def test_a_passing_failure_is_tried_again_a_few_minutes_later_then_goes_out(net, monkeypatch):
+    mod = net(Flaky([ABORTED]))
+    pid = _due_now("retry-a")
+    first = _mine(publish.run_due(), pid)
+    assert first and first[0]["status"] == "retrying" and len(mod.calls) == 1
+    row = _row(pid)
+    assert row["status"] == "queued" and row["note"].startswith("retry 1/2 after ") and "Errno 10053" in row["note"]
+    tries, after = posting.retry_of(row["note"])
+    assert tries == 1 and timedelta(minutes=4) < after - datetime.now(timezone.utc) <= timedelta(minutes=5)
+    assert not _mine(publish.run_due(), pid) and len(mod.calls) == 1, "not before its retry time"
+    later = datetime.now(timezone.utc).astimezone() + timedelta(minutes=6)
+    monkeypatch.setattr(publish, "_now", lambda: later)
+    sent = _mine(publish.run_due(), pid)
+    assert sent[0]["status"] == "posted" and len(mod.calls) == 2
+    assert _row(pid)["status"] == "posted" and not _row(pid)["note"], "the retry note is gone once it went out"
+
+
+def test_three_passing_failures_stay_failed_saying_how_many_tries(net, monkeypatch):
+    mod = net(Flaky(["Instagram 400 (the upload did not finish)"] * 3))
+    pid = _due_now("retry-b")
+    clock = {"t": datetime.now(timezone.utc).astimezone()}
+    monkeypatch.setattr(publish, "_now", lambda: clock["t"])
+    statuses = []
+    for _ in range(3):
+        statuses.append(_mine(publish.run_due(), pid)[0]["status"])
+        clock["t"] += timedelta(minutes=11)
+    assert statuses == ["retrying", "retrying", "failed"] and len(mod.calls) == 3
+    row = _row(pid)
+    assert row["status"] == "failed" and row["note"].endswith("(tried 3 times)") and "upload did not finish" in row["note"]
+    assert not _mine(publish.run_due(), pid), "a failed post is not sent again"
+
+
+def test_a_refusal_is_never_tried_again(net):
+    mod = net(Flaky(["Facebook 400: (#200) permission (the token lacks pages_manage_posts or you are not allowed to post on this Page)"]))
+    pid = _due_now("retry-c")
+    assert _mine(publish.run_due(), pid)[0]["status"] == "failed"
+    assert _row(pid)["status"] == "failed" and not posting.retry_of(_row(pid)["note"]) and len(mod.calls) == 1
+
+
+def test_no_retry_for_a_post_already_an_hour_late(net):
+    net(Flaky([ABORTED]))
+    pid = _due_now("retry-d", minutes_ago=70)
+    assert _mine(publish.run_due(), pid)[0]["status"] == "failed"
+
+
+def test_a_waiting_retry_is_not_marked_missed_by_the_catch_up(monkeypatch):
+    """A Story that came due three hours ago while the studio was off is missed; one waiting for its retry is not."""
+    from studio import live
+
+    old = posting.queue("retry-e", "instagram-story", (datetime.now(timezone.utc) - timedelta(hours=3)).astimezone().isoformat(timespec="minutes"))
+    wait = posting.queue("retry-f", "instagram-story", (datetime.now(timezone.utc) - timedelta(hours=3)).astimezone().isoformat(timespec="minutes"))
+    posting.requeue(wait, 1, 2, datetime.now(timezone.utc).astimezone() + timedelta(minutes=5), ABORTED)
+    out = live.catch_up()
+    assert old in out["missed"] and wait in out["send"] and _row(wait)["status"] == "queued"

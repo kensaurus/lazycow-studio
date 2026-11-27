@@ -978,3 +978,55 @@ def test_a_reel_made_from_a_lesson_shows_why_on_the_overview_and_is_logged(monke
     assert view["by"] == "auto" and view["mode"] in ("learned", "explore") and view["why"] and view["whyJa"]
     lines = learn.lessons()
     assert lines and lines[0]["kind"] == "reel" and lines[0]["slug"] == slug and lines[0]["by"] == "auto"
+
+
+def test_reach_says_a_network_went_quiet_when_its_latest_posts_get_nothing_after_earlier_ones_were_seen(monkeypatch):
+    """27 Nov: Facebook's reel of 10 Nov had 102 plays, so Facebook was never "stalled", while every reel from 18 Nov on
+    read 0 plays and nothing said so."""
+    from datetime import datetime, timedelta, timezone
+
+    from studio import perf, posting
+
+    now = datetime(2026, 11, 27, 12, tzinfo=timezone.utc)
+    day = lambda d: (now - timedelta(days=d)).isoformat()  # noqa: E731
+    rows = [("facebook", 17, 102), ("facebook", 9, 0), ("facebook", 8, 0), ("facebook", 6, 0), ("facebook", 3, 0),
+            ("facebook", 0.1, 0),                                      # two hours out: too young to count
+            ("x", 5, 0), ("x", 4, 0), ("x", 3, 40),                   # the latest was seen: not quiet
+            ("tiktok", 5, 0), ("tiktok", 4, 0), ("tiktok", 3, 0),     # never seen: stalled, not quiet
+            ("youtube", 6, 900), ("youtube", 4, 0), ("youtube", 2, 0)]  # only two at nothing: too few
+    posts = [{"id": i, "slug": f"s{i}", "network": n, "status": "posted", "at": day(d)} for i, (n, d, _) in enumerate(rows, start=1)]
+    reads = [{"post_id": i, "views": v, "likes": 0} for i, (_, _, v) in enumerate(rows, start=1)]
+    monkeypatch.setattr(posting, "posts", lambda: posts)
+    monkeypatch.setattr(perf, "readings", lambda: reads)
+    by = {n["network"]: n for n in perf.reach(now=now)["networks"]}
+    assert by["facebook"]["quiet"] == {"posts": 4, "since": day(9)} and not by["facebook"]["stalled"]
+    assert "quiet" not in by["x"] and "quiet" not in by["youtube"]
+    assert by["tiktok"]["stalled"] and "quiet" not in by["tiktok"], "never seen is stalled; quiet is only after a seen post"
+    assert all("_seq" not in n for n in by.values())
+
+
+def test_insights_judge_shorts_by_engaged_views_and_the_share_of_viewers_kept():
+    """27 Nov: 83 % of viewers swiped away; the studio's Shorts kept about 9 %, the camera's time-lapses about 26 %.
+    A Shorts view is any start or replay since March 2025, so the hook and the top list rank by engaged views."""
+    shorts = [_short(1, "不便だからこそ、尾根まで見渡せる。｜Cafe Kumo", 1270, engaged=107),
+              _short(2, "区画がないからこそ、気の向くまま張れる。｜Cafe Kumo", 1100, engaged=63),
+              _short(3, "星が見える夜だからこそ、外で火を囲む。｜Cafe Kumo", 920, engaged=226),
+              _short(4, "遠いからこそ、騒げる｜Cafe Kumo", 265, engaged=25),
+              _short(5, "車で来て、車で寝る。｜Cafe Kumo", 200, engaged=17),
+              _short(6, "紅葉のCafe Kumo｜Cafe Kumo", 182, engaged=20),
+              _short(7, "仕事は浅く、つながりは深く。｜Cafe Kumo", 220, engaged=21),
+              _short(8, "朝焼けの山、10時間を31秒で #shorts", 1080, engaged=405, slug=None),
+              _short(9, "雲の山、71分を24秒で #shorts", 1150, engaged=364, slug=None),
+              _short(10, "夕焼けの山、10時間を31秒で #shorts", 660, engaged=200, slug=None)]
+    out = perf.insights_from({"channels": [{"items": shorts}]}, [], [], [], {}, {}, NOW)
+    y = out["youtube"]
+    assert y["metric"] == "engaged" and y["hook"]["metric"] == "engaged" and y["hook"]["phrase"] == "からこそ"
+    assert y["hook"]["with"]["median"] == 85 and y["hook"]["without"]["median"] == 20, "medians of engaged views, not views"
+    assert y["hook"]["kept"] == {"with": 8.9, "without": 9.5}, "more engaged views, about the same share kept: shown wider"
+    assert [t["slug"] for t in y["top"]] == ["s3", "s1", "s2"], "ranked by engaged views: 226, 107, 63"
+    assert y["kept"]["n"] == 7 and 8 < y["kept"]["pct"] < 11 and y["kept"]["outside"]["n"] == 3 and y["kept"]["outside"]["pct"] > 30
+    assert out["outside"]["kept"] == {"outside": y["kept"]["outside"]["pct"], "studio": y["kept"]["pct"]}
+    # without Analytics (no engaged views) everything stays on views, as before
+    plain = [{k: v for k, v in s.items() if k != "engaged"} for s in shorts]
+    y2 = perf.insights_from({"channels": [{"items": plain}]}, [], [], [], {}, {}, NOW)["youtube"]
+    assert y2["metric"] == "views" and "kept" not in y2 and y2["hook"]["metric"] == "views" and "kept" not in y2["hook"]

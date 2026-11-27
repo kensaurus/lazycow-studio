@@ -304,3 +304,28 @@ test("a store with saveTo starts from the shared list and never writes it", asyn
   assert.ok(existsSync(own));
   assert.deepEqual(JSON.parse(readFileSync(own, "utf8")).items["reach:tiktok"].id, "reach:tiktok");
 });
+
+// 27 Nov: Facebook's reel of 10 Nov had 102 plays, so it was never "stalled", while every reel from 18 Nov on read 0
+// plays; the Meta app was still in Development mode. Lazycow now says both.
+test("a network that went quiet is named, with the Meta app as the first thing to check, and is not paused", async () => {
+  const { reachProblems } = await import("../server/problems.mjs");
+  const reach = { networks: [{ network: "facebook", stalled: false, quiet: { posts: 4, since: "2026-11-18T19:00+09:00" }, hasViews: true },
+    { network: "x", stalled: false, quiet: { posts: 2, since: "2026-11-25T12:00+09:00" }, hasViews: true }] };
+  const found = reachProblems(reach);
+  assert.deepEqual(found.map((p) => p.id), ["quiet:facebook"], "two posts are too few to call");
+  const fb = found[0];
+  assert.match(fb.title, /stopped showing/); assert.match(fb.detail, /last 4 Facebook posts/); assert.match(fb.detail, /Mode: Live/);
+  assert.doesNotMatch(fb.title + fb.detail, /paused|Plan posts books/);
+  assert.equal(fb.fix.href, "https://developers.facebook.com/apps/");
+  assert.match(fb.ja.title, /表示しなくなりました/); assert.match(fb.ja.detail, /開発モード/);
+});
+
+test("a Meta app still in development is a problem with a Publish link; unknown or not connected says nothing", () => {
+  const conn = (appMode, connected = true) => ({ facebook: { connected, account: "Cafe Kumo", error: null, appMode } });
+  const dev = { app: "1234567890123456", name: "Cafe Kumo app", mode: "development", publish: "https://developers.facebook.com/apps/1234567890123456/go_live/" };
+  const p = findProblems({ connections: conn(dev), now: NOW }).find((x) => x.id === "fbapp:development");
+  assert.ok(p); assert.equal(p.level, "amber"); assert.equal(p.fix.href, dev.publish);
+  assert.match(p.detail, /Cafe Kumo app/); assert.match(p.detail, /Graph API Explorer/); assert.match(p.ja.title, /開発モード/);
+  assert.ok(!findProblems({ connections: conn({ ...dev, mode: "unknown" }), now: NOW }).some((x) => x.id === "fbapp:development"));
+  assert.ok(!findProblems({ connections: conn(dev, false), now: NOW }).some((x) => x.id === "fbapp:development"));
+});

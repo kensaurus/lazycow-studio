@@ -196,7 +196,8 @@ def reel_features(project: dict, post: dict | None) -> dict:
         "music": "AI bed" if ai_music else "none" if music in (None, False, "off", "none") else "auto" if music == "auto" else "picked",
         "sfx": "effects" if project.get("sfx") else "no effects",
         "hook": "".join(hook.split())[:40] or "none",
-        "cut": "long" if project.get("variant") == "b-explainer" or slug.endswith("-long") else "short",
+        "cut": "long" if project.get("variant") == "b-explainer" or slug.endswith("-long")
+        else "walk" if project.get("variant") == "site-walk" else "short",
         "seconds": round(sec, 1),
     }
     t = _when((post or {}).get("at"))

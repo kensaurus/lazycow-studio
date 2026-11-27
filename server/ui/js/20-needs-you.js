@@ -49,10 +49,24 @@ const WN = {
     if (thin.length) add("todo", "film", tr("next.film", { t: thin[0].title || thin[0].theme, w: mkNeed(thin[0]), n: thin.length }), { label: tr("wn.film"), href: "#/footage" });
     return out;
   },
-  /** Every item, worst first: the server's problems by cause (red, amber), then this page's, then the to-dos. */
+  /** BL-146: no reel of this project approved (or booked, or out) yet. Until then a sign-in is not what needs a person:
+      the networks' sign-in and connect warnings wait (no sign-in stands before the first reel), and the first review
+      leads the list. */
+  held() {
+    if (!overviewLoaded) return false;
+    if (overview.reels.some((r) => !r.house && ["approved", "posted", "published", "scheduled"].includes(r.status))) return false;
+    return !(postsLog || []).some((p) => p.network !== "all" && ["posted", "scheduled", "queued", "planned"].includes(p.status));
+  },
+  /** Every item, worst first: the server's problems by cause (red, amber), then this page's, then the to-dos. Before the
+      first approval (held), no sign-in group, and the first review above the amber ones. */
   items() {
-    const ja = lang === "ja", groups = new Map();
-    for (const i of PROB.items) { if (i.level === "info") continue; const c = PROB.cause(i.id); if (!groups.has(c)) groups.set(c, []); groups.get(c).push(i); }
+    const ja = lang === "ja", groups = new Map(), held = this.held();
+    for (const i of PROB.items) {
+      if (i.level === "info") continue;
+      const c = PROB.cause(i.id);
+      if (held && this.grp("p:" + c) === "signin") continue;
+      if (!groups.has(c)) groups.set(c, []); groups.get(c).push(i);
+    }
     const server = [...groups].map(([c, l]) => {
       const lv = l.some((i) => i.level === "red") ? "red" : "amber", first = l.find((i) => i.level === lv) || l[0];
       return { lv, key: "p:" + c, n: l.length, text: l.length === 1 ? PROB.nice(first.title) : tr("wn.group", { c: PROB.causeName(c, ja), n: l.length }),
@@ -60,10 +74,14 @@ const WN = {
         fix: first.fix?.action?.ai === "retry" && l.length === 1 ? { label: first.fix.label, attrs: `data-aitry="${esc(first.fix.action.provider)}"` }
           : { label: first.fix?.label || tr("wn.open"), href: first.fix?.href || "#/" }, also: first.also, dismiss: l.length === 1 && first.dismissable ? first.id : "" };
     });
-    const local = this.local(), rank = { red: 0, amber: 1, todo: 2 };
+    const local = this.local().filter((x) => !held || this.grp(x.key) !== "signin"), rank = { red: 0, amber: 1, todo: 2 };
+    const at = (x) => (held && x.key === "review" ? 0.5 : rank[x.lv]);  // the first review, above the amber ones
     server.forEach((x) => { x.list = groups.get(x.key.slice(2)); });
-    return [...server, ...local].map((x, i) => ({ ...x, i, grp: this.grp(x.key) })).sort((a, b) => rank[a.lv] - rank[b.lv] || (b.n || 1) - (a.n || 1) || a.i - b.i);
+    return [...server, ...local].map((x, i) => ({ ...x, i, grp: this.grp(x.key) })).sort((a, b) => at(a) - at(b) || (b.n || 1) - (a.n || 1) || a.i - b.i);
   },
+  /** How many networks need a sign-in or a connect: the sign-in group of this same list, so Posting's "N need
+      attention" and What needs you say one number (BL-146: Posting said 2 where What needs you said 3). */
+  signinCount() { return this.expand(this.items()).filter((x) => x.grp === "signin").length; },
   /* Track C (24 Nov): one inbox. Every row in one of five groups, each problem on its own line with its one fix when
      the list is open, and the header's red button counting the same list (its aria said 6, its tooltip 2, the strip 9). */
   GROUPS: ["signin", "posting", "making", "numbers", "ideas"],

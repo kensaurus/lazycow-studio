@@ -466,8 +466,32 @@ paths:
                         kind: { type: object, properties: { en: { type: string }, ja: { type: string } } }
                         about: { type: object, properties: { en: { type: string }, ja: { type: string } } }
                         icon: { type: string }
+                        any: { type: boolean, description: "A story for any kind of place (Home's Any place card, the fallback when a story finds too few clips)." }
                         theme: { type: object, description: "title, hook and lines {en, ja}; shots (English) and shotsJa; tags; style." }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/themes/fit:
+    get:
+      tags: [Reels and render queue]
+      operationId: themeFit
+      summary: How many different clips each theme's next reel would find now (a reel needs `need`, 4).
+      description: |
+        The same picks Make reels makes (studio.assemble theme_fit), with no random draw. Make reels greys its button
+        and says why while every ticked theme is under `need`, instead of failing after the press (BL-145).
+      parameters:
+        - { name: themes, in: query, required: false, description: "Theme keys, comma-separated; all themes when left out.", schema: { type: string } }
+        - { name: faces, in: query, required: false, description: "1 when clips with people in them may be used.", schema: { type: string, enum: ["0", "1"] } }
+      responses:
+        "200":
+          description: Clips that fit, per theme.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fit: { type: object, additionalProperties: { type: integer } }
+                  need: { type: integer }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
   /api/themes/delete:
     post:
       tags: [Reels and render queue]
@@ -559,7 +583,7 @@ paths:
                 themes: { type: array, items: { type: string } }
                 since: { type: [string, "null"], description: Only footage from this date on. }
                 faces: { type: boolean }
-                cut: { type: string, enum: [short, long], default: short }
+                cut: { type: string, enum: [short, long, walk], default: short, description: "short = the looping reel (13-25 s); long = the 40-60 s explainer for LinkedIn and Facebook; walk = the 25-40 s site walk (five long, calm shots, like a camera time-lapse)." }
                 vary: { type: boolean, default: true }
                 learned: { type: boolean, description: "Steer the look from measured results (docs/perf-api.md). Left out: the Use what worked setting (learn.steer, on by default; GET /api/loop). Steering starts at 15 measured posts; about 30 % of steered reels try something new." }
                 preset:
@@ -1309,6 +1333,11 @@ paths:
       tags: [Footage]
       operationId: listSources
       summary: Every footage folder, the last diff, and the watcher's schedule.
+      description: |
+        With `look=1` the folders are diffed now (file names only, nothing opened or catalogued) and `last` is that
+        fresh diff: Home asks so for a project with no footage yet, to offer the files already in its folders (BL-144).
+      parameters:
+        - { name: look, in: query, required: false, description: "1: diff every folder now.", schema: { type: string, enum: ["1"] } }
       responses:
         "200":
           description: Sources.

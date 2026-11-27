@@ -1,8 +1,9 @@
 """
 FILE: py/studio/perf.py
 PURPOSE: How each reel did on each network: a metrics store with snapshots over time, collectors for the
-         networks the studio can read (YouTube, Facebook, Bluesky, Instagram Stories), manual entry and CSV import
-         for the rest (TikTok, X, Pinterest, Google Maps, LINE, LinkedIn, Threads, the Instagram feed); and
+         networks the studio can read (YouTube, Facebook, Bluesky, Instagram Stories, Instagram reels the studio
+         sent), manual entry and CSV import for the rest (TikTok, X, Pinterest, Google Maps, LINE, LinkedIn, Threads,
+         Instagram reels posted by hand); and
          insights(), the numbers behind Results › What the numbers say.
 OVERVIEW: One `metrics` table in the catalog. A row is one reading of one post (posts.id) at one time:
           views, likes, comments, shares, saves, watch time, average % viewed, followers gained, reach,
@@ -655,7 +656,80 @@ class PhotoStory(InstagramStory):
     network, name = "photo-story", "Instagram Stories (photo posts)"
 
 
-COLLECTORS: dict[str, Collector] = {c.network: c for c in (YouTube(), Facebook(), Bluesky(), InstagramStory(), PhotoStory())}
+# ---------- Instagram reels sent by the studio (studio.connectors.instagram_reel) ----------
+# IG Media Insights, updated 2026-09-11 (read 2026-11-27):
+#   https://developers.facebook.com/docs/instagram-platform/reference/instagram-media/insights
+#   GET /{ig-media-id}/insights?metric=views,reach,likes,comments,shares,saved,total_interactions,ig_reels_avg_watch_time,
+#       ig_reels_video_view_total_time  (instagram_basic, instagram_manage_insights, pages_read_engagement)
+#   REELS metrics: views (plays on Instagram), reach, likes, comments, shares, saved, total_interactions,
+#   ig_reels_avg_watch_time and ig_reels_video_view_total_time (milliseconds). plays / clips_replays_count /
+#   ig_reels_aggregated_all_plays_count are no longer listed. A reel posted by hand has no media id in the log: it
+#   stays with "needs numbers by hand".
+IG_REEL_METRICS = ("views", "reach", "likes", "comments", "shares", "saved", "total_interactions", "ig_reels_avg_watch_time",
+                   "ig_reels_video_view_total_time")
+IG_REEL_MAP = {"views": "views", "reach": "reach", "likes": "likes", "comments": "comments", "shares": "shares", "saves": "saved"}
+
+
+def ig_reel_numbers(values: dict) -> tuple[dict, dict]:
+    """(numbers, extra) from one reel's insights {metric name: value}; watch times come in milliseconds."""
+    numbers = {col: int(values[name]) for col, name in IG_REEL_MAP.items() if isinstance(values.get(name), (int, float))}
+    for col, name in (("avg_view_s", "ig_reels_avg_watch_time"), ("watch_time_s", "ig_reels_video_view_total_time")):
+        if isinstance(values.get(name), (int, float)):
+            numbers[col] = round(values[name] / 1000, 2)
+    extra = {"total_interactions": int(values["total_interactions"])} if isinstance(values.get("total_interactions"), (int, float)) else {}
+    return numbers, extra
+
+
+class InstagramReel(InstagramStory):
+    """A reel the studio sent to Instagram (network "instagram"): read like a Story, with the reels' metrics, at the
+    usual checkpoints. Only rows with a media id are read (covers): one posted by hand is typed in or imported."""
+    network, name = "instagram", "Instagram Reels"
+
+    def covers(self, post: dict) -> bool:
+        return instagram_media_id(post) is not None
+
+    def fetch(self, posts):
+        from studio.connectors.facebook import GRAPH
+
+        token = (self._creds() or {}).get("token")
+        if not token:
+            raise PerfError("Instagram Reels: Facebook is not connected", "auth", 401)
+        out, notes = [], []
+        for p in posts:
+            mid = instagram_media_id(p)
+            if not mid:
+                continue
+            q = urllib.parse.urlencode({"metric": ",".join(IG_REEL_METRICS), "access_token": token})
+            status, _, body = _http("GET", f"{GRAPH}/{mid}/insights?{q}")
+            j = _json(body)
+            if status != 200:
+                err = j.get("error") if isinstance(j.get("error"), dict) else {}
+                code, msg = err.get("code"), str(err.get("message") or "")
+                if code == 190:
+                    raise PerfError("Instagram Reels: the stored Facebook token expired or was revoked; connect Facebook again.", "auth", 401)
+                if code in (10, 200) or (isinstance(code, int) and 200 <= code < 300):
+                    raise PerfError("Instagram Reels: the Facebook connection may not read reel numbers yet. Accounts › Facebook › "
+                                    "Connect again and allow instagram_manage_insights.", "permission", 403)
+                if code in (4, 17, 32, 613):
+                    raise PerfError("Instagram: rate limit reached; the next hourly check tries again.", "rate", 429)
+                notes.append(_scrub(f"Instagram Reels: {p['slug']}: {msg or status}"))
+                continue
+            numbers, extra = ig_reel_numbers({m.get("name"): _ig_value(m) for m in j.get("data", []) if isinstance(m, dict)})
+            if not numbers:
+                notes.append(f"Instagram Reels: {p['slug']} has no numbers yet.")
+                continue
+            out.append({"post": p, "numbers": numbers, "extra": extra, "remote_id": mid})
+        return out, notes
+
+
+COLLECTORS: dict[str, Collector] = {c.network: c for c in (YouTube(), Facebook(), Bluesky(), InstagramStory(), PhotoStory(), InstagramReel())}
+
+
+def collected(post: dict) -> bool:
+    """Is this post read by a collector (else it needs numbers by hand)? A collector may cover only some of its
+    network's posts (InstagramReel: the ones the studio sent)."""
+    col = COLLECTORS.get(post.get("network"))
+    return col is not None and (not hasattr(col, "covers") or col.covers(post))
 
 
 def _story_due(post: dict, mine: list[dict], now: datetime, fresh: bool) -> str | None:
@@ -801,7 +875,7 @@ def collect(req: dict | None = None) -> dict:
     by_net: dict[str, list[dict]] = {}
     for p in posts:
         mine = have.get(p["id"], [])
-        if p["network"] not in COLLECTORS:
+        if not collected(p):
             if checkpoint(p["age_h"]) and not any(r["checkpoint"] == checkpoint(p["age_h"]) for r in mine):
                 manual.append({"post_id": p["id"], "slug": p["slug"], "network": p["network"], "age_h": p["age_h"],
                                "checkpoint": checkpoint(p["age_h"]), "url": p.get("url")})
@@ -911,7 +985,7 @@ def needs(req: dict | None = None) -> dict:
         have.setdefault(r["post_id"], []).append(r)
     out = []
     for p in live_posts(_now()):
-        if p["network"] in COLLECTORS or (nets and p["network"] not in nets):
+        if collected(p) or (nets and p["network"] not in nets):
             continue
         if p["network"] == "line-oa" and p.get("seen_at"):
             continue  # LINE has no numbers: once the message list shows it sent, there is nothing more to read
@@ -923,7 +997,7 @@ def needs(req: dict | None = None) -> dict:
     now = _now()
     for p in _posts():
         t = _when(p.get("at"))
-        if p["status"] != "missing" or not t or p["network"] in COLLECTORS or (nets and p["network"] not in nets):
+        if p["status"] != "missing" or not t or collected(p) or (nets and p["network"] not in nets):
             continue
         age = (now - t).total_seconds() / 3600
         if age <= 72:
@@ -1217,7 +1291,7 @@ def reel(slug: str) -> dict:
                     "readings": mine,
                     "vsMedian": unit and {"metric": unit["metric"], "value": unit["value"], "median": unit["median"], "ratio": unit["ratio"],
                                           "sentence": unit["sentence"]},
-                    "canCollect": p["network"] in COLLECTORS})
+                    "canCollect": collected(p)})
     return {"slug": slug, "features": reel_features(project, None) if project else None, "posts": out}
 
 
@@ -1243,6 +1317,11 @@ FEW, SOME = 20, 200  # views a post: under 20 is very few for a short video, 200
 # A network is "stalled" (not showing the posts at all) when at least this many measured posts, the oldest at least
 # this many hours out, all have no views and no reactions. A new post can sit at 0 for its first hours; days cannot.
 STALL_POSTS, STALL_H = 3, 48
+# A network "went quiet" when its latest posts, each at least QUIET_H old, all have nothing although earlier ones were
+# seen. 27 Nov: Facebook's reel of 10 Nov had 102 plays, so the network was never "stalled", while every reel from
+# 18 Nov on read 0 plays and nothing said so (the Meta app was still in Development mode, and Facebook's own count
+# showed nobody). A post younger than QUIET_H is left out: a new post can sit at 0 for its first hours.
+QUIET_H = 24
 # A booking dropped because the account it was on was deleted (24 Nov: the old Singapore-region TikTok was deleted and
 # its bookings were dropped with a note saying so): the posts before it went out on the old account.
 GONE_ACCOUNT = re.compile(r"deleted|削除", re.I)
@@ -1311,6 +1390,8 @@ def reach(days: int = REACH_DAYS, now: datetime | None = None, since: dict | Non
         if v is not None:
             n["hasViews"] = True
         eng = sum(int(r.get(k) or 0) for k in ("likes", "comments", "shares", "saves"))
+        if (now - at).total_seconds() >= QUIET_H * 3600:
+            n.setdefault("_seq", []).append((at, not v and not eng, p["at"]))
         for k in ("likes", "comments", "shares", "saves"):
             n[k] += int(r.get(k) or 0)
         n["views"] += int(v or 0)
@@ -1336,6 +1417,15 @@ def reach(days: int = REACH_DAYS, now: datetime | None = None, since: dict | Non
         # account limit, a new account with no followers, a setting), not a weak reel, and better reels will not fix it.
         # 16 Nov: TikTok 15 posts at 0 views, Facebook 6 reels at 0 plays, while YouTube had 130-1,265 views a Short.
         n["stalled"] = n["verdict"] == "none" and m >= STALL_POSTS and n["oldestH"] >= STALL_H
+        # Went quiet: the trailing run of posts (each a day or more out) with nothing, after posts that were seen.
+        seq = sorted(n.pop("_seq", []), key=lambda x: x[0])
+        run = 0
+        for _, nothing, _at in reversed(seq):
+            if not nothing:
+                break
+            run += 1
+        if not n["stalled"] and run >= STALL_POSTS and run < len(seq):
+            n["quiet"] = {"posts": run, "since": seq[-run][2]}
         if n["network"] in fresh:
             n["accountSince"] = fresh[n["network"]].isoformat(timespec="minutes")
     order ={"working": 0, "some": 1, "few": 2, "none": 3, "unmeasured": 4}
@@ -1703,10 +1793,11 @@ def opener(title: str) -> str:
     return re.split(r"[。、,，.!?！？:：]", head, maxsplit=1)[0].strip()
 
 
-def hook_phrase(shorts: list[dict]) -> dict | None:
+def hook_phrase(shorts: list[dict], key: str = "views") -> dict | None:
     """The opening phrase whose Shorts did best against the ones without it: every 2-6 character piece of the openers,
-    kept when PHRASE_MIN Shorts have it and 2 do not, ranked by median views with it ÷ without it (the longest piece
-    wins among pieces found in the same Shorts). A pattern to test, not proof: the page says how many Shorts it rests on."""
+    kept when PHRASE_MIN Shorts have it and 2 do not, ranked by median `key` (views, or engaged views) with it ÷ without
+    it (the longest piece wins among pieces found in the same Shorts). A pattern to test, not proof: the page says how
+    many Shorts it rests on. With engaged views it also says what share of viewers each side kept (engaged ÷ views)."""
     ops = [(opener(s.get("title")), s) for s in shorts]
     grams: dict[str, set[int]] = {}
     for i, (op, _) in enumerate(ops):
@@ -1720,21 +1811,35 @@ def hook_phrase(shorts: list[dict]) -> dict | None:
     for g, idx in grams.items():
         if len(idx) < PHRASE_MIN or len(ops) - len(idx) < 2:
             continue
-        w = _median([ops[i][1]["views"] for i in idx])
-        wo = _median([ops[i][1]["views"] for i in range(len(ops)) if i not in idx])
+        w = _median([ops[i][1][key] for i in idx])
+        wo = _median([ops[i][1][key] for i in range(len(ops)) if i not in idx])
         lift = (w or 0) / max(1.0, wo or 0)
         # Lifts within half a step are a tie: the phrase more Shorts share wins (「からこそ」 in 7, not 「いからこそ」 in 5),
         # then the longest piece of that same set.
-        key = (math.floor(lift * 2) / 2, len(idx), len(g))
-        if lift >= 2 and (best is None or key > best[0]):
-            best = (key, g, idx, w, wo)
+        rank = (math.floor(lift * 2) / 2, len(idx), len(g))
+        if lift >= 2 and (best is None or rank > best[0]):
+            best = (rank, g, idx, w, wo)
     if not best:
         return None
     _, g, idx, w, wo = best
-    with_ = sorted((ops[i][1] for i in idx), key=lambda s: -s["views"])
-    return {"phrase": g, "lift": round((w or 0) / max(1.0, wo or 0), 1), "with": {"n": len(idx), "median": round(w or 0)},
-            "without": {"n": len(ops) - len(idx), "median": round(wo or 0)},
-            "examples": [{"slug": s.get("slug"), "opener": opener(s.get("title")), "views": s["views"]} for s in with_[:4]]}
+    with_ = sorted((ops[i][1] for i in idx), key=lambda s: -s[key])
+    out = {"phrase": g, "metric": key, "lift": round((w or 0) / max(1.0, wo or 0), 1), "with": {"n": len(idx), "median": round(w or 0)},
+           "without": {"n": len(ops) - len(idx), "median": round(wo or 0)},
+           "examples": [{"slug": s.get("slug"), "opener": opener(s.get("title")), "views": s["views"],
+                         **({"engaged": s.get("engaged")} if key == "engaged" else {})} for s in with_[:4]]}
+    if key == "engaged":
+        kept = lambda xs: _median([100 * x["engaged"] / x["views"] for x in xs if x.get("views")])  # noqa: E731
+        a, b = kept([ops[i][1] for i in idx]), kept([ops[i][1] for i in range(len(ops)) if i not in idx])
+        out["kept"] = {"with": round(a or 0, 1), "without": round(b or 0, 1)}
+    return out
+
+
+def kept_share(shorts: list[dict]) -> float | None:
+    """Median share of a Short's viewers who stayed (engaged views ÷ views, %): YouTube counts a view on every start and
+    replay since 31 Mar 2025 (support.google.com/youtube/thread/333869549), so views alone mostly say how widely the feed
+    tested a Short. 27 Nov 2026: the studio's Shorts kept about 8 %, the camera's continuous time-lapses about 31 %."""
+    return _median([100 * v["engaged"] / v["views"] for v in shorts
+                    if isinstance(v.get("engaged"), (int, float)) and isinstance(v.get("views"), (int, float)) and v["views"] > 0])
 
 
 def _handle(url: str, network: str) -> str | None:
@@ -1795,11 +1900,18 @@ def insights_from(chan: dict | None, reach_rows: list[dict], posts: list[dict], 
     if len(mine) >= INSIGHT_MIN_SHORTS:
         med = _median([v["views"] for v in mine]) or 0
         y: dict = {"shorts": len(mine), "median": round(med)}
-        y["hook"] = hook_phrase(mine)
+        # Engaged views (Analytics) when most Shorts have them: a plain view is any start or replay since March 2025.
+        eng = [v for v in mine if isinstance(v.get("engaged"), (int, float)) and v.get("views")]
+        key = "engaged" if len(eng) >= INSIGHT_MIN_SHORTS and 2 * len(eng) >= len(mine) else "views"
+        y["metric"] = key
+        y["hook"] = hook_phrase(eng if key == "engaged" else mine, key=key)
+        if key == "engaged":
+            y["kept"] = {"n": len(eng), "pct": round(kept_share(eng) or 0, 1)}
         y["stalled"] = [{"slug": v["slug"], "id": v.get("id"), "title": v.get("title"), "views": v["views"], "seconds": v.get("seconds")}
                         for v in mine if med > 0 and v["views"] < STALL_SHARE * med]
-        y["top"] = [{"slug": v["slug"], "id": v.get("id"), "opener": opener(v.get("title")), "views": v["views"]}
-                    for v in sorted(mine, key=lambda v: -v["views"])[:3]]
+        y["top"] = [{"slug": v["slug"], "id": v.get("id"), "opener": opener(v.get("title")), "views": v["views"],
+                     **({"engaged": v.get("engaged")} if key == "engaged" else {})}
+                    for v in sorted(eng if key == "engaged" else mine, key=lambda v: -v[key])[:3]]
         watched = [v for v in mine if isinstance(v.get("avgPct"), (int, float)) and v.get("seconds")]
         if len(watched) >= 3:
             part = lambda xs: {"n": len(xs), "pct": round(_median([min(v["avgPct"], 200) for v in xs]) or 0),
@@ -1828,6 +1940,12 @@ def insights_from(chan: dict | None, reach_rows: list[dict], posts: list[dict], 
     if len(others) >= 3 and mine:
         out["outside"] = {"n": len(others), "median": round(_median([v["views"] for v in others]) or 0),
                           "studio": round(_median([v["views"] for v in mine]) or 0)}
+        ko, km = kept_share(others), kept_share(mine)
+        if ko is not None and km is not None:
+            out["outside"]["kept"] = {"outside": round(ko, 1), "studio": round(km, 1)}
+            y_ = out.get("youtube")
+            if y_ and y_.get("kept"):
+                y_["kept"]["outside"] = {"n": len(others), "pct": round(ko, 1)}
     # Accounts that hold the posts back: networks posting to an account few people follow.
     accts = []
     by_net = {r["network"]: r for r in reach_rows}

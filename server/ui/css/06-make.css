@@ -54,3 +54,6 @@
     .rhead ~ .lead.monlead { margin-bottom: 12px; }
     .rhead ~ .lead .reels { gap: 6px; }
   }
+  /* BL-145: why Make is greyed, or why the last press made nothing: one line with its ways on. */
+  .maker .mk-why { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 8px 0; }
+  .maker .mk-why > span { flex: 1 1 260px; min-width: 0; color: var(--text); }

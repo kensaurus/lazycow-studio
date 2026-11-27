@@ -134,7 +134,7 @@ test("the YouTube gate: 18 s or more first, no title again within 14 days, no op
 });
 
 test("every network the studio books by itself is known", () => {
-  assert.deepEqual([...AUTO_NETS].sort(), ["bluesky", "facebook", "gbp", "line-oa", "linkedin", "pinterest", "tiktok", "x", "youtube"]);
+  assert.deepEqual([...AUTO_NETS].sort(), ["bluesky", "facebook", "gbp", "instagram", "line-oa", "linkedin", "pinterest", "tiktok", "x", "youtube"]);
   assert.equal(todayIn("Asia/Tokyo", Date.parse("2026-11-11T16:00:00Z")), "2026-11-12");
 });
 
@@ -227,4 +227,22 @@ test("a stalled network says it is paused until a post is seen", () => {
   const s = r.skipped.find((x) => x.stalled);
   assert.equal(s.network, "tiktok"); assert.match(s.why, /^TikTok paused until a post is seen/);
   assert.ok(r.plan.every((p) => p.network !== "tiktok"));
+});
+
+// BL-157 (27 Nov): a new TikTok account with 1 view in 7 days had 22 posts booked, three a day. An account in use whose
+// measured posts all have nothing books one a day until a post there is seen; the owner's per-day setting returns then.
+test("a network not seen yet books one post a day, and says why", () => {
+  const reels = Array.from({ length: 40 }, (_, i) => ({ slug: `r${i}-1111`, headline: `h${i}`, networks: ["tiktok", "x"] }));
+  const opts = { reels, networks: ["tiktok", "x"], posts: [], now: NOW, aheadDays: 7, tiktokAheadDays: 7, perDay: { tiktok: 3 } };
+  const busy = planAhead(opts).plan.filter((p) => p.network === "tiktok");
+  assert.ok(busy.length > 7, "seen: three a day as set");
+  const r = planAhead({ ...opts, unseen: ["tiktok"] });
+  const tk = r.plan.filter((p) => p.network === "tiktok");
+  assert.equal(tk.length, 7, "one a day for the 7 days");
+  assert.equal(new Set(tk.map((p) => p.day)).size, 7);
+  assert.equal(r.plan.filter((p) => p.network === "x").length, 7, "other networks are untouched");
+  const why = r.skipped.find((s) => s.unseen && s.network === "tiktok");
+  assert.match(why.why, /one post a day until a post there is seen/);
+  assert.ok(!planAhead({ ...opts, perDay: {}, unseen: ["tiktok"] }).skipped.some((s) => s.unseen), "already one a day: nothing to say");
+  assert.ok(!planAhead({ ...opts, unseen: ["tiktok"], stalled: ["tiktok"] }).plan.some((p) => p.network === "tiktok"), "stalled still wins: none");
 });

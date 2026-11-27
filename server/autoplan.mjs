@@ -15,12 +15,35 @@
 import { planWeek, MAX_DAYS_AHEAD, THEME_DAYS_ALL } from "./helper.mjs";
 
 /* The networks the studio can book by itself, and how many days ahead each accepts (Facebook refuses reels beyond
-   29 days; YouTube and Bluesky have no limit of their own, so two months keeps the queue honest). */
-export const AUTO_LIMITS = { ...MAX_DAYS_AHEAD, facebook: 29, bluesky: 60, youtube: 60 };
+   29 days; YouTube, Bluesky and Instagram reels have no limit of their own, so two months keeps the queue honest). */
+export const AUTO_LIMITS = { ...MAX_DAYS_AHEAD, facebook: 29, bluesky: 60, youtube: 60, instagram: 60 };
 export const AUTO_NETS = Object.keys(AUTO_LIMITS);
 export const CHROME_NETS = ["x", "tiktok", "gbp", "line-oa", "linkedin", "pinterest"];
+/* Instagram reels go out through the Facebook connection's Instagram account (py/studio/connectors/instagram_reel.py,
+   queued and sent by the studio at their time) only while that connection can publish there (instagram_content_publish).
+   Until then Instagram stays as it was: a reminder you post by hand, not a network the plan books or waits on. */
+export const OPTIONAL_NETS = ["instagram"];
 const CHANNEL_ID = { youtube: "youtube-shorts" };
-const NET_NAMES = { youtube: "YouTube", facebook: "Facebook", bluesky: "Bluesky", x: "X", tiktok: "TikTok", linkedin: "LinkedIn", gbp: "Google Maps", "line-oa": "LINE", pinterest: "Pinterest" };
+const NET_NAMES = { youtube: "YouTube", facebook: "Facebook", bluesky: "Bluesky", x: "X", tiktok: "TikTok", linkedin: "LinkedIn", gbp: "Google Maps", "line-oa": "LINE", pinterest: "Pinterest", instagram: "Instagram" };
+
+/** Which networks the daily plan can book on now: {network: true|false}. conns: the studio's connections (GET
+    /api/connections); chrome: the helper is linked to your Chrome. An optional network (Instagram) is left out
+    altogether while it is not connected, so nothing waits on it and Review does not ask to connect it. */
+export function readyMap({ conns = {}, ytConnected = false, chrome = false } = {}) {
+  const out = {};
+  for (const n of AUTO_NETS) {
+    const ok = CHROME_NETS.includes(n) ? !!chrome : n === "youtube" ? !!ytConnected : !!conns?.[n]?.connected;
+    if (ok || !OPTIONAL_NETS.includes(n)) out[n] = ok;
+  }
+  return out;
+}
+
+/** When a queued post that failed on a passing error may be tried again (ms), from its note "retry 1/2 after
+    <ISO time>: ..." (py/studio/posting.py requeue, BL-156); NaN for any other note. */
+export function retryAfter(note) {
+  const m = /^retry \d+\/\d+ after (\S+?): /.exec(String(note || ""));
+  return m ? Date.parse(m[1]) : NaN;
+}
 
 export const isLong = (slug) => /-long(-\d+)?$/.test(slug || "");
 
@@ -79,16 +102,23 @@ export function todayIn(timeZone, now = Date.now()) {
     at all (BL-055: TikTok showed nobody anything and kept being booked). themeDays: the theme rule for every network.
     slots: each network's hours (postSlots); a booking at a test hour carries test: "hour", usual and why. */
 export function planAhead({ reels = [], networks = AUTO_NETS, posts = [], timeZone = "Asia/Tokyo", now = Date.now(),
-  aheadDays = 14, tiktokAheadDays = 9, youtubeLeft = Infinity, stalled = [], themeDays = THEME_DAYS_ALL, slots = {}, perDay = {} } = {}) {
+  aheadDays = 14, tiktokAheadDays = 9, youtubeLeft = Infinity, stalled = [], unseen = [], themeDays = THEME_DAYS_ALL, slots = {}, perDay = {} } = {}) {
   const limits = { ...AUTO_LIMITS, tiktok: Math.min(AUTO_LIMITS.tiktok, tiktokAheadDays) };
   const quiet = new Set(stalled);
   const nets = networks.filter((n) => n in limits && !quiet.has(n));
   const start = todayIn(timeZone, now);
-  const r = planWeek({ reels, networks: nets, posts, start, days: aheadDays, timeZone, now, limits, themeDays, slots, perDay });
+  // Not seen yet (BL-157): an account whose measured posts all have nothing, before the stalled rule's two days, books
+  // one a day. 27 Nov: a new TikTok account with 1 view in 7 days had 22 posts booked, three a day.
+  const fresh = new Set(unseen.filter((n) => nets.includes(n)));
+  const daily = { ...perDay };
+  for (const n of fresh) daily[n] = 1;
+  const r = planWeek({ reels, networks: nets, posts, start, days: aheadDays, timeZone, now, limits, themeDays, slots, perDay: daily });
   let yt = 0;
   // Said the same way as Needs you (server/problems.mjs reachProblems): one rule, one sentence, so the page shows why.
   const plan = [], skipped = [...networks.filter((n) => n in limits && quiet.has(n)).map((n) => ({ day: start, network: n, stalled: true,
     why: `${NET_NAMES[n] || n} paused until a post is seen: every post measured on the account in use now is at 0 views (Results › Reach: stalled); the studio books it again when one is seen` })),
+  ...[...fresh].filter((n) => (perDay[n] ?? 1) > 1).map((n) => ({ day: start, network: n, unseen: true,
+    why: `${NET_NAMES[n] || n}: one post a day until a post there is seen (every measured post on the account in use now has nothing yet)` })),
   ...r.skipped.filter((s) => s.why !== "already past" && s.why !== "already has a post that day")];
   for (const p of r.plan) {
     if (p.network === "youtube" && ++yt > youtubeLeft) { skipped.push({ day: p.day, network: "youtube", why: "YouTube's uploads for today are used; the next run books it" }); continue; }

@@ -16,12 +16,13 @@ function mkLoadStories() {
   return MK.storiesP;
 }
 /* For Home's first run (BL-131, feat/bl-home): the stories in the page's language, in gallery order, as
-   [{id, title (the kind of place), headline, icon}]. Empty until they are read (Home is drawn again then). Home links each
-   as <a href="#/reels" data-openmaker="1" data-starter="<id>">: that one press opens Make reels with the story applied. */
+   [{id, title (the kind of place), headline, icon, any}]. Empty until they are read (Home is drawn again then). Home links
+   each as <a href="#/reels" data-openmaker="1" data-starter="<id>">: that one press opens Make reels with the story applied.
+   any: a story for any kind of place (BL-145). */
 function mkStarterStories() {
   mkLoadStories();
   const L = lang === "ja" ? "ja" : "en";
-  return (MK.stories || []).map((s) => ({ id: s.id, title: s.kind?.[L] || s.id, headline: mkLine(s.theme?.hook?.[L], L), icon: s.icon || "film" }));
+  return (MK.stories || []).map((s) => ({ id: s.id, title: s.kind?.[L] || s.id, headline: mkLine(s.theme?.hook?.[L], L), icon: s.icon || "film", any: !!s.any }));
 }
 /* A headline on one line: its line breaks are spaces in English and nothing in Japanese. */
 function mkLine(text, L) { return String(text || "").replace(/\n/g, L === "ja" ? "" : " "); }
@@ -80,12 +81,12 @@ async function mkUseStory(id) {
     if (!autoThemes) autoThemes = new Set();
     autoThemes.add(key);
     MK.gallery = false; showMaker = true;
-    const name = themeTitle(key);
-    // One press to the first reel when there is footage to make it from; otherwise it waits, ticked.
-    if ((overview.library?.ranch ?? 0) >= 4 && sys.health?.verdict !== "blocked") {
-      toast(`${ico("check", "sm")} ${esc(tr("mk.st.made", { k: name }))}`, 6000);
+    const name = themeTitle(key), fit = await mkFitOf(key);
+    // One press to the first reel when enough clips fit (BL-145); otherwise it waits, ticked, and says why.
+    if (fit >= MK.need && sys.health?.verdict !== "blocked") {
+      MK.fail = null; toast(`${ico("check", "sm")} ${esc(tr("mk.st.made", { k: name }))}`, 6000);
       autopilot([key]);
-    } else toast(`${ico("check", "sm")} ${esc(tr("mk.st.ready", { k: name }))}`, 7000);
+    } else { MK.fail = fit < MK.need ? mkFew(key, fit) : null; toast(`${ico("check", "sm")} ${esc(tr("mk.st.ready", { k: name }))}`, 7000); }
   } catch (err) { toast(`${ico("alert", "sm")} ${esc(err.message)}`, 8000); }
   MK.busy = null; renderHome(true);
 }
@@ -94,7 +95,74 @@ document.addEventListener("click", (e) => {
   if (st) { e.stopPropagation(); return mkUseStory(st.dataset.mkstory); }
   const g = e.target.closest?.("[data-mkstories]");
   if (g) { MK.gallery = g.dataset.mkstories === "1"; renderHome(true); }
+  if (e.target.closest?.("[data-mkany]")) return mkUseAny();
+  if (e.target.closest?.("[data-mkfailx]")) { MK.fail = null; renderHome(true); }
 });
+/* ---------- BL-145: Make only when a reel can be made ----------
+   A reel needs MK.need (4) different clips that fit its theme (py/studio/assemble.py MIN_SHOTS; the server counts them
+   by the same picks: GET /api/themes/fit). Make reels' button is greyed with the reason while every ticked theme is short
+   (or the library holds fewer clips than a reel needs), instead of failing after the press with a toast that went away.
+   A too-few failure stays on the page (MK.fail) with one press to an "Any place" story. A library of 200 clips or more
+   is not counted ahead (every theme fits there; a rare failure still stays on the page). */
+MK.need = 4; MK.fit = null; MK.fitSig = ""; MK.fail = null;
+function mkFitLoad() {
+  const lib = overview.library?.ranch ?? 0, keys = Object.keys(themes || {}).sort();
+  if (!overviewLoaded || !keys.length || lib < MK.need || lib >= 200) return;
+  const sig = JSON.stringify([lib, overview.library?.total, keys, !!autoFaces, overview.reels.length]);
+  if (MK.fitSig === sig) return;
+  MK.fitSig = sig;
+  api(`/api/themes/fit${autoFaces ? "?faces=1" : ""}`).then((r) => { MK.fit = r?.fit || {}; MK.need = r?.need || 4; }, () => { MK.fit = null; })
+    .finally(() => { if (atHome() && page === "reels") renderHome(true); });
+}
+/** Clips that fit one theme now (the library's count when it holds fewer than a reel needs, or the count is unknown). */
+async function mkFitOf(key) {
+  const lib = overview.library?.ranch ?? 0;
+  if (lib < MK.need) return lib;
+  try {
+    const r = await api(`/api/themes/fit?themes=${encodeURIComponent(key)}${autoFaces ? "&faces=1" : ""}`);
+    MK.need = r?.need || MK.need; MK.fit = { ...(MK.fit || {}), ...(r?.fit || {}) };
+    return r?.fit?.[key] ?? lib;
+  } catch { return lib; }
+}
+const mkAnyId = () => (MK.stories || []).find((s) => s.any)?.id || null;
+/** A theme made from an "Any place" story (its id, or the id with -2, -3 … when saved twice). */
+const mkIsAny = (key) => (MK.stories || []).some((s) => s.any && (key === s.id || String(key).startsWith(s.id + "-")));
+function mkFew(key, n) {
+  const lib = overview.library?.ranch ?? 0, any = mkIsAny(key);  // already an Any place story: only more footage helps
+  return { key, any: !any, why: lib < MK.need ? tr(lib ? "fr.lib" : "fr.lib0", { n: lib, need: MK.need }) : tr(any ? "fr.fewadd" : "fr.few", { t: themeTitle(key), n, need: MK.need }) };
+}
+/** Why Make is greyed for these ticked themes, or null: fewer clips in the library than a reel needs, or every ticked
+    theme counted short. A theme not counted yet never blocks. */
+function mkMakeBlock(keys) {
+  if (!overviewLoaded || !keys.length) return null;
+  const lib = overview.library?.ranch ?? 0;
+  if (lib < MK.need) return mkFew(keys[0], lib);
+  const short = keys.filter((k) => MK.fit?.[k] != null && MK.fit[k] < MK.need);
+  if (!short.length || short.length < keys.length) return null;
+  return short.length === 1 ? mkFew(short[0], MK.fit[short[0]]) : { key: short[0], any: !short.every(mkIsAny), why: tr("fr.fewn", { m: short.length, need: MK.need }) };
+}
+/** The reason under Make: a failure kept from the last press first, else why the button is greyed. */
+function mkWhyHtml(block) {
+  const w = MK.fail || block;
+  if (!w) return "";
+  if (w.any && !MK.stories) mkLoadStories();  // the stories are read with the gallery only; the page is drawn again once in
+  return `<p class="mk-why warnline" id="mkWhy" ${MK.fail ? 'role="alert"' : ""}>${ico("alert", "sm")}<span>${esc(w.why)}</span>
+    ${w.any && mkAnyId() ? `<button type="button" class="chip" data-mkany="1">${ico("pin", "sm")}${esc(tr("fr.useany"))}</button>` : ""}
+    <button type="button" class="chip" data-goto="footage">${ico("plus", "sm")}${esc(tr("make.addfootage"))}</button>
+    ${MK.fail ? `<button type="button" class="icon" data-mkfailx="1" title="${esc(tr("wn.hide"))}" aria-label="${esc(tr("wn.hide"))}">${ico("x", "sm")}</button>` : ""}</p>`;
+}
+/* The fallback: an "Any place" story instead of the ticked ones (its theme ticked alone; made when it fits). */
+async function mkUseAny() {
+  const id = mkAnyId();
+  if (!id || MK.busy) return;
+  MK.fail = null; autoThemes = new Set();
+  const have = Object.keys(themes || {}).find((k) => k === id || k.startsWith(id + "-"));
+  if (!have) return mkUseStory(id);
+  autoThemes.add(have); renderHome(true);
+  const fit = await mkFitOf(have);
+  if (fit < MK.need) MK.fail = mkFew(have, fit); else if (sys.health?.verdict !== "blocked") autopilot([have]);
+  renderHome(true);
+}
 /* Ticks kept per project (BL-136). Read once (GET /api/ui picks); until then nothing is saved, so an empty first paint
    never overwrites the saved ticks. A tick made before they arrive wins over them. */
 function mkPicksLoad() {

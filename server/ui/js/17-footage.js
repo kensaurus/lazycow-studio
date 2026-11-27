@@ -600,7 +600,11 @@ document.addEventListener("click", async (e) => {
   if (e.target.closest("#logRefresh")) { logData = null; return renderHome(true); }
   if (e.target.closest("#srcWatch, [data-srcwatch]")) {
     e.preventDefault();
-    try { foot.job = await post("/api/sources/watch", {}); } catch (err) { toast(`${ico("alert", "sm")} ${esc(err.message)}`, 8000); }
+    // BL-144: "Read these N files now" (the picker on a folder already added, Home on a first start): the picker closes
+    // and the reading shows where the press was, with its progress.
+    const read = e.target.closest("[data-srcread]");
+    if (read) { read.disabled = true; foot.picker = null; foot.job = { status: "running", kind: "watch", label: tr("fr.reading") }; renderHome(true); }
+    try { foot.job = await post("/api/sources/watch", {}); } catch (err) { if (read) foot.job = null; toast(`${ico("alert", "sm")} ${esc(err.message)}`, 8000); }
     return renderHome(true);
   }
   const srcDel = e.target.closest("[data-srcdel]");
@@ -728,6 +732,11 @@ async function runAutopilot(list, { since, faces, cut, vary, learned, preset }) 
     const res = await post("/api/autopilot", { themes: list, since, faces, cut, vary, learned, preset });  // learned undefined: the setting decides
     // Nothing made (no usable footage for the theme, ...): say why, never "Queued ." for an empty list.
     const why = (res.failed || []).map(makeWhy).join(" ");
+    // BL-145: a theme that found too few clips stays said under Make, with one press to an "Any place" story (the toast
+    // that said it went away after 6 s, with no way on).
+    const few = (res.failed || []).map((l) => /^([a-z][a-z0-9-]*): only (\d+) usable assets? for this theme$/.exec(l)).find(Boolean);
+    MK.fail = few ? { ...mkFew(few[1], +few[2]), why: makeWhy(few[0]) } : null;
+    if (few) showMaker = true;
     if (!res.made?.length) throw new Error(tr("mk.nonemade", { why: why || "-" }));
     homeFilter = "making";
     toast(`${ico("check", "sm")} ${esc(tr("mk.queued", { list: res.made.map((m) => themeTitle(m.theme) || m.slug).join(", ") }))}${res.failed?.length ? `<br>${ico("alert", "sm")} ${esc(tr("mk.somefailed", { why }))}` : ""}`, res.failed?.length ? 9000 : 5000);

@@ -349,7 +349,7 @@ function renderReview() {
     const ready = m && m !== "loading" && !m.error;
     const words = ready ? (m.beats || []).filter((b) => b.kind !== "end") : [];
     const strip = ready ? (m.shots || []).map((x) => `<span class="rvshot" style="background-image:url('${thumb(x.thumb, 120)}')" title="${esc(`${x.file} · ${x.sec}s`)}">${x.faces ? `<i class="rvface">${ico("user", "sm")}</i>` : ""}</span>`).join("") : `<div class="skel"><i></i></div>`;
-    const flags = [tdAutoTag(r), r.faces > 0 && !r.consent && !r.blurFaces && !consentAll() ? `<span class="tag t-unsure">${ico("user", "sm")}${tr("rv.faces", { n: r.faces })}</span>` : "",
+    const flags = [`<span class="tag rv-cut" title="${esc(tr(cutKey(r.variant) + "hint"))}">${ico(r.variant === "site-walk" ? "camera" : r.variant === "b-explainer" ? "list" : "film", "sm")}${esc(tr(cutKey(r.variant)))}</span>`, tdAutoTag(r), r.faces > 0 && !r.consent && !r.blurFaces && !consentAll() ? `<span class="tag t-unsure">${ico("user", "sm")}${tr("rv.faces", { n: r.faces })}</span>` : "",
       lookChecks(r).length ? `<span class="tag t-unsure">${ico("alert", "sm")}${tr(lookChecks(r).length === 1 ? "card.check1" : "card.checkn", { n: lookChecks(r).length })}</span>` : "",
       r.sameWords > 0 ? `<span class="tag t-mismatch">${tr("w.same", { n: r.sameWords })}</span>` : `<span class="tag t-match">${tr("rv.unique")}</span>`,
       (m?.layers || []).length ? `<span class="tag" title="${esc(tr("rv.layerstip"))}">${ico("layers", "sm")}${tr((m.layers || []).length === 1 ? "rv.layers1" : "rv.layers", { n: (m.layers || []).length })}</span>` : ""].join("");

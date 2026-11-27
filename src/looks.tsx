@@ -18,7 +18,7 @@ import React from "react";
 import { AbsoluteFill, Audio, Easing, Freeze, OffthreadVideo, Sequence, interpolate, random, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { CameraMotionBlur } from "@remotion/motion-blur";
 import { chipBoxes, kickerBox, meterBox, numeralBox, railBox, storyLayout } from "../shared/story-layout.mjs";
-import { parseMeter, splitGroups } from "../shared/looks.mjs";
+import { LOOP_FRAMES, headlineAlpha, parseMeter, splitGroups } from "../shared/looks.mjs";
 
 export { parseMeter, splitGroups };
 
@@ -61,6 +61,16 @@ export function cutFrames(shots: Shot[], fps: number): number[] {
     t += Math.round(s.durationSec * fps);
   }
   return out;
+}
+
+/** The loop ending's frames ({from, to}) when the reel has one, so a headline shown from frame 0 comes back over it
+ * (shared/looks.mjs headlineAlpha). Story provides it; null without a loop. */
+export const LoopTailCtx = React.createContext<{ from: number; to: number } | null>(null);
+/** The headline's visibility in the looks (fades of 0.4 s in, 0.3 s out): whole from frame 0, back over the loop tail. */
+function useHeadline(beat: Beat) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  return headlineAlpha(beat, frame, fps, { inSec: 0.4, outSec: 0.3, tail: React.useContext(LoopTailCtx) });
 }
 
 function beatAlpha(t: number, beat: Beat) {
@@ -606,7 +616,7 @@ const SplitGroup: React.FC<{ idx: number[]; shots: Shot[]; other: Shot[]; len: n
 
 /** Loop ending: the opening frame dissolves in under the last moments, so a replay has no seam. */
 export const LoopTail: React.FC<{ first: Shot; total: number }> = ({ first, total }) => {
-  const n = 12;
+  const n = LOOP_FRAMES;
   return (
     <Sequence from={Math.max(0, total - n)} durationInFrames={n}>
       <LoopFade src={first.src} n={n} />
@@ -629,11 +639,11 @@ const LoopFade: React.FC<{ src: string; n: number }> = ({ src, n }) => {
 export const KickerLine: React.FC<{ kicker: Kicker; beat: Beat; style: Style }> = ({ kicker, beat, style }) => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
-  const { alpha, live } = beatAlpha(frame / fps, beat);
+  const { alpha, live, shown } = useHeadline(beat);
   if (!live) return null;
   const L = storyLayout(width, height, beat.ja.split("\n"), style);
   const K = kickerBox(L);
-  const e = interpolate(frame, [beat.startSec * fps, beat.startSec * fps + 12], [0, 1], { ...CLAMP, easing: OUT });
+  const e = shown ? 1 : interpolate(frame, [beat.startSec * fps, beat.startSec * fps + 12], [0, 1], { ...CLAMP, easing: OUT });
   return (
     <>
     <Pool x={K.x} y={K.y} w={K.w * 0.8} h={K.h} alpha={alpha} strength={0.45} />
@@ -751,7 +761,7 @@ export const Rail: React.FC<{ shots: Shot[]; beats: Beat[]; style: Style }> = ({
 export const TypedHook: React.FC<{ beat: Beat; kicker?: Kicker | null; style: Style }> = ({ beat, kicker, style }) => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
-  const { alpha, live } = beatAlpha(frame / fps, beat);
+  const { alpha, live, shown } = useHeadline(beat);
   if (!live) return null;
   const columns = beat.ja.split("\n");
   const L = storyLayout(width, height, columns, style);
@@ -759,10 +769,11 @@ export const TypedHook: React.FC<{ beat: Beat; kicker?: Kicker | null; style: St
   const start = beat.startSec * fps + 2;
   const kChars = kicker ? [...kicker.ja] : [];
   // A range of zero length throws in interpolate: a POV reel with no kicker crashed on frame 3 (pov-1114, 17 Nov).
-  const kTyped = kChars.length ? Math.floor(interpolate(frame, [start, start + kChars.length * 1.6], [0, kChars.length], CLAMP)) : 0;
-  const hStart = start + kChars.length * 1.6 + (kChars.length ? 4 : 0);
+  // Shown from frame 0 (shared/looks.mjs opensShown): already typed, the caret blinking after the last letter.
+  const kTyped = shown ? kChars.length : kChars.length ? Math.floor(interpolate(frame, [start, start + kChars.length * 1.6], [0, kChars.length], CLAMP)) : 0;
+  const hStart = shown ? -24 : start + kChars.length * 1.6 + (kChars.length ? 4 : 0);
   const total = columns.reduce((a, c) => a + [...c].length, 0);
-  const typed = total ? Math.floor(interpolate(frame, [hStart, hStart + total * 2.4], [0, total], CLAMP)) : 0;
+  const typed = shown ? total : total ? Math.floor(interpolate(frame, [hStart, hStart + total * 2.4], [0, total], CLAMP)) : 0;
   const blink = Math.floor(frame / 15) % 2 === 0 ? 1 : 0;
   // The caret takes no room in the line, so a full line never wraps it onto the next one.
   const caret = (on: boolean) => (
@@ -848,7 +859,7 @@ export const TypedHook: React.FC<{ beat: Beat; kicker?: Kicker | null; style: St
           textAlign: L.vertical ? (L.hookEn.x > L.safe.x + 40 ? "right" : "left") : textAlign,
           color: PAPER,
           textShadow: SHADOW,
-          opacity: interpolate(frame, [hStart + total * 2.4, hStart + total * 2.4 + 12], [0, 1], CLAMP) * alpha,
+          opacity: (shown ? 1 : interpolate(frame, [hStart + total * 2.4, hStart + total * 2.4 + 12], [0, 1], CLAMP)) * alpha,
         }}
       >
         {beat.en}
@@ -861,16 +872,19 @@ export const TypedHook: React.FC<{ beat: Beat; kicker?: Kicker | null; style: St
 export const Meter: React.FC<{ beat: Beat }> = ({ beat }) => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
-  const { alpha, live } = beatAlpha(frame / fps, beat);
+  const { alpha, live, shown: whole } = useHeadline(beat);
   const m = parseMeter(beat.ja);
   if (!live || !m) return null;
   const L = storyLayout(width, height);
   const B = meterBox(L);
-  const t0 = (beat.startSec + 0.15) * fps;
-  const t1 = (beat.startSec + Math.min(2.2, (beat.endSec - beat.startSec) * 0.7)) * fps;
+  // Shown from frame 0: the counter stands at the approved number at once (a climbing "0m" is not the line), and the
+  // ruler keeps scrolling under it, so the opening still moves.
+  const t0 = whole ? -2 : (beat.startSec + 0.15) * fps;
+  const t1 = whole ? -1 : (beat.startSec + Math.min(2.2, (beat.endSec - beat.startSec) * 0.7)) * fps;
   const p = interpolate(frame, [t0, t1], [0, 1], { ...CLAMP, easing: OUT });
   const shown = Math.round(m.value * p).toLocaleString("en-US");
-  const settle = interpolate(frame, [t1, t1 + 8], [1.06, 1], CLAMP);
+  const settle = whole ? 1 : interpolate(frame, [t1, t1 + 8], [1.06, 1], CLAMP);
+  const roll = whole ? frame * 0.8 : p * m.value * 0.6;
   return (
     <>
     <Pool x={B.x + B.w * 0.15} y={B.y} w={B.w * 0.7} h={B.h} alpha={alpha} strength={0.55} />
@@ -889,11 +903,11 @@ export const Meter: React.FC<{ beat: Beat }> = ({ beat }) => {
             top: 0,
             height: 20,
             backgroundImage: `repeating-linear-gradient(90deg, ${PAPER} 0 3px, transparent 3px 30px)`,
-            transform: `translateX(${-((p * m.value * 0.6) % 30)}px)`,
+            transform: `translateX(${-(roll % 30)}px)`,
           }}
         />
       </div>
-      <div style={{ fontFamily: "Cormorant", fontStyle: "italic", fontWeight: 500, fontSize: B.en, lineHeight: 1.3, opacity: interpolate(frame, [t1 - 6, t1 + 8], [0, 1], CLAMP) }}>{beat.en}</div>
+      <div style={{ fontFamily: "Cormorant", fontStyle: "italic", fontWeight: 500, fontSize: B.en, lineHeight: 1.3, opacity: whole ? 1 : interpolate(frame, [t1 - 6, t1 + 8], [0, 1], CLAMP) }}>{beat.en}</div>
     </div>
     </>
   );

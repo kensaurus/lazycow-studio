@@ -647,7 +647,7 @@ document.addEventListener("keydown", (e) => {
    helper.mjs planWeek), and on the sites your Chrome schedules a rehearsal (POST /api/helper/schedule {rehearse: true}:
    every step but the last press; nothing is posted or logged). ---------- */
 const AMC_SCHED = ["x", "tiktok", "gbp", "line-oa", "linkedin", "pinterest"];  // helper.mjs SCHEDULERS
-const AMC_LIMIT = { x: 365, tiktok: 10, gbp: 180, "line-oa": 180, linkedin: 90, pinterest: 9, facebook: 29, bluesky: 60, youtube: 60 };  // autoplan.mjs AUTO_LIMITS
+const AMC_LIMIT = { x: 365, tiktok: 10, gbp: 180, "line-oa": 180, linkedin: 90, pinterest: 9, facebook: 29, bluesky: 60, youtube: 60, instagram: 60 };  // autoplan.mjs AUTO_LIMITS
 const amc = { draft: {}, ask: null, run: {} };
 /* The hours Plan posts uses (autoplan.mjs postSlots + helper.mjs planWeek): Google Maps Fri/Sat 12:00, LINE Saturday
    10:00 and LinkedIn Sunday 19:00 (weekly); else the usual hour (19:00 when listed, else the first) and, every 4th
@@ -962,14 +962,18 @@ function drawAccounts() {
       <label><span class="meta">${tr("acc.acct")}</span><input class="acct" data-netacct="${esc(chOf(n))}" value="${esc(s.account || "")}" placeholder="${esc(tr("acc.acctph"))}"></label></div>`; };
   const card = (n) => { const x = st[n], s = chanOf(n), c = connections[n];
     const igs = connections["instagram-story"], storyBad = n === "facebook" && igs && !igs.connected;
-    const line = n === "facebook" && igs?.connected ? tr("acc.fbline") : x.how === "studio" ? tr(n === "youtube" || c?.canSchedule ? "acc.canhold" : "acc.studiosends") : x.how === "helper" ? tr(viaChrome ? (SCHED_NETS.includes(n) ? "acc.chrome.sched" : "acc.chrome.fill") : "acc.help.ready") : tr("acc.hand.ready");
-    const off = c?.connected ? `<button type="button" class="acoff" data-accoff="${esc(n)}">${ico("x", "sm")}${tr("acc.disconnect")}</button>`  /* BL-067: a real button, not a link */ : x.how === "helper" && !viaChrome ? `<button class="linkish" data-helpsign="${esc(n)}">${tr("acc.help.again")}</button>` : "";
+    const igr = n === "instagram" && c?.connected;  // Instagram reels sent through the Facebook connection (instagram_reel.py)
+    const line = igr ? tr("igr.line") : n === "facebook" && igs?.connected ? tr("acc.fbline") : x.how === "studio" ? tr(n === "youtube" || c?.canSchedule ? "acc.canhold" : "acc.studiosends") : x.how === "helper" ? tr(viaChrome ? (SCHED_NETS.includes(n) ? "acc.chrome.sched" : "acc.chrome.fill") : "acc.help.ready") : tr("acc.hand.ready");
+    const off = igr ? `<p class="meta">${ico("info", "sm")} ${tr("igr.via")}</p>` : c?.connected ? `<button type="button" class="acoff" data-accoff="${esc(n)}">${ico("x", "sm")}${tr("acc.disconnect")}</button>`  /* BL-067: a real button, not a link */ : x.how === "helper" && !viaChrome ? `<button class="linkish" data-helpsign="${esc(n)}">${tr("acc.help.again")}</button>` : "";
     return `<article class="acard ready" id="acc-${esc(n)}" style="--nc:${CH_STYLE[n]?.bg || CH_STYLE[chOf(n)]?.bg || "var(--accent)"}">${headOf(n, x)}
       <p class="meta acline" title="${esc(line)}">${line}</p>
+      ${igr ? igTrialHtml(c, s) : ""}
       ${storyBad ? `<p class="meta warnline">${ico("alert", "sm")} ${tr("acc.igs.off", { why: esc(igs.error || "") })}</p>${c?.signin?.ready ? `<form class="accform signform" data-signin="facebook"><button class="primary" type="submit">${ico("link", "sm")}${tr("acc.igs.again")}</button></form>` : ""}` : ""}
       ${s.blocker ? `<p class="meta bad">${ico("alert", "sm")} ${esc(s.blocker)}</p>` : ""}
+      ${n === "facebook" && c?.appMode?.mode === "development" ? `<p class="meta warnline">${ico("alert", "sm")} ${tr("acc.fb.dev", { a: esc(c.appMode.name) })} <a href="${escUrl(c.appMode.publish)}" target="_blank" rel="noopener">${tr("acc.fb.publish")}</a></p>` : ""}
       <details class="acmore"><summary class="meta"><span class="acdots" aria-hidden="true">⋯</span>${tr("acc.more")}</summary><div class="acmore-b">
         ${n === "facebook" && igs?.connected ? `<p class="meta">${ico("check", "sm")} ${tr("acc.igs.on", { a: esc(igs.account || "") })}</p>` : ""}${x.until ? until(c) : ""}
+        ${n === "facebook" && c?.igReels ? `<p class="meta">${ico("info", "sm")} ${tr("igr.hand", { why: esc(c.igReels.error || "") })}</p>` : ""}
         ${playbookHtml(n).replace('<details class="pb">', '<details class="pb" open>')}${settingsInner(n)}${off}</div></details></article>`; };
   const rowOf = (n) => { const x = st[n], c = connections[n], name = NET_NAME[n] || n;
     const open = accOpen.has(n) || !!accErr[n] || !!signErr[n] || !!signErr[n + ":setup"];
@@ -1046,6 +1050,20 @@ function drawAccounts() {
     <details class="accsec accfold"><summary><h2>${ico("user", "sm")}${tr("acc.h3")}</h2></summary><p class="meta">${tr("acc.h3note")}</p><div class="kits">${kitHtml}</div></details>`;
 }
 
+/* Instagram reels through the Facebook connection: post them as trial reels first (shown to people who do not follow
+   the account; Instagram shares one with the followers too when it does well, trial_params SS_PERFORMANCE). Saved per
+   project (POST /api/channels/set {id: "instagram", trial}, networks.json "igTrial"); never chosen = on for an account
+   under trialUnder followers (py/studio/connectors/instagram_reel.py trial_on). */
+function igTrialOn(c, s) {
+  if (typeof s?.trial === "boolean") return s.trial;
+  return c?.followers == null || c.followers < (c.trialUnder || 1000);
+}
+function igTrialHtml(c, s) {
+  const chosen = typeof s?.trial === "boolean", under = c?.trialUnder || 1000;
+  const auto = chosen ? "" : " " + tr(c?.followers == null ? "igr.trial.auto0" : "igr.trial.auto", { n: under.toLocaleString(lang === "ja" ? "ja-JP" : "en-GB"), f: c?.followers ?? "" });
+  return `<div class="igtrial"><label class="switch"><input type="checkbox" data-igtrial="1" ${igTrialOn(c, s) ? "checked" : ""}><span>${esc(tr("igr.trial"))}</span></label>
+      <p class="meta">${esc(tr("igr.trial.d") + auto)}</p></div>`;
+}
 /* A network's playbook as a short guide: what it is for, the video, the words, tags, when, the profile and
    how to answer comments (with copy buttons for the calm replies). Rules come from shared/playbooks.json. */
 function playbookHtml(n) {
@@ -1132,10 +1150,10 @@ document.addEventListener("submit", async (e) => {
   if (accErr[net]) document.querySelector(`[data-accform="${net}"] .accerr`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
 });
 document.addEventListener("change", async (e) => {
-  const on = e.target.closest("[data-neton]"), ac = e.target.closest("[data-netacct]");
-  if (!on && !ac) return;
+  const on = e.target.closest("[data-neton]"), ac = e.target.closest("[data-netacct]"), tri = e.target.closest("[data-igtrial]");
+  if (!on && !ac && !tri) return;
   try {
-    channelsSpec = await post("/api/channels/set", on ? { id: on.dataset.neton, on: on.checked } : { id: ac.dataset.netacct, account: ac.value });
+    channelsSpec = await post("/api/channels/set", tri ? { id: "instagram", trial: tri.checked } : on ? { id: on.dataset.neton, on: on.checked } : { id: ac.dataset.netacct, account: ac.value });
     toast(`${ico("check", "sm")} ${tr("acc.saved")}`, 2500);
   } catch (err) { toast(`${ico("alert", "sm")} ${esc(err.message)}`, 6000); }
   renderHome(true);

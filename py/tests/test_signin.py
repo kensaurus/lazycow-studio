@@ -423,7 +423,7 @@ def test_facebook_cancel_and_meta_errors_are_plain_sentences_with_the_fix(store,
     _use(monkeypatch, Fake([("GET", "/oauth/access_token?client_id", [(400, {"error": {
         "message": "Error validating verification code. Please make sure your redirect_uri is identical to the one you used in the OAuth dialog request",
         "code": 100, "error_subcode": 36008}})])]))
-    with pytest.raises(RuntimeError, match=r"Valid OAuth Redirect URIs.*Connect with Facebook again"):
+    with pytest.raises(RuntimeError, match=r"only while your app is in Development mode.*Graph API Explorer"):
         facebook.finish_signin({"code": "c", "state": q["state"]}, PORT)
 
     _, q = _fb_ready(store, monkeypatch)

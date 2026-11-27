@@ -274,7 +274,9 @@ def catch_up(now: datetime | None = None) -> dict:
         if r["status"] != "queued":
             continue
         late = timedelta(hours=r["late_h"])
-        if late <= grace:
+        # A send that failed on a passing error waits for its next try (studio.publish BL-156): its lateness is the
+        # retry's, not the booking's, so it is never marked missed while the retries are still to come.
+        if late <= grace or posting.retry_of(r.get("note")):
             send.append(r["id"])
             continue
         with posting.connect() as con:

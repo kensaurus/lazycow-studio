@@ -94,7 +94,7 @@ test("BL-132: with no network the plan can book on, nothing is booked, and Revie
   assert.match(server, /networks: chosen\.filter\(\(n\) => ready\[n\]\)/, "autoPlan books only the ready networks");
   // The page reads the same readiness (GET /api/autopost ready = autoReady()).
   assert.match(server, /\[settings, waiting, ready\] = await Promise\.all\(\[liveSettings\(\), ask\(\{ cmd: "live", action: "waiting" \}\), autoReady\(\)\.catch\(\(\) => null\)\]\)/);
-  assert.match(server, /networks: AUTO_NETS, ready, today: todayIn\(tz\)/);
+  assert.match(server, /networks: AUTO_NETS\.filter\(\(n\) => !OPTIONAL_NETS\.includes\(n\) \|\| ready\?\.\[n\]\), ready, today: todayIn\(tz\)/);
   // eslint-disable-next-line no-new-func
   const rvSplit = new Function(`${body("rvSplit")}\nreturn rvSplit;`)();
   const all = { x: false, tiktok: false, facebook: false, youtube: false, linkedin: false, bluesky: false };

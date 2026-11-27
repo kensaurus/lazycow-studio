@@ -2,6 +2,49 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.30.0 (2026-11-27)
+
+Reach, not just reels: a 27 Nov review of the owner's channel found that 83 % of Shorts viewers swiped away, that the
+studio's reels kept about 9 % of their viewers while the camera's continuous time-lapses kept about 26 %, and that most
+networks were showing the posts to nobody. This release judges reels by the people who stay, makes reels that hold
+from the first frame, posts Instagram reels (not only Stories), and stops booking where nobody is shown the posts.
+
+### Added
+- **Engaged views and the share kept (BL-155):** a Shorts view counts every start or replay since March 2025, so Results
+  now ranks openings and the top Shorts by YouTube's engaged views when most Shorts have them, and a new card compares
+  the share of viewers kept (engaged ÷ views) with the channel's other Shorts. The hook card says how much of a phrase's
+  gain is wider showing rather than more watching.
+- **Words from the first frame:** the headline is whole on frame 0 (the frame the feed shows), not typed in over the
+  first second; `pov` shows its line already typed, `altitude` its final number.
+- **The loop ending by default:** new reels end on their opening frame (a theme's `loop: false` still wins), so a replay
+  has no seam.
+- **Site walk (25-40 s):** a new length in Make reels (and MCP `make_reels`): five long moving shots of 5-9 s, a calm look,
+  no cutaways or whooshes, the loop ending and the headline from the first frame. It needs three clips of 5.8 s or more.
+- **Instagram reels through the API:** with Facebook connected and `instagram_content_publish` allowed, the studio
+  sends reels (with their post text) to Instagram at their time, like Stories. A per-project switch posts them as
+  **trial reels** first (shown to non-followers, shared to followers if they do well); it starts on for an account under
+  1,000 followers. Their plays, reach, likes, shares, saves and watch time are read back.
+- **Retry a send that failed on a passing error (BL-156):** a Story or reel that failed on a dropped connection, a 5xx or
+  an unfinished upload is tried again after 5 and 10 minutes (within an hour of its time); a refusal is never retried.
+- **One post a day on a network not seen yet (BL-157):** an account whose measured posts all have nothing books once a day
+  until one is seen.
+- **First run (BL-144, BL-145, BL-146, BL-149):** a new studio reads its footage folder by itself; Home offers **Read these
+  N files now**; Make is greyed with the reason until four clips fit, a starter story only starts when it fits and a
+  failure stays on the page with **Use an Any place story**; Home has an **Any place** card; sign-in reminders wait for the
+  first approval; starter stories carry Japanese shot words.
+- **"Your Meta app is still in development":** the Facebook card and What needs you say so when the Meta app the
+  studio posts through has no privacy policy URL (Meta cannot have published it), with a Publish link. Reels an app
+  posts in Development mode may be shown to almost nobody: the owner's reels read 0 plays from 18 to 27 Nov.
+- **A network that went quiet:** Results and What needs you name a network whose latest 3 or more posts (each a day or
+  more out) got nothing although earlier ones were seen, with what to check first (Facebook: the Meta app's mode,
+  then one reel posted from the Facebook app; TikTok: one post from a phone in your own country). Booking is not
+  paused for it: the next post is how a fix shows.
+
+### Changed
+- **Reconnecting Facebook with a published app:** "URL blocked" now says that the sign-in window works only for an app
+  in development and to paste a token from Graph API Explorer under Other way (Meta does not let a Live app list the
+  `http://localhost` return address). The setup steps end with publishing the app.
+
 ## 0.29.0 (2026-11-27)
 
 The rest of the first-run walk (a cafe owner, simple mode, no keys): a new project starts from one box and a

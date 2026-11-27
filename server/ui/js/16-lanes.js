@@ -457,8 +457,8 @@ function pickerHtml() {
         ${p.error ? `<p class="bad" role="alert">${ico("alert", "sm")} ${esc(p.error)}</p>` : ""}
         ${l ? `<div class="pk-crumbs">${l.parent ? `<button data-fsgo="${esc(l.parent)}" title="${esc(tr("src.up"))}">${ico("chev-u", "sm")}</button>` : ""}${crumbsHtml}</div>
           <div class="pk-here"><span class="meta">${tr("src.here", { n: l.media, d: l.dirs.length })}</span><span class="grow"></span>
-            ${l.included ? `<span class="chip ok">${ico("check", "sm")}${tr("src.already", { s: esc(l.included.label) })}</span>` : ""}
-            <button class="primary" id="fsDiscover" data-path="${esc(l.path)}" ${job?.status === "running" ? "disabled" : ""}>${ico("search", "sm")}${tr("src.look")}</button></div>
+            ${l.included ? `<span class="chip ok">${ico("check", "sm")}${tr("fr.isfolder", { s: esc(srcName(l.included)) })}</span>` : ""}
+            <button class="primary" id="fsDiscover" data-path="${esc(l.path)}" ${job?.status === "running" ? "disabled" : ""}>${ico("search", "sm")}${tr(l.included ? "fr.lookin" : "src.look")}</button></div>
           ${job?.status === "running" ? `<div class="jobline s-scheduled">${ico("clock", "sm")} ${esc(job.label || "")}</div>` : ""}
           ${r ? reportHtml(r) : `<div class="pk-dirs">${l.dirs.map((d) => `<button ${d.hidden ? 'class="hid" ' : ""}data-fsgo="${esc(d.path)}" title="${esc(d.path)}">${ico("folder", "sm")}<span>${esc(d.name)}</span></button>`).join("") || `<p class="note">${tr("src.nodirs")}</p>`}</div>`}`
         : `<p class="note">${p.loading ? "…" : tr("src.start")}</p>`}
@@ -477,7 +477,7 @@ function reportHtml(r) {
     <div class="row wrap">${Object.entries(r.formats || {}).map(([x, n]) => `<span class="chip">${esc(x)} ${n}</span>`).join(" ")}</div>
     <div class="row wrap">${Object.entries(r.years || {}).map(([y, n]) => `<span class="chip">${esc(y)} · ${n}</span>`).join(" ")}</div>
     ${(r.newest || []).length ? `<p class="meta">${tr("src.r.newest")}: ${r.newest.slice(0, 4).map((x) => esc(x.path.split(/[\\/]/).pop())).join(", ")}</p>` : ""}
-    ${r.included ? `<p class="note">${ico("check", "sm")} ${tr("src.already", { s: esc(r.included.label) })}</p>` : `
+    ${r.included ? includedHtml(r) : `
     ${r.homePlace === false ? `<p class="meta">${ico("info", "sm")} ${esc(tr("hm.noplace"))}</p>` : `<fieldset class="modes"><legend>${tr("src.how")}</legend>
       <label><input type="radio" name="srcMode" value="gps" ${mode === "gps" ? "checked" : ""}> <b>${tr("src.gps")}</b> <span class="meta">${tr("src.gpstip")}</span></label>
       <label><input type="radio" name="srcMode" value="trusted" ${mode === "trusted" ? "checked" : ""}> <b>${trR("src.trusted")}</b> <span class="meta">${trR("src.trustedtip")}</span></label>
@@ -486,6 +486,18 @@ function reportHtml(r) {
       <button class="primary" id="fsInclude" data-path="${esc(r.path)}" ${r.total ? "" : 'disabled aria-describedby="fsNone"'}>${ico("plus", "sm")}${tr("src.include", { n: r.total })}</button></div>
     ${r.total ? "" : `<p class="note" id="fsNone">${ico("info", "sm")} ${tr("src.nofiles")}</p>`}`}
   </div>`;
+}
+/* A source's name in the page's language: "Footage folder" and the imports folder are the page's words (labelKey). */
+function srcName(s) { return s?.labelKey ? trR("src.l." + s.labelKey) : s?.label || ""; }
+/* BL-144: a folder that is already one of the project's footage folders. Adding it again did nothing ("Choose this
+   folder" ended on "Already read through Footage folder" over 9 files new to the studio); its button reads the new
+   files now (POST /api/sources/watch, the same as Footage › Look for new files). */
+function includedHtml(r) {
+  const n = r.new || 0;
+  return `<p class="note">${ico("check", "sm")} ${tr("fr.isfolder", { s: esc(srcName(r.included)) })}</p>
+    <div class="row"><button data-fsgo="${esc(r.path)}">${ico("chev-l", "sm")}${tr("src.back")}</button><span class="grow"></span>
+      ${n ? `<button class="primary" id="fsRead" data-srcwatch="1" data-srcread="1">${ico("download", "sm")}${tr(n === 1 ? "fr.read1" : "fr.readn", { n })}</button>`
+        : `<span class="meta">${ico("check", "sm")} ${tr("fr.allread", { n: r.total || 0 })}</span>`}</div>`;
 }
 async function loadFootage() {
   foot.loading = true;

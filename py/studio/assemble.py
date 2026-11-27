@@ -35,6 +35,7 @@ from studio.projects import save
 from studio.staging import DAY_ORDER, mark_for, mark_kind, number_lines, staging
 
 RHYTHM = [2.0, 1.5, 1.0, 1.5, 1.5, 1.0, 1.5, 2.0, 3.0]
+LOOP_NEW = True  # a new reel ends on the loop (its theme's loop: false wins); 58 of 242 reels had it on, 27 Nov
 
 # The long explainer (variant "b-explainer", shared/spec.json): LinkedIn and Facebook reward 40-60 s with a
 # caption on every claim, watched with the sound off. Same theme, more proof: the theme's own slots plus
@@ -45,6 +46,27 @@ LONG_RHYTHM = [3.5, 3.0, 3.5, 3.0, 3.5, 3.0, 3.5, 3.0, 3.5, 3.0, 3.5, 3.0, 3.5, 
 _RANCH_COPY: dict = ((ranch_data("copy", {}) or {}).get("assemble") or {}) if RANCH else {}
 VENUE_SLOTS: list[str] = list(_RANCH_COPY.get("venueSlots") or [])
 VENUE_LINES: list[tuple] = [tuple(b) for b in _RANCH_COPY.get("venueLines") or []]
+
+
+# Site walk (variant "site-walk", shared/spec.json): the cut that behaves like a camera time-lapse. Measured 27 Nov in
+# YouTube Studio, the reels made of 1-3 s cuts kept 5-8 % of feed viewers; one continuous shot of 24-31 s with real motion
+# and words on screen kept 24-35 %. So: 25-40 s, five long shots (5-9 s each, a slow push, a plain dissolve between),
+# a calm look, no B-roll cutaways and no whooshes, the loop ending, and the headline on screen from the first frame.
+WALK_RHYTHM = [7.0, 6.5, 6.0, 6.5, 7.0]  # 33 s
+WALK_SHOT = (5.0, 9.0)  # the shortest and longest shot it cuts; a clip must hold the shortest plus the 0.8 s kept spare
+WALK_LINES = 3  # one calm line about every 7 s
+WALK_END = 3.5  # the end card's last seconds on the closing shot
+WALK_LOOKS = (None, "film", "ember")  # the plain house picture, film grain, firelight: no punch, flash or freeze
+
+
+def walk_theme(theme: dict) -> dict:
+    """The theme as a site walk: its first and last shot and those spread between (five at most), the headline and its
+    first three lines, spread evenly over the long shots (no cue slots: there are few cuts to land on)."""
+    slots = list(theme["slots"])
+    n = min(len(WALK_RHYTHM), len(slots))
+    pick = sorted({round(k * (len(slots) - 1) / max(1, n - 1)) for k in range(n)})
+    beats = list(theme["beats"])
+    return {**theme, "slots": [slots[i] for i in pick], "beats": beats[:1 + WALK_LINES], "cues": [], "slot_season": []}
 
 
 def long_theme(theme: dict) -> dict:
@@ -164,13 +186,41 @@ def clean_theme(key: str, t: dict, check_copy: bool = True) -> dict:
             "shots": shots, "shotsEn": shots_en, "tags": tags, "style": style}
 
 
+_STORY_JA: dict[str, str] | None = None
+
+
+def story_shots_ja() -> dict[str, str]:
+    """Every starter story's shot (shared/starter-stories.json shots) with its Japanese words (shotsJa), read once.
+    A story picked on the English page is saved with English shots only; these give its What to film next Japanese
+    words on the Japanese page (BL-149)."""
+    global _STORY_JA
+    if _STORY_JA is None:
+        from studio.config import ROOT
+
+        out: dict[str, str] = {}
+        try:
+            stories = json.loads((ROOT / "shared" / "starter-stories.json").read_text(encoding="utf-8")).get("stories") or []
+        except (OSError, ValueError):
+            stories = []
+        for s in stories:
+            t = s.get("theme") or {}
+            en, ja = t.get("shots") or [], t.get("shotsJa") or []
+            if len(en) == len(ja):
+                out.update({e: j for e, j in zip(en, ja) if e and j})
+        _STORY_JA = out
+    return _STORY_JA
+
+
 def shot_ja(shot: str, typed: str | None = None) -> str | None:
-    """The Japanese words for a shot, when there are some: the words as typed, or a starter shot's own (BL-137)."""
+    """The Japanese words for a shot, when there are some: the words as typed, a starter shot's own (BL-137), or a
+    starter story's (BL-149)."""
     from studio.shotwords import has_ja
 
     if typed and has_ja(typed):
         return typed
-    return STARTER_SHOTS_JA[STARTER_SHOTS.index(shot)] if shot in STARTER_SHOTS else None
+    if shot in STARTER_SHOTS:
+        return STARTER_SHOTS_JA[STARTER_SHOTS.index(shot)]
+    return story_shots_ja().get(shot)
 
 
 def theme_from_json(key: str, t: dict) -> dict:
@@ -293,15 +343,23 @@ def _cos(a: np.ndarray, b: np.ndarray) -> float:
     return float(a @ b)
 
 
-def _beats(theme: dict, chosen: list[dict]) -> list[dict]:
+HOOK_AT = 0.0  # the headline is on screen from the first frame: it is the frame the feed shows (src/Story.tsx Hook)
+
+
+def _beats(theme: dict, chosen: list[dict], walk: bool = False) -> list[dict]:
     """Each line starts on the cut of the shot it describes (theme["cues"] are slot numbers)
-    and ends 0.2 s before the next caption's cut; the end card sits on the held last shot."""
+    and ends 0.2 s before the next caption's cut; the end card sits on the held last shot.
+    The headline starts at 0.0 s, whole on the first frame (27 Nov: 83 % of Shorts viewers swipe away, and the first
+    frame of a typed-in headline had no words). walk (Site walk): the headline holds the first long shot, the lines
+    spread over the rest, and the end card takes the last WALK_END seconds of the closing shot."""
     starts, t = [], 0.0
     for c in chosen:
         starts.append(t)
         t += c["sec"]
     total = t
     end_start = starts[-1] + 0.1
+    if walk:
+        end_start = max(end_start, round(total - WALK_END, 1))
     lines = theme["beats"][1:]
     cue_at = []
     for slot_n in theme.get("cues", []):
@@ -311,11 +369,13 @@ def _beats(theme: dict, chosen: list[dict]) -> list[dict]:
     if aligned:
         bounds = cue_at + [end_start]
         aligned = all(bounds[k + 1] - bounds[k] >= 1.4 for k in range(len(lines))) and 1.5 <= bounds[0] <= 4.0
+    if walk:  # the headline over the whole first shot, then the lines evenly over the long shots that follow
+        aligned = False
     if not aligned:  # too few shots landed: spread the lines evenly instead
-        hook_end = min(3.4, total * 0.25) + 0.2
+        hook_end = min(max(starts[1] if len(starts) > 1 else 3.6, 3.6), 8.0) if walk else min(3.4, total * 0.25) + 0.2
         step = ((end_start - 0.1) - hook_end) / max(1, len(lines))
         bounds = [hook_end + k * step for k in range(len(lines))] + [end_start]
-    beats = [{"kind": "hook", "ja": theme["beats"][0][1], "en": theme["beats"][0][2], "startSec": 0.1, "endSec": round(bounds[0] - 0.2, 2)}]
+    beats = [{"kind": "hook", "ja": theme["beats"][0][1], "en": theme["beats"][0][2], "startSec": HOOK_AT, "endSec": round(bounds[0] - 0.2, 2)}]
     for k, (_, ja, en) in enumerate(lines):
         beats.append({"kind": "line", "ja": ja, "en": en, "startSec": round(bounds[k] + 0.1, 2), "endSec": round(bounds[k + 1] - 0.2, 2)})
     from studio.brand import end_card
@@ -447,34 +507,37 @@ def vary_copy(project: dict, theme: dict, rng: random.Random) -> dict:
     return {"posts": post, "yt_title": assert_copy(title), "tags": tags, "style": style, "title_ja": one(hook["ja"])}
 
 
-def assemble(theme: dict, slug: str, allow_faces: bool = False, since: str | None = None, rhythm: list[float] | None = None,
-             seed: int | None = None, variety: float = VARIETY, variant: str | None = None, words: str = "fresh",
-             with_layers: bool = True) -> dict:
-    """Pick one asset per slot and save a project. Returns the project.
-    The seed makes a version reproducible; "New version" draws a new one. Every slot's search line,
-    candidates and scores are kept in project["trace"] for the Log page."""
+def _emb_rows() -> dict:
+    """Every tagged clip's picture embedding by asset id (near-duplicate shots are left out of one reel). None yet in a
+    project whose footage was never tagged (no library table): an empty dict, not an error."""
+    import sqlite3
+
     from studio.db import connect
 
-    seed = int(time.time() * 1000) % 2_147_483_647 if seed is None else seed
-    rng = random.Random(seed)
-    trace: list[dict] = []
-    key = next((k for k, v in THEMES.items() if v is theme), None)
-    stage = staging({"theme": key, **{k: theme[k] for k in ("look", "recipe", "kicker", "loop") if k in theme}})
-    marks = mark_kind(stage)
-    long_cut = variant == "b-explainer"
-    if long_cut:
-        theme = long_theme(theme)
-    rhythm = rhythm or (LONG_RHYTHM if long_cut else RHYTHM)[: len(theme["slots"])]
+    try:
+        with connect() as con:
+            return {r[0]: np.frombuffer(r[1], dtype="float32") for r in con.execute("SELECT asset_id, emb FROM library WHERE emb IS NOT NULL")}
+    except sqlite3.OperationalError:
+        return {}
+
+
+MIN_SHOTS = 4  # a reel needs at least this many different clips: assemble() refuses fewer, theme_fit() counts them first
+
+
+def _pick_shots(theme: dict, rhythm: list[float], allow_faces: bool, since: str | None, rng: random.Random, variety: float,
+                emb_rows: dict, marks, walk: bool = False) -> tuple[list[dict], list[dict], set[str]]:
+    """One asset per slot by the theme's search lines: the rule assemble() makes a reel by and theme_fit() counts by.
+    walk (Site walk): moving pictures only, each clip long enough for a long shot, and the shot cut to what it holds.
+    Returns (chosen, trace, the file names used)."""
     chosen: list[dict] = []
+    trace: list[dict] = []
     used_names: set[str] = set()
     photos = 0
     embs: list[np.ndarray] = []
-    with connect() as con:
-        emb_rows = {r[0]: np.frombuffer(r[1], dtype="float32") for r in con.execute("SELECT asset_id, emb FROM library WHERE emb IS NOT NULL")}
     for n, (slot, sec) in enumerate(zip(theme["slots"], rhythm)):
         filters = {"ranch": True, "noFaces": not allow_faces}
-        if n == 0:
-            filters["kind"] = "video"  # open on motion
+        if n == 0 or walk:
+            filters["kind"] = "video"  # open on motion; a site walk is all moving picture
         pool = [p for p in items(slot, filters, limit=80) if can_use(p, allow_faces)]
         if theme.get("device"):
             pool = [p for p in pool if p.get("device") in theme["device"]]
@@ -503,8 +566,8 @@ def assemble(theme: dict, slug: str, allow_faces: bool = False, since: str | Non
             is_photo = cand["kind"] == "photo"
             if is_photo and (photos + 1) > 0.3 * len(theme["slots"]):
                 continue
-            if cand["kind"] == "video" and (cand["duration"] or 0) < sec + 0.8:
-                continue
+            if cand["kind"] == "video" and (cand["duration"] or 0) < (WALK_SHOT[0] if walk else sec) + 0.8:
+                continue  # a site walk takes a clip that holds its shortest long shot, and cuts it to what the clip holds
             emb = emb_rows.get(cand["id"])
             if emb is not None and any(_cos(emb, e) > 0.93 for e in embs):
                 continue
@@ -524,17 +587,64 @@ def assemble(theme: dict, slug: str, allow_faces: bool = False, since: str | Non
         step["picked"] = cand["file"]
         trace.append(step)
         mark = mark_for(marks, cand.get("tod"), cand.get("season"), cand.get("captured")) if marks else None
+        if walk:
+            sec = max(WALK_SHOT[0], min(sec, math.floor(((cand["duration"] or 0) - 0.8) * 2) / 2))
         chosen.append({"cand": cand, "sec": min(sec, 2.0) if is_photo else sec, "slot": slot, "n": n, "mark": mark})
         used_names.add(cand["file"].lower())
         photos += int(is_photo)
         emb = emb_rows.get(cand["id"])
         if emb is not None:
             embs.append(emb)
+    return chosen, trace, used_names
+
+
+def theme_fit(keys: list[str] | None = None, allow_faces: bool = False) -> dict[str, int]:
+    """How many different clips a short reel of each theme would find now (BL-145): the same picks assemble() makes,
+    with no random draw (the best candidate per slot) and before a split look or a timeline recipe reorders them.
+    Make reels greys its button below MIN_SHOTS instead of failing after the press."""
+    emb_rows = _emb_rows()
+    out: dict[str, int] = {}
+    for key in keys if keys is not None else list(THEMES):
+        theme = THEMES.get(key)
+        if not theme:
+            continue
+        chosen, _trace, _names = _pick_shots(theme, RHYTHM[: len(theme["slots"])], allow_faces, None, random.Random(0), 0, emb_rows, None)
+        out[key] = len(chosen)
+    return out
+
+
+def assemble(theme: dict, slug: str, allow_faces: bool = False, since: str | None = None, rhythm: list[float] | None = None,
+             seed: int | None = None, variety: float = VARIETY, variant: str | None = None, words: str = "fresh",
+             with_layers: bool = True) -> dict:
+    """Pick one asset per slot and save a project. Returns the project.
+    The seed makes a version reproducible; "New version" draws a new one. Every slot's search line,
+    candidates and scores are kept in project["trace"] for the Log page."""
+    seed = int(time.time() * 1000) % 2_147_483_647 if seed is None else seed
+    rng = random.Random(seed)
+    key = next((k for k, v in THEMES.items() if v is theme), None)
+    # A new reel ends on the loop (src/looks.tsx LoopTail) unless its theme says loop: false; the project then keeps
+    # loop: true, so a person can still switch it off (staging: the project's own value wins).
+    stage = staging({"theme": key, **{k: theme[k] for k in ("look", "recipe", "kicker") if k in theme}, "loop": theme.get("loop", LOOP_NEW)})
+    long_cut = variant == "b-explainer"
+    walk = variant == "site-walk"
+    if long_cut:
+        theme = long_theme(theme)
+    if walk:
+        theme = walk_theme(theme)
+        if stage["look"] not in WALK_LOOKS:  # a calm picture: the theme's punchy look waits for its short loop
+            stage = {**stage, "look": None}
+    marks = mark_kind(stage)
+    rhythm = rhythm or (LONG_RHYTHM if long_cut else WALK_RHYTHM if walk else RHYTHM)[: len(theme["slots"])]
+    emb_rows = _emb_rows()
+    chosen, trace, used_names = _pick_shots(theme, rhythm, allow_faces, since, rng, variety, emb_rows, marks, walk)
     if stage["look"] == "split":
         chosen = keep_pairs(chosen, len(theme["slots"]))
     if stage["recipe"] == "timeline":
         chosen = morning_to_night(chosen)
-    if len(chosen) < 4:
+    if len(chosen) < (3 if walk else MIN_SHOTS):
+        if walk:
+            raise RuntimeError(f"only {len(chosen)} clips of {WALK_SHOT[0] + 0.8:g} s or longer suit this theme: a site walk needs 3. "
+                               "Film a few slow, steady shots of 10 s or more, or make the short loop.")
         raise RuntimeError(f"only {len(chosen)} usable assets for this theme")
     if key and words != "theme" and stage["recipe"] != "timeline":  # clock order stays; pairs move as pairs
         kick = stage["kicker"].get("ja") if isinstance(stage.get("kicker"), dict) else None
@@ -543,11 +653,11 @@ def assemble(theme: dict, slug: str, allow_faces: bool = False, since: str | Non
         if kick and not _label_fits(kick, chosen[0], emb_rows):
             stage = {**stage, "kicker": None}  # a label is true of its shot or left off (no desk to open on: no "POV: your desk today")
     last = chosen[-1]
-    if last["cand"]["kind"] == "video" and (last["cand"]["duration"] or 0) >= 3.8:
-        last["sec"] = 3.0  # a held shot under the end card
-    # Fitting cuts to the music's beat would squeeze the explainer back to ~20 s; it keeps its own pace.
-    bpm = None if long_cut else _on_the_beat(theme, chosen, rng)
-    _reach_min_length(chosen, long_cut)
+    if not walk and last["cand"]["kind"] == "video" and (last["cand"]["duration"] or 0) >= 3.8:
+        last["sec"] = 3.0  # a held shot under the end card (a site walk keeps its long closing shot; the card takes its end)
+    # Fitting cuts to the music's beat would squeeze the explainer back to ~20 s, and a site walk to 1-4 s cuts; both keep their own pace.
+    bpm = None if long_cut or walk else _on_the_beat(theme, chosen, rng)
+    _reach_min_length(chosen, long_cut, variant)
     shots = []
     for c in chosen:
         shot = {"src": _src(c["cand"]["path"]), "sec": c["sec"], "role": f"auto: {c['slot']} (match {c['cand'].get('match')})"}
@@ -556,7 +666,7 @@ def assemble(theme: dict, slug: str, allow_faces: bool = False, since: str | Non
         shots.append(shot)
     # The second picture track: B-roll cutaways and paper-print insets over running shots (studio.layers).
     reel_layers = []
-    if with_layers and not long_cut and stage["look"] != "split":
+    if with_layers and not long_cut and not walk and stage["look"] != "split":  # a site walk stays one continuous shot at a time
         from studio.layers import plan as plan_layers
 
         reel_layers = plan_layers(theme, shots, set(used_names), rng, allow_faces, end_at=sum(s["sec"] for s in shots[:-1]))
@@ -571,7 +681,7 @@ def assemble(theme: dict, slug: str, allow_faces: bool = False, since: str | Non
         cue_slots = [theme["slots"][c] if c < len(theme["slots"]) else theme["slots"][-1] for c in theme.get("cues", [])]
         # Each line must suit the shots it will play over (studio.wording.picture_fits): the same timing the reel gets
         # below, with what the library knows of each picked clip. A fresh reel never checked this (13 Nov review).
-        when = _beats({**theme, "cues": []} if stage["recipe"] == "timeline" else theme, chosen)
+        when = _beats({**theme, "cues": []} if stage["recipe"] == "timeline" else theme, chosen, walk)
         from studio.wording import built
 
         facts = [{"season": c["cand"].get("season"), "tod": c["cand"].get("tod"), "tags": set(c["cand"].get("top") or []),
@@ -580,7 +690,7 @@ def assemble(theme: dict, slug: str, allow_faces: bool = False, since: str | Non
         theme = {**theme, "beats": [("hook", *drawn["hook"])] + [("line", ja, en) for ja, en in drawn["lines"]]}
     # Timeline shots are re-ordered morning to night, so a slot's cue no longer marks its shot: spread the
     # lines evenly after a full-length headline instead.
-    beats = _beats({**theme, "cues": []} if stage["recipe"] == "timeline" else theme, chosen)
+    beats = _beats({**theme, "cues": []} if stage["recipe"] == "timeline" else theme, chosen, walk)
     if stage["recipe"] == "countdown":
         beats = number_lines(beats)
     for b in beats:
@@ -616,6 +726,10 @@ def assemble(theme: dict, slug: str, allow_faces: bool = False, since: str | Non
     if long_cut:
         project["variant"] = "b-explainer"
         project["made_by"] = "assembler, long explainer (vet in the editor)"
+    if walk:
+        project["variant"] = "site-walk"
+        project["sfx"] = False  # no whooshes on five calm cuts
+        project["made_by"] = "assembler, site walk (vet in the editor)"
     save(project)
     return project
 
@@ -641,18 +755,20 @@ def morning_to_night(chosen: list[dict]) -> list[dict]:
     return head + rest
 
 
-def _reach_min_length(chosen: list[dict], long_cut: bool = False) -> None:
+def _reach_min_length(chosen: list[dict], long_cut: bool = False, variant: str | None = None) -> None:
     """A theme with few shots (4 or 5, the theme editor's minimum) cut on the short rhythm runs 6-7.5 s, under the 8 s
     the renderer requires (reels.LENGTH_RULE), so its reel could never render. Lengthen the shortest shots on the
-    0.5 s grid, never past 4 s, 2 s for a photo or what the clip holds, until the reel is long enough."""
-    from studio.reels import LENGTH_RULE
+    0.5 s grid, never past 4 s (a site walk's 9 s), 2 s for a photo or what the clip holds, until the reel is long enough."""
+    from studio.reels import LENGTH_RULE, SHOT_MAX
 
-    lo = LENGTH_RULE["b-explainer" if long_cut else None][0]
+    cut = variant or ("b-explainer" if long_cut else None)
+    lo = LENGTH_RULE.get(cut, LENGTH_RULE[None])[0]
+    most = SHOT_MAX.get(cut, SHOT_MAX[None])
 
     def room(c: dict) -> float:
         if c["cand"]["kind"] == "photo":
             return 2.0
-        return min(4.0, max(1.0, (c["cand"]["duration"] or 4) - 0.6))
+        return min(most, max(1.0, (c["cand"]["duration"] or 4) - 0.6))
 
     while sum(c["sec"] for c in chosen) < lo:
         grow = [c for c in chosen if c["sec"] + 0.5 <= room(c)]
