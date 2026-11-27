@@ -70,8 +70,9 @@ def render_cmd(composition: str, props: Path, out: Path, *extra: str) -> list[st
     return [npx, "remotion", "render", "src/index.ts", composition, str(out), f"--props={props}", f"--public-dir={public_dir()}", *extra]
 
 
-def _remotion(composition: str, props: Path, out: Path) -> bool:
-    cmd = render_cmd(composition, props, out, "--concurrency=4")
+def _remotion(composition: str, props: Path, out: Path, *extra: str) -> bool:
+    """extra: more render flags (product videos pass --crf and --pixel-format); the reels pass none."""
+    cmd = render_cmd(composition, props, out, "--concurrency=4", *extra)
     log = out.with_suffix(".log")
     log.parent.mkdir(parents=True, exist_ok=True)
     # Stream the log so the editor can show frames as they render, not one jump per stage.

@@ -104,12 +104,13 @@ Claude Desktop or Cursor (`claude_desktop_config.json` / `.cursor/mcp.json`):
 
 The server finds the studio by itself: `STUDIO_PORT` and `STUDIO_API_TOKEN` when set, else the `.env` in `LAZYCOW_DIR`, else the folder the setup recorded. So your agent config never holds a copy of the token.
 
-The 31 tools ("reads" change nothing; "spends" means paid AI, priced first and kept inside the studio's limits):
+The 32 tools ("reads" change nothing; "spends" means paid AI, priced first and kept inside the studio's limits):
 
 | Area | Tools |
 |:--|:--|
 | The studio | `studio_status`, `list_projects`, `switch_project`, `read_log` (reads, except switching) |
 | Reels | `list_reels`, `reel_details`, `list_themes` (reads); `make_reels`, `make_reel`, `remix_reel` (render in the background) |
+| Product videos | `make_product_video` (an App Store preview, Play promo or social cut from an app's release kit; no AI, posts nothing) |
 | Jobs | `job_status`, `cancel_job` |
 | Posting | `list_posts`, `list_accounts`, `check_connections` (reads); `plan_post`, `publish_reel`, `schedule_reel` (approved reels only) |
 | Research | `research_ideas`, `research_events`, `research_page`, `research_site_check`, `research_links` (reads the web through the studio; suggestions, never posted) |

@@ -86,6 +86,8 @@ tags:
     description: Health, restart, settings, the page itself and its about texts.
   - name: Files
     description: Media files, previews, fonts, icons and the 15-minute share links.
+  - name: Product videos
+    description: An app's release kit (`docs/product-kit.md`) made into an App Store preview, a Play promo or a social cut. No AI in the render; nothing posts.
 
 paths:
   # ---------------------------------------------------------------- System
@@ -2293,6 +2295,105 @@ paths:
       responses:
         "200": { description: The file. }
         "404": { description: Not built yet. }
+  /api/product:
+    get:
+      tags: [Product videos]
+      operationId: listProductKits
+      summary: The presets (shared/product-presets.json), the kits added so far (newest first) and product renders of the last 6 hours.
+      responses:
+        "200":
+          description: "{presets: {<id>: {label, width, height, fps, minSec, maxSec, targetSec, frame, compare, ...}}, kits: [{name, app, version, screens, recordings, rendered, thumb, fetched}], jobs: [Job]}"
+        default: { $ref: "#/components/responses/CodedError" }
+  /api/product/kit:
+    get:
+      tags: [Product videos]
+      operationId: getProductKit
+      summary: One kit as checked and stored (docs/product-kit.md), whether each preset fits it (and why not), its renders and their jobs.
+      parameters:
+        - { name: name, in: query, required: true, schema: { type: string, pattern: "^[a-z0-9]+(-[a-z0-9]+)*$", maxLength: 40 } }
+      responses:
+        "200": { description: "The cleaned kit plus {fits: {<preset>: {ok, seconds, scenes, warnings} | {ok: false, why}}, renders: {<preset>: result}, jobs: {<preset>: Job}}" }
+        default: { $ref: "#/components/responses/CodedError" }
+  /api/product/plan:
+    get:
+      tags: [Product videos]
+      operationId: planProductVideo
+      summary: The timeline one preset would render (scenes with their frames and captions), checked against the preset's spec. Renders nothing.
+      parameters:
+        - { name: name, in: query, required: true, schema: { type: string } }
+        - { name: preset, in: query, required: true, schema: { $ref: "#/components/schemas/ProductPreset" } }
+      responses:
+        "200": { description: "The ProductPreview props: {preset, durationInFrames, seconds, app, brand, fonts, logo, labels, title, scenes, news, end, warnings}" }
+        "422": { description: "Nothing in the kit fits this preset, or the result would break its spec (length, fps, size). `error` says which.", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { $ref: "#/components/responses/CodedError" }
+  /api/product/kits:
+    post:
+      tags: [Product videos]
+      operationId: addProductKit
+      summary: Download and check a release kit (https only, every file sniffed and size-capped, images re-saved without metadata, recordings re-encoded without sound). A kit of the same name is replaced.
+      description: The manifest follows docs/product-kit.schema.json. A kit link's query string (a signed link's token) is never stored. Nothing in a kit is run.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                kitUrl: { type: string, maxLength: 4000, description: "The manifest: https://… (a release kit's signed link) or file:///… on this computer." }
+                kitPath: { type: string, maxLength: 1000, description: A kit folder on this computer (manifest.json beside its files), instead of kitUrl. }
+                name: { type: string, pattern: "^[a-z0-9]+(-[a-z0-9]+)*$", maxLength: 40, description: "Default: the app's name and version, e.g. my-app-1-4-0." }
+      responses:
+        "200": { description: The kit as GET /api/product/kit answers it. }
+        "409": { description: A video of that kit is rendering now. }
+        "413": { description: A file is over its limit. }
+        "415": { description: A file is not what the kit says (its bytes are checked). }
+        default: { $ref: "#/components/responses/CodedError" }
+  /api/product/render:
+    post:
+      tags: [Product videos]
+      operationId: renderProductVideo
+      summary: Queue one product video in the render queue (one render at a time, after any reel). Its job key and video id is pv-<name>--<preset>.
+      description: "The plan is checked first, so a kit that cannot make this preset answers 422 at once. When the job is done its result is {id, file, url, bytes, seconds, width, height, fps, profile, level, ok, problems, warnings}: the file was checked with ffprobe against the preset (H.264 level, fps, size, length, stereo AAC)."
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, preset]
+              properties:
+                name: { type: string, pattern: "^[a-z0-9]+(-[a-z0-9]+)*$" }
+                preset: { $ref: "#/components/schemas/ProductPreset" }
+      responses:
+        "200":
+          description: Queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, example: pv-my-app-1-4--appstore-iphone }
+                  job: { $ref: "#/components/schemas/Job" }
+                  plan: { type: object, properties: { seconds: { type: number }, scenes: { type: integer }, warnings: { type: array, items: { type: string } } } }
+        "422": { description: The kit cannot make this preset; `error` says why. }
+        "507": { description: Not enough free disk space to render. }
+        default: { $ref: "#/components/responses/CodedError" }
+  /api/product/file:
+    get:
+      tags: [Product videos]
+      operationId: productFile
+      summary: A rendered product video (seekable; download=1 saves it) or one of a kit's stored files by the name the studio gave it.
+      parameters:
+        - { name: name, in: query, required: true, schema: { type: string } }
+        - { name: kind, in: query, required: true, schema: { type: string, enum: [video, file] } }
+        - { name: preset, in: query, schema: { $ref: "#/components/schemas/ProductPreset" }, description: "kind=video." }
+        - { name: file, in: query, schema: { type: string }, description: "kind=file: s-<id>-before|after.png, its .thumb.jpg, r-<id>.mp4, r-<id>.thumb.jpg or logo.png." }
+        - { name: download, in: query, schema: { type: string, enum: ["1"] } }
+      responses:
+        "200": { description: The file. }
+        "404": { description: Not there (not rendered yet). }
   /api/stills:
     get:
       tags: [Reels]
@@ -4060,7 +4161,7 @@ paths:
     post:
       tags: [AI]
       operationId: aiEstimate
-      summary: Price AI tools on one reel against the per-reel, total and daily limits (free).
+      summary: Price AI tools on one reel (or the reviewer on a product video, pv-<kit>--<preset>) against the per-reel, total and daily limits (free).
       parameters: [{ $ref: "#/components/parameters/Origin" }]
       requestBody:
         required: true
@@ -4118,7 +4219,7 @@ paths:
     get:
       tags: [AI]
       operationId: getLastAiReview
-      summary: The last AI review of a reel (free).
+      summary: The last AI review of a reel or a product video (pv-<kit>--<preset>), free.
       parameters:
         - { $ref: "#/components/parameters/SlugQuery" }
       responses:
@@ -4136,7 +4237,7 @@ paths:
     post:
       tags: [AI]
       operationId: runAiReview
-      summary: A video model watches the rendered reel and suggests fixes (cached per render; `fresh` pays again).
+      summary: A video model watches the rendered reel (or product video, pv-<kit>--<preset>) and suggests fixes (cached per render; `fresh` pays again).
       parameters: [{ $ref: "#/components/parameters/Origin" }]
       requestBody:
         required: true
@@ -5081,11 +5182,15 @@ components:
       properties:
         error: { type: string, description: One plain sentence. }
         code: { type: string, description: "Research, AI and performance routes only." }
+    ProductPreset:
+      type: string
+      enum: [appstore-iphone, appstore-iphone-55, appstore-ipad, play-promo, social-9x16, social-1x1]
+      description: A key of shared/product-presets.json (docs/product-kit.md › Presets).
     Job:
       type: object
       description: |
         `jobView()`. With no such job only `{status: "none"}` comes back. `kind` values seen: build, remix, scan, watch,
-        discover, import, cameras, post, youtube, ai, helper.
+        discover, import, cameras, post, youtube, ai, helper, product.
       required: [status]
       properties:
         slug: { type: string }

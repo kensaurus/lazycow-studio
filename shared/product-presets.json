@@ -1,0 +1,46 @@
+{
+  "_documentation": {
+    "FILE": "shared/product-presets.json",
+    "PURPOSE": "Every product-video preset (docs/product-kit.md): size, frame rate, length window and how screens are shown. Read by the ProductPreview composition (src/Root.tsx), the Python engine (py/studio/product.py: spec checks before and after a render) and the studio page.",
+    "SOURCES": "App Store: developer.apple.com/help/app-store-connect/reference/app-preview-specifications (read 27 Nov 2026): 15-30 s, H.264 up to High Profile level 4.0 at 10-12 Mbps, at most 30 fps, stereo AAC 256 kbps at 44.1 or 48 kHz, at most 500 MB; accepted portrait sizes 886x1920 (every iPhone with Face ID or Dynamic Island), 1080x1920 (iPhone with Home button, 5.5\"), 1200x1600 (iPad 13\" and 11\"). App Review Guideline 2.3.4: previews may only use video screen captures of the app itself, with narration and text overlays allowed, so App Store presets show the app full screen with no device frame and no 'before' screen. Google Play: the promo video is a YouTube link (Play Console > Main store listing > Video), landscape recommended.",
+    "NOTES": "frame: none = the app fills the picture (App Store); device = phone, tablet or browser drawn around each screen. compare: true = a before -> after reveal where a screen has both. Sizes are even (H.264 4:2:0). Every size here fits H.264 level 4.0 at 30 fps (at most 8192 macroblocks a frame, 245760 a second)."
+  },
+  "presets": {
+    "appstore-iphone": {
+      "label": "App Store · iPhone (6.9\" to 5.8\")",
+      "store": "app-store", "width": 886, "height": 1920, "fps": 30, "minSec": 15, "maxSec": 30, "targetSec": 24,
+      "frame": "none", "compare": false, "orientation": "portrait", "screens": ["phone"],
+      "encode": { "profile": "high", "level": "4.0", "videoKbps": 11000, "maxKbps": 12000, "audioKbps": 256, "audioRate": 48000, "maxMb": 500 }
+    },
+    "appstore-iphone-55": {
+      "label": "App Store · iPhone 5.5\" (Home button)",
+      "store": "app-store", "width": 1080, "height": 1920, "fps": 30, "minSec": 15, "maxSec": 30, "targetSec": 24,
+      "frame": "none", "compare": false, "orientation": "portrait", "screens": ["phone"],
+      "encode": { "profile": "high", "level": "4.0", "videoKbps": 11000, "maxKbps": 12000, "audioKbps": 256, "audioRate": 48000, "maxMb": 500 }
+    },
+    "appstore-ipad": {
+      "label": "App Store · iPad 13\" and 11\"",
+      "store": "app-store", "width": 1200, "height": 1600, "fps": 30, "minSec": 15, "maxSec": 30, "targetSec": 24,
+      "frame": "none", "compare": false, "orientation": "portrait", "screens": ["tablet"],
+      "encode": { "profile": "high", "level": "4.0", "videoKbps": 11000, "maxKbps": 12000, "audioKbps": 256, "audioRate": 48000, "maxMb": 500 }
+    },
+    "play-promo": {
+      "label": "Google Play promo (16:9, upload to YouTube)",
+      "store": "google-play", "width": 1920, "height": 1080, "fps": 30, "minSec": 15, "maxSec": 120, "targetSec": 30,
+      "frame": "device", "compare": true, "orientation": "landscape", "screens": ["phone", "tablet", "desktop"],
+      "encode": { "profile": "high", "level": "4.0", "videoKbps": 10000, "maxKbps": 12000, "audioKbps": 256, "audioRate": 48000, "maxMb": 1000 }
+    },
+    "social-9x16": {
+      "label": "Social 9:16 (Reels, Shorts, TikTok)",
+      "store": "social", "width": 1080, "height": 1920, "fps": 30, "minSec": 6, "maxSec": 60, "targetSec": 20,
+      "frame": "device", "compare": true, "orientation": "portrait", "screens": ["phone", "tablet", "desktop"],
+      "encode": { "profile": "high", "level": "4.0", "videoKbps": 10000, "maxKbps": 12000, "audioKbps": 256, "audioRate": 48000, "maxMb": 1000 }
+    },
+    "social-1x1": {
+      "label": "Social 1:1 (feeds)",
+      "store": "social", "width": 1080, "height": 1080, "fps": 30, "minSec": 6, "maxSec": 60, "targetSec": 16,
+      "frame": "device", "compare": true, "orientation": "square", "screens": ["phone", "tablet", "desktop"],
+      "encode": { "profile": "high", "level": "4.0", "videoKbps": 8000, "maxKbps": 10000, "audioKbps": 256, "audioRate": 48000, "maxMb": 1000 }
+    }
+  }
+}

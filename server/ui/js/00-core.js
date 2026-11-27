@@ -571,7 +571,7 @@ function route() {
   revOnly = null;
   if (m) { if (reel?.slug !== m[1] || atHome()) openReel(m[1]); paintNav(); return; }
   // #/ and an unknown address open Home (BL-115); Reels has its own address, #/reels.
-  const p = /^#\/(home|more|reels|posting|youtube|footage|log|accounts|ideas|results|keys|settings|words|review|making|videos|photos|versions|projects|comments|today|workflow)(?![a-z])/.exec(location.hash);
+  const p = /^#\/(home|more|reels|posting|youtube|footage|log|accounts|ideas|results|keys|settings|words|review|making|videos|photos|versions|projects|comments|today|workflow|product)(?![a-z])/.exec(location.hash);
   const next = p ? (p[1] === "settings" ? "accounts" : p[1]) : "home";
   if (next !== page) homeFilter = "all";
   page = next;
@@ -711,6 +711,7 @@ function live() {
     if (j.slug === "score-all") { scoreBusy = isActive(j) ? tr("pa.scoring", { i: (j.done || 0) + (j.status === "running" ? 1 : 0), n: j.of || "…" }) : ""; if (page === "results") renderHome(true); if (!isActive(j)) { scoreMap = null; predView = null; loadScores(); loadPerf(); toast(`${ico(j.status === "done" ? "check" : "alert", "sm")} ${esc(jobLabel(j.label))}`, 8000); } }
     if (j.kind === "make" && !isActive(j)) loadOverview().catch(() => {});
     if (j.slug === "stills") phJob(j);
+    if (j.kind === "product") pvJob(j);  // Product videos (22-product.js): its progress panel
     if (j.slug === "stills-story") phStoryJob(j);
     if (["done", "error", "cancelled"].includes(j.status)) { const w = jobWaiters.get(j.slug); if (w) { jobWaiters.delete(j.slug); w(j); } }
     if (j.slug === "places") {  // place names for the map (a person pressed Get place names)

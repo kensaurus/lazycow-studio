@@ -1,7 +1,7 @@
 """
 FILE: py/studio/__main__.py
 PURPOSE: Command line for the studio.
-OVERVIEW: ingest, shots, tag, luts, reels (build / package / remix), vlog, review, extras, verify,
+OVERVIEW: ingest, shots, tag, luts, reels (build / package / remix), product (build: a product video, studio.product), vlog, review, extras, verify,
           youtube (connect / upload / schedule / list), posts (posting log and reminders),
           gphotos (pick and import footage from Google Photos), media backfill-gps (positions from video tags,
           drone logs and time), places (offline place names: status / download).
@@ -90,6 +90,9 @@ def main() -> None:
     tlp.add_argument("--from", dest="date_from", help="import: first day to keep (default: the footage's first day - 1)")
     tlp.add_argument("--to", dest="date_to", help="import: last day to keep (default: the footage's last day + 1)")
     tlp.add_argument("--json", help='choose: [{"day": "2025-04-03", "id": "v3", "name": "River Camp", "show": true}]')
+    pv = sub.add_parser("product", help="product videos from an app's release kit (studio.product, docs/product-kit.md)")
+    pv.add_argument("action", choices=["build"])
+    pv.add_argument("id", help="the video id, pv-<kit name>--<preset>")
     vl = sub.add_parser("vlog", help="long YouTube vlogs from a trip: plan, build <n>, all")
     vl.add_argument("action", choices=["plan", "build", "all", "suggest", "places", "extend", "clocks"])
     vl.add_argument("n", nargs="?", type=int)
@@ -369,6 +372,16 @@ def main() -> None:
             print("RESULT " + json.dumps(timeline.choose(json.loads(args.json or "[]")), ensure_ascii=False), flush=True)
         else:
             print("RESULT " + json.dumps({"forgot": timeline.forget()}), flush=True)
+    elif args.cmd == "product":
+        from studio import product
+
+        try:
+            res = product.build(args.id)
+        except product.KitError as err:
+            print(f"error: {err}", file=sys.stderr, flush=True)
+            print(str(err), flush=True)  # the last line the render queue shows
+            sys.exit(1)
+        print("RESULT " + json.dumps(res, ensure_ascii=False), flush=True)
     elif args.cmd == "vlog":
         from studio import vlog
 
