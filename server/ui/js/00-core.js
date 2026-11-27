@@ -122,16 +122,17 @@ async function api(path, opts) {
   }
   if (!r.ok) {
     const text = await r.text();
-    let msg = text;
-    try { msg = JSON.parse(text).error || text; } catch { /* plain text */ }
+    let msg = text, data = null;
+    try { data = JSON.parse(text); msg = data.error || text; } catch { /* plain text */ }
     if (r.status === 404 && msg === "no") msg = tr("sys.oldserver");
-    throw new Error(msg || `${r.status}`);
+    // A refusal that names its fields (a product render's encoding: [{field, text}]) keeps them for the page.
+    throw Object.assign(new Error(msg || `${r.status}`), Array.isArray(data?.errors) ? { errors: data.errors } : {});
   }
   return r.headers.get("content-type")?.includes("json") ? r.json() : r.text();
 }
 // A POST that starts work (a render, a batch, AI, scoring, a post or swap) re-reads the work list right after, so the
 // board and the status bar show the new job even if its live event is late or was missed.
-const STARTS_WORK = /^\/api\/(project|autopilot|remix|ai\/run|perf\/score-all|posts\/(replace|autoreplace|plan)|publish|youtube\/upload|helper\/post|footage\/(scan|cameras)|gphotos)/;
+const STARTS_WORK = /^\/api\/(project|explainers\/(save|add|queue|preview)|autopilot|remix|ai\/run|perf\/score-all|posts\/(replace|autoreplace|plan)|publish|youtube\/upload|helper\/post|footage\/(scan|cameras)|gphotos)/;
 /* The key actions the private usage counts keep (BL-120), by the call that does them: approve, book, make reels. */
 const USAGE_ACTS = [[/^\/api\/approve$/, "review:approve"], [/^\/api\/(posts\/plan|publish|helper\/schedule|youtube\/upload)$/, "posting:book"], [/^\/api\/autopilot$/, "reels:make"]];
 const post = (path, data) => api(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) })
@@ -569,9 +570,13 @@ function route() {
   const m = /^#\/reel\/([a-z0-9-]+)/.exec(location.hash);
   if (m && matchMedia("(max-width: 700px)").matches) { revOnly = m[1]; page = "review"; homeFilter = "all"; showHome(); paintNav(); return; }
   revOnly = null;
+  // An explainer has no clip timeline: its page is the script, its preview and its video (server/ui/js/22-console.js).
+  if (m && overviewLoaded && overview.reels.some((r) => r.slug === m[1] && r.type === "explainer")) { location.replace(`#/explainer/${m[1]}`); return; }
   if (m) { if (reel?.slug !== m[1] || atHome()) openReel(m[1]); paintNav(); return; }
+  const ex = /^#\/explainer(?:\/([a-z0-9-]+))?/.exec(location.hash);
+  if (ex?.[1] && typeof exOpen === "function") exOpen(ex[1]);
   // #/ and an unknown address open Home (BL-115); Reels has its own address, #/reels.
-  const p = /^#\/(home|more|reels|posting|youtube|footage|log|accounts|ideas|results|keys|settings|words|review|making|videos|photos|versions|projects|comments|today|workflow|product)(?![a-z])/.exec(location.hash);
+  const p = /^#\/(home|more|reels|posting|youtube|footage|log|accounts|ideas|results|keys|settings|words|review|making|videos|photos|explainer|versions|projects|comments|today|workflow|product)(?![a-z])/.exec(location.hash);
   const next = p ? (p[1] === "settings" ? "accounts" : p[1]) : "home";
   if (next !== page) homeFilter = "all";
   page = next;

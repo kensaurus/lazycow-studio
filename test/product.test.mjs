@@ -2,7 +2,9 @@
  * FILE: test/product.test.mjs
  * PURPOSE: Product videos (docs/product-kit.md): the presets are one list everywhere (shared/product-presets.json, the
  *          MCP tool's enum, docs/openapi.yaml), each preset is inside its store's spec, the make_product_video tool's
- *          schema refuses a bad call before it reaches the studio, and the composition reads the same timeline.
+ *          schema refuses a bad call before it reaches the studio, and the composition reads the same timeline. The
+ *          encoding fields have one range everywhere (shared/product-presets.json encoding.fields, the MCP tool, the
+ *          kit schema, docs/openapi.yaml) and the console sends them (test_product_encoding.py checks the rules).
  * USAGE: npm test
  */
 import assert from "node:assert/strict";
@@ -13,7 +15,9 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
-const PRESETS = JSON.parse(read("shared/product-presets.json")).presets;
+const FILE = JSON.parse(read("shared/product-presets.json"));
+const PRESETS = FILE.presets;
+const FIELDS = FILE.encoding.fields;
 const IDS = Object.keys(PRESETS);
 const MCP = fileURLToPath(new URL("../server/mcp.mjs", import.meta.url));
 
@@ -80,7 +84,9 @@ test("make_product_video: its schema, and a bad call refused before it reaches t
     assert.deepEqual(tool.inputSchema.required, ["kitUrl", "preset"]);
     assert.equal(tool.inputSchema.additionalProperties, false);
     assert.deepEqual(tool.inputSchema.properties.preset.enum, IDS);
-    assert.deepEqual(Object.keys(tool.inputSchema.properties).sort(), ["kitUrl", "name", "preset"]);
+    // encoding (0.32.0): per-render encoding, optional; everything else as in 0.31.0.
+    assert.deepEqual(Object.keys(tool.inputSchema.properties).sort(), ["encoding", "kitUrl", "name", "preset"]);
+    assert.equal(tool.inputSchema.properties.encoding.additionalProperties, false);
     assert.equal(tool.annotations.openWorldHint, true, "it downloads the kit");
     assert.equal(tool.annotations.readOnlyHint, false);
     const bad = async (args, words) => {
@@ -93,6 +99,68 @@ test("make_product_video: its schema, and a bad call refused before it reaches t
     await bad({ kitUrl: "http://kits.example/m.json", preset: "social-9x16" }, /kitUrl has the wrong format/);
     await bad({ kitUrl: "https://kits.example/m.json", preset: "social-9x16", name: "Bad Name" }, /name has the wrong format/);
     await bad({ kitUrl: "https://kits.example/m.json", preset: "social-9x16", extra: 1 }, /unknown argument extra/);
+    await bad({ kitUrl: "https://kits.example/m.json", preset: "social-9x16", encoding: { fps: 59 } }, /encoding\.fps must be one of: 24, 25, 30/);
+    await bad({ kitUrl: "https://kits.example/m.json", preset: "social-9x16", encoding: { videoKbps: 100 } }, /encoding\.videoKbps must be at least 300/);
+    await bad({ kitUrl: "https://kits.example/m.json", preset: "social-9x16", encoding: { x264: "--crf 0" } }, /unknown argument encoding\.x264/);
+    await bad({ kitUrl: "https://kits.example/m.json", preset: "social-9x16", encoding: { audioBed: { id: "a.mp3" } } }, /encoding\.audioBed\.kind is required/);
+    await bad({ kitUrl: "https://kits.example/m.json", preset: "social-9x16", encoding: { audioBed: { kind: "music", id: "a.mp3", file: "/etc" } } }, /unknown argument encoding\.audioBed\.file/);
+    await bad({ kitUrl: "https://kits.example/m.json", preset: "social-9x16", encoding: "cbr" }, /encoding must be an object/);
     await bad({ kitUrl: "https://kits.example/m.json", preset: "social-9x16", name: "my-app-1-4" }, /not running/);
+    await bad({ kitUrl: "https://kits.example/m.json", preset: "appstore-iphone", encoding: { rateControl: "cbr", videoKbps: 12000, audioBed: { kind: "dither" } } }, /not running/);
   } finally { await c.stop(); }
+});
+
+test("one range per encoding field: shared/product-presets.json, the MCP tool (both copies), the kit schema and docs/openapi.yaml", () => {
+  const schema = JSON.parse(read("docs/product-kit.schema.json")).$defs.encoding.properties;
+  const spec = read("docs/openapi.yaml").replace(/\r\n/g, "\n");
+  const api = spec.slice(spec.indexOf("    ProductEncoding:"), spec.indexOf("    ProductEncodingIssue:")).split("\n");
+  for (const file of ["server/mcp.mjs", "packages/lazycow/lib/mcp.mjs"]) {
+    const src = read(file);
+    const at = src.indexOf("const PRODUCT_ENCODING = {");
+    assert.ok(at > 0, `${file} has no PRODUCT_ENCODING`);
+    const block = src.slice(at, src.indexOf("\n};", at));
+    for (const [k, f] of Object.entries(FIELDS)) {
+      if (k === "audioBed") { assert.ok(block.includes('kind: { type: "string", enum: ["dither", "music"] }'), `${file}: audioBed.kind`); continue; }
+      const want = "enum" in f ? `enum: [${f.enum.map((x) => JSON.stringify(x)).join(", ")}]` : `minimum: ${f.min}, maximum: ${f.max}`;
+      assert.ok(block.split("\n").some((l) => l.includes(`${k}: { type: "`) && l.includes(want)), `${file}: ${k} ${want}`);
+    }
+  }
+  for (const [k, f] of Object.entries(FIELDS)) {
+    assert.ok(schema[k], `the kit schema has ${k}`);
+    if (k === "audioBed") {
+      assert.deepEqual(schema[k].properties.kind.enum, f.kind.enum);
+      assert.ok(api.some((l) => l.includes("kind: { type: string, enum: [dither, music]")), "docs/openapi.yaml ProductEncoding: audioBed.kind");
+      continue;
+    }
+    if ("enum" in f) assert.deepEqual(schema[k].enum, f.enum, k); else assert.deepEqual([schema[k].minimum, schema[k].maximum], [f.min, f.max], k);
+    const want = "enum" in f ? `enum: [${f.enum.join(", ")}]` : `minimum: ${f.min}, maximum: ${f.max}`;
+    assert.ok(api.some((l) => l.includes(`${k}: {`) && l.includes(want)), `docs/openapi.yaml ProductEncoding: ${k} ${want}`);
+  }
+});
+
+test("each preset's default encoding is complete, and the App Store holds 10-12 Mbps by constrained CBR", () => {
+  for (const [id, p] of Object.entries(PRESETS)) {
+    const e = p.encode;
+    for (const k of ["rateControl", "videoKbps", "keyframeSec", "audioKbps", "audioRate", "audioBed"]) assert.ok(e[k] !== undefined, `${id}: encode.${k}`);
+    for (const [k, f] of Object.entries(FIELDS)) {
+      if (e[k] === undefined || k === "audioBed") continue;
+      assert.ok("enum" in f ? f.enum.includes(e[k]) : e[k] >= f.min && e[k] <= f.max, `${id}: ${k} ${e[k]} inside its range`);
+    }
+    assert.ok(FILE.encoding.stores[p.store], `${id}: its store ${p.store} has rules`);
+    if (p.store === "app-store") {
+      assert.equal(e.rateControl, "cbr", id);
+      assert.ok(e.videoKbps >= 10000 && e.videoKbps <= 12000 && e.maxKbps === undefined && e.minKbps === undefined, id);
+    }
+  }
+});
+
+test("the console's Encoding panel sends its fields with the render and checks them as they are typed", () => {
+  const ui = read("server/ui/js/22-product.js");
+  assert.ok(ui.includes('post("/api/product/render", { name: PV.kit.name, preset: PV.preset, ...(Object.keys(values).length ? { encoding: values } : {}) })'));
+  assert.ok(ui.includes('"/api/product/encoding/check"') && ui.includes('"/api/product/encoding/defaults"'));
+  assert.ok(ui.includes('class="pv-adv"'), "an Advanced disclosure");
+  assert.ok(ui.includes("function pvMeasuredHtml"), "the measured result");
+  const server = read("server/review.mjs");
+  assert.ok(server.includes('pvRun("prepare"'));
+  assert.ok(server.includes('url.pathname === "/api/product/encoding/check"') && server.includes('url.pathname === "/api/product/encoding/defaults"'));
 });

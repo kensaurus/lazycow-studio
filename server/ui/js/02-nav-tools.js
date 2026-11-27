@@ -2,7 +2,7 @@
 let page = "reels";
 const PAGES = { making: ["clapper", "nav.making"], reels: ["film", "nav.reels"], today: ["clock", "nav.today"], posting: ["send", "nav.posting"], youtube: ["play", "nav.youtube"], footage: ["layers", "nav.footage"], log: ["list", "nav.log"], accounts: ["user", "nav.accounts"],
   ideas: ["search", "nav.ideas"], results: ["wave", "nav.results"], keys: ["shield", "nav.keys"], words: ["type", "nav.words"], review: ["eye", "nav.review"], videos: ["play", "nav.videos"], photos: ["image", "nav.photos"],
-  versions: ["layers", "nav.versions"], projects: ["folder", "nav.projects"], comments: ["chat", "nav.comments"], workflow: ["flow", "d_nav.workflow"], product: ["phone", "nav.product"],
+  explainer: ["info", "nav.explainer"], versions: ["layers", "nav.versions"], projects: ["folder", "nav.projects"], comments: ["chat", "nav.comments"], workflow: ["flow", "d_nav.workflow"], product: ["phone", "nav.product"],
   home: ["home", "nav.home"], more: ["grid", "nav.more"] };
 /* ---------- the studio's tools in one list (BL-114, BL-118, BL-120; owner, 24 Nov: "build Lazycow general and robust for
    a general audience; many of the UI/UX are really over-engineered for our usage") ----------
@@ -19,6 +19,7 @@ const FEATURES = {
   today: { level: "full", sec: "reels", help: "ft.today" },
   making: { level: "full", sec: "reels", help: "ft.making" },
   review: { level: "simple", sec: "reels", acts: ["approve"] },
+  explainer: { level: "simple", sec: "reels", help: "ft.explainer" },
   words: { level: "full", sec: "reels", help: "ft.words" },
   videos: { level: "full", sec: "reels", help: "ft.videos" },
   product: { level: "full", sec: "reels", help: "ft.product" },
@@ -106,10 +107,10 @@ function ftNow() {
    tools); a section with more than one page shows them as tabs under its title. Read from FEATURES. */
 const SECTIONS = ["home", "footage", "reels", "posting", "results", "settings", "more"].map((s) => [s, Object.keys(FEATURES).filter((id) => FEATURES[id].sec === s && PAGES[id])]);
 /* What [ and ] step through: every tab and sub-tab of a section, as their addresses (filtered by ftShown when used). */
-const TAB_CYCLE = [["footage"], ["reels", "today", "making", "review", "words", "videos", "product", "photos"], ["posting", "posting/calendar", "posting/list", "posting/reels", "posting/sent", "versions", "youtube", "ideas/ideas", "ideas/site-check", "ideas/page", "ideas/links"], ["results", "results/next", "results/where", "results/posts", "results/youtube", "comments", "log/activity", "log/posts", "log/reels"], ["accounts", "workflow", "keys"]];
+const TAB_CYCLE = [["footage"], ["reels", "today", "making", "review", "explainer", "words", "videos", "product", "photos"], ["posting", "posting/calendar", "posting/list", "posting/reels", "posting/sent", "versions", "youtube", "ideas/ideas", "ideas/site-check", "ideas/page", "ideas/links"], ["results", "results/next", "results/where", "results/posts", "results/youtube", "comments", "log/activity", "log/posts", "log/reels"], ["accounts", "workflow", "keys"]];
 const tabShown = (addr) => { const [pg, sub] = addr.split("/"); const id = pg === "results" ? ({ next: "resnext", where: "reswhere", posts: "resposts", youtube: "resyt" }[sub] || pg) : pg; return ftShown(id); };
 const secOf = (pg) => (SECTIONS.find(([, ps]) => ps.includes(pg)) || ["reels"])[0];
-const SUBTAB = { reels: "sub.reels", today: "sub.today", making: "sub.making", review: "sub.review", words: "sub.words", videos: "sub.videos", product: "sub.product", photos: "sub.photos", posting: "sub.plan", versions: "sub.versions", youtube: "sub.youtube", ideas: "sub.ideas", results: "sub.results", comments: "sub.comments", log: "sub.log", accounts: "sub.accounts", keys: "sub.keys", workflow: "d_sub.workflow" };
+const SUBTAB = { reels: "sub.reels", today: "sub.today", making: "sub.making", review: "sub.review", explainer: "sub.explainer", words: "sub.words", videos: "sub.videos", product: "sub.product", photos: "sub.photos", posting: "sub.plan", versions: "sub.versions", youtube: "sub.youtube", ideas: "sub.ideas", results: "sub.results", comments: "sub.comments", log: "sub.log", accounts: "sub.accounts", keys: "sub.keys", workflow: "d_sub.workflow" };
 function subCount(pg) {
   if (!overviewLoaded) return "";
   const n = pg === "making" ? overview.reels.filter(busyJob).length : pg === "review" ? needsReview().length : pg === "versions" ? (verView?.ready?.length || 0)
@@ -203,7 +204,7 @@ function renderHome(force) {
   uiCount(ftNow());  // the private usage count (BL-120): once per page or tool opened
   paintNav();
   ({ log: renderLog, posting: renderPosting, youtube: renderYouTube, footage: renderFootage, accounts: renderAccounts,
-     ideas: renderIdeas, results: renderResults, keys: renderKeys, words: renderWords, review: renderReview, making: renderMaking, videos: renderVideos, product: renderProduct, photos: renderPhotos, versions: renderVersions,
+     ideas: renderIdeas, results: renderResults, keys: renderKeys, words: renderWords, review: renderReview, making: renderMaking, videos: renderVideos, product: renderProduct, photos: renderPhotos, explainer: renderExplainer, versions: renderVersions,
      projects: renderProjects, comments: renderComments, today: renderToday, workflow: renderWorkflow, home: renderHomePage, more: renderMore }[page] || renderReels)();
   subTabs();
   ftNote();  // a full-mode tool opened by its address in simple mode says so, with the switch

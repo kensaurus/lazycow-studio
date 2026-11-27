@@ -2,6 +2,66 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.32.0 (2026-11-27)
+
+Two new things to make, and control over how they are made: explainers (facts and hand-drawn graphics from a script,
+on the reels' pipeline), one console for every video type, and product-video encoding you can set in the console,
+the API, a release kit and MCP, checked against the store each preset is for. App Store previews now hold Apple's
+10-12 Mbps (constrained CBR at 11 Mbps measured 10.9 Mbps; 0.31.0's measured about 5.5).
+
+### Added
+- **Explainers, a video type of their own:** a script of scenes (facts, drawn graphics and a few library pictures)
+  becomes a 9:16 film of 15-60 s on a paper page, with hand-drawn lines that draw themselves, a highlighter, counting
+  numbers and the source under each fact. It rides the reels' pipeline unchanged: the render queue (one at a time),
+  Review (a person approves; nothing approves by itself), the daily plan, YouTube Shorts, Instagram Reels (trial reels
+  where that switch is on), Facebook reels, Instagram Stories, Bluesky, and Results. Each network's title and text come
+  from the script (`title`, `yt`, `ig`, optional `bsky` and `x`); music is a CC0 or public-domain track; the film is
+  set to -14 LUFS in two passes.
+- **Seven new scene kinds** for explainers, all hand-drawn and bilingual: `thermo` (a thermometer, optionally two),
+  `compare` (two big values side by side), `clock` (a day on a clock face, its hand sweeping through 3-6 hours),
+  `bars` (2-5 bars that grow), `icons` (3-6 drawn icons from 16), `steps` (2-4 numbered steps on a dashed path) and
+  `quote` (a hand-lettered line, underlined). A small drawn mascot sticker can sit on the cover or the end.
+- **Script checks in plain words** before anything renders: an unknown kind, a missing field, a library id that is
+  not there, a clip past the end of its file, text too long for its place on the page, the fact guard, and in the
+  ranch workspace the campsite rule (nothing may suggest staying or sleeping indoors). People in a picture are a
+  warning, never a block.
+- **One console for every video type:** Reels shows reels, site walks, explainers, long cuts, long videos and photo
+  posts behind one type filter, each card with its type, its state, where it is booked or out, and its numbers
+  (YouTube views and the share kept, Instagram plays). **New video** asks what to make. **Reels › Explainers** is the
+  script library and editor: check, preview every scene on one still, save and render, the video once made.
+- **Many explainers at once:** `POST /api/explainers/add` (or **Add a folder of scripts** on the page) turns a folder of
+  script files into drafts and queues their renders one at a time; from a terminal,
+  `python -m studio explainer add <folder> --queue http://127.0.0.1:4317` (or `--render` to render there).
+- **Product video encoding you can set, checked against the store (docs/product-kit.md › Encoding):** each render's
+  rate control (constrained CBR, VBR or CRF), target, floor and ceiling bit rates, buffer, frame rate, keyframe interval,
+  AAC bit rate and sample rate, and the sound bed (the quiet dither, or a music track from the audio library).
+  - Settings come in layers: the preset's default (which meets its store), the kit's hints, this project's default,
+    then the render's own choice.
+  - In the console: an **Encoding** panel on Reels › Product videos, with the preset's defaults, an **Advanced**
+    disclosure, each field checked as it is typed, and **Save as this project's default**. After a render it shows
+    what ffprobe measured (picture and sound bit rates, sample rate, channels, frame rate, profile, level, size).
+  - The API takes `encoding` on `POST /api/product/render`, and has `POST /api/product/encoding/check` and
+    `POST /api/product/encoding/defaults`. The kit schema takes `encoding` hints; MCP `make_product_video` takes
+    `encoding`.
+  - Each store's rules (`shared/product-presets.json` `encoding.stores`, with their sources) give an error where the
+    store requires a value: the render is refused and the field is named. They give a warning where the store only
+    recommends one. The App Store requires at most 30 fps, H.264 up to level 4.0 and AAC at 256 kbps; it recommends a
+    target of 10-12 Mbps. Google Play (a YouTube link) only recommends.
+  - The H.264 level follows the size, frame rate, ceiling and buffer: a 9:16 social cut at 60 fps is level 4.2.
+  - A floor under VBR or CRF is kept: a file under it is encoded again as constrained CBR at the floor.
+
+### Changed
+- The fact guard reads a banned phrase in Latin letters as whole words: "cow" no longer refuses "coworking"
+  (Japanese phrases still match anywhere).
+- **App Store product videos hold Apple's 10-12 Mbps:** they encode as constrained CBR at 11 Mbps, with x264's filler
+  on still screens. A 0.31.0 App Store preview measured about 5.5 Mbps: VBR fell to 0.55 Mbps on a still screen, and
+  libx264 ignores a minimum rate on its own.
+- The Google Play promo follows YouTube's recommended upload settings: AAC at 384 kbps, a keyframe every 0.5 s, and an
+  8 Mbps floor.
+
+### Fixed
+- A kit's list of renders shows only finished videos, not their props files.
+
 ## 0.31.0 (2026-11-27)
 
 Product videos: an app's release kit (its screens before and after, short recordings, changelog lines and brand)

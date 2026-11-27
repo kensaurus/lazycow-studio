@@ -167,7 +167,8 @@ const PROXIES = join(DATA, "proxies", "lib");
 // The drafts folder too: a project other than the ranch keeps them in DATA/drafts (py/studio/reels.py DRAFTS), and the
 // post panel's video there answered 403, a black player (the ranch's drafts sit under MEDIA).
 const ALLOWED = [RENDERS, join(DATA, "review"), join(DATA, "library"), join(DATA, "keyframes"), join(DATA, "thumbs"), join(DATA, "audio"), PROXIES, join(ROOT, "public", "mezz"), MEDIA,
-  pick("STUDIO_DRAFTS", join(DATA, "drafts")), join(DATA, "versions"), join(DATA, "stills"), join(DATA, "product")]
+  pick("STUDIO_DRAFTS", join(DATA, "drafts")), join(DATA, "versions"), join(DATA, "stills"), join(DATA, "explainers", "sheets"),
+  join(DATA, "product")]
   .map(pathKey);  // folded where the file system ignores case (server/trust.mjs)
 const HOUSE = ["view", "fire", "field", "winter"];
 /* Product videos (py/studio/product.py, docs/product-kit.md): a kit's files and renders live in DATA/product/<name>; the
@@ -723,12 +724,21 @@ function pvRun(action, input = {}) {
       let r = null;
       try { r = line ? JSON.parse(line.slice(7)) : null; } catch { r = null; }
       if (!r) return fail(Object.assign(new Error(lastError(err) || `studio.product ${action} failed (exit ${code})`), { status: 500 }));
-      if (!r.ok) return fail(Object.assign(new Error(r.error), { status: r.status || 500, code: r.code || "error" }));
+      if (!r.ok) return fail(Object.assign(new Error(r.error), { status: r.status || 500, code: r.code || "error", ...(Array.isArray(r.errors) ? { errors: r.errors } : {}) }));
       ok(r.data);
     });
     child.stdin.end(JSON.stringify(input));
   });
 }
+/* A product render's encoding (py/studio/product_encoding.py) as sent by the page, the API or MCP: only its shape here
+   (an object of fields, not too long); Python checks every field against its range and the preset's store. */
+function pvEncoding(v) {
+  if (v === undefined || v === null) return { ok: true, value: undefined };
+  if (typeof v !== "object" || Array.isArray(v)) return { ok: false, error: "encoding: an object of encoding fields (docs/openapi.yaml ProductEncoding)." };
+  if (JSON.stringify(v).length > 4000) return { ok: false, error: "encoding: too long." };
+  return { ok: true, value: v };
+}
+const pvFail = (res, e) => send(res, e.status || 500, { error: e.message, code: e.code || "error", ...(e.errors ? { errors: e.errors } : {}) });
 /** The fields each performance action takes (anything else is dropped before Python sees it; Python checks values). */
 function perfInput(action, b) {
   const out = {};
@@ -2849,10 +2859,10 @@ const server = createServer(async (req, res) => {
        waits in the render queue like a reel and needs no AI; nothing here posts. ---------- */
     if (req.method === "GET" && url.pathname === "/api/product") {
       try {
-        const r = await pvRun("kits");
+        const [r, encoding] = await Promise.all([pvRun("kits"), pvRun("encoding-info")]);
         const now = Date.now();
         const list = [...jobs.values()].filter((j) => j.kind === "product" && (["queued", "running"].includes(j.status) || (j.ended && now - j.ended < 6 * 3600e3)));
-        return send(res, 200, { presets: PV_PRESETS, kits: r.kits, jobs: list.map(jobView) });
+        return send(res, 200, { presets: PV_PRESETS, kits: r.kits, jobs: list.map(jobView), encoding });
       } catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
     }
     if (req.method === "GET" && url.pathname === "/api/product/kit") {
@@ -2867,7 +2877,9 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/product/plan") {
       const name = url.searchParams.get("name") || "", preset = url.searchParams.get("preset") || "";
       if (!PV_NAME.test(name) || name.length > 40 || !PV_PRESETS[preset]) return send(res, 400, { error: `name and preset (${Object.keys(PV_PRESETS).join(", ")}).` });
-      try { return send(res, 200, await pvRun("plan", { name, preset })); }
+      // fps: the render's frame rate when its encoding changes it (Python keeps only one of the encoding's choices).
+      const fps = Number(url.searchParams.get("fps")) || undefined;
+      try { return send(res, 200, await pvRun("plan", { name, preset, ...(fps ? { fps } : {}) })); }
       catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
     }
     if (req.method === "POST" && url.pathname === "/api/product/kits") {
@@ -2894,14 +2906,35 @@ const server = createServer(async (req, res) => {
       const b = await body(req);
       if (typeof b.name !== "string" || !PV_NAME.test(b.name) || b.name.length > 40) return send(res, 400, { error: "name: a kit's name from GET /api/product.", code: "bad_input" });
       if (typeof b.preset !== "string" || !PV_PRESETS[b.preset]) return send(res, 400, { error: `preset: one of ${Object.keys(PV_PRESETS).join(", ")}.`, code: "bad_input" });
+      const enc = pvEncoding(b.encoding);
+      if (!enc.ok) return send(res, 400, { error: enc.error, code: "bad_input" });
       try {
-        // The plan first: a kit that cannot make this preset (no screen of the right shape, too short) says why now.
-        const plan = await pvRun("plan", { name: b.name, preset: b.preset });
+        // First: the encoding against the preset and its store (a rule the store requires refuses the render here, each
+        // error with its field), and the timeline at its frame rate. Python keeps the encoding for the queued render.
+        const ready = await pvRun("prepare", { name: b.name, preset: b.preset, ...(enc.value ? { encoding: enc.value } : {}) });
         diskGuard();
         const id = `pv-${b.name}--${b.preset}`;
         const job = startRender(id, "product");
-        return send(res, 200, { id, job: jobView(job), plan: { seconds: plan.seconds, scenes: plan.scenes.length, warnings: plan.warnings } });
-      } catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+        return send(res, 200, { id, job: jobView(job), plan: ready.plan, encoding: { settings: ready.settings, warnings: ready.warnings, sources: ready.sources } });
+      } catch (e) { return pvFail(res, e); }
+    }
+    if (req.method === "POST" && url.pathname === "/api/product/encoding/check") {
+      const b = await body(req);
+      if (typeof b.preset !== "string" || !PV_PRESETS[b.preset]) return send(res, 400, { error: `preset: one of ${Object.keys(PV_PRESETS).join(", ")}.`, code: "bad_input" });
+      if (b.name !== undefined && b.name !== null && (typeof b.name !== "string" || !PV_NAME.test(b.name) || b.name.length > 40)) return send(res, 400, { error: "name: a kit's name from GET /api/product.", code: "bad_input" });
+      const enc = pvEncoding(b.encoding);
+      if (!enc.ok) return send(res, 400, { error: enc.error, code: "bad_input" });
+      try { return send(res, 200, await pvRun("encoding", { preset: b.preset, ...(b.name ? { name: b.name } : {}), ...(enc.value ? { encoding: enc.value } : {}) })); }
+      catch (e) { return pvFail(res, e); }
+    }
+    if (req.method === "POST" && url.pathname === "/api/product/encoding/defaults") {
+      const b = await body(req);
+      if (typeof b.preset !== "string" || !PV_PRESETS[b.preset]) return send(res, 400, { error: `preset: one of ${Object.keys(PV_PRESETS).join(", ")}.`, code: "bad_input" });
+      const enc = pvEncoding(b.encoding);
+      if (!enc.ok) return send(res, 400, { error: enc.error, code: "bad_input" });
+      // This project's default for the preset (encoding: null clears it); refused when a rule the store requires breaks.
+      try { return send(res, 200, await pvRun("encoding-save", { preset: b.preset, encoding: enc.value ?? null })); }
+      catch (e) { return pvFail(res, e); }
     }
     if (req.method === "GET" && url.pathname === "/api/product/file") {
       const name = url.searchParams.get("name") || "", kind = url.searchParams.get("kind") || "";
@@ -2940,6 +2973,74 @@ const server = createServer(async (req, res) => {
       if (typeof b.theme === "string" && /^[a-z]{2,20}$/.test(b.theme)) args.push("--theme", b.theme);
       if (Number.isInteger(b.seed) && b.seed > 0) args.push("--seed", String(b.seed));
       return send(res, 200, jobView(startTask("stills", "stills", args)));
+    }
+    /* ---------- Explainers (py/studio/explainer.py): a video type that rides the reels' pipeline. A saved script is a
+       draft project (kind "explainer"); its render goes through the same one-at-a-time queue (reels --build), so its
+       review, the daily plan, posting and Results are the reels' own. Nothing here approves or posts. ---------- */
+    if (req.method === "GET" && url.pathname === "/api/explainers") {
+      try {
+        const r = await ask({ cmd: "explainer_list" });
+        const sheets = [...jobs.values()].filter((j) => j.kind === "explainer-sheet").map(jobView);
+        return send(res, 200, { ...r, sheets });
+      } catch (e) { return send(res, 500, { error: e.message }); }
+    }
+    if (req.method === "GET" && url.pathname === "/api/explainers/script") {
+      const slug = url.searchParams.get("slug") || "";
+      if (!isSlug(slug)) return send(res, 400, { error: "slug" });
+      try { return send(res, 200, await ask({ cmd: "explainer_script", slug })); } catch (e) { return send(res, 500, { error: e.message }); }
+    }
+    if (req.method === "POST" && (url.pathname === "/api/explainers/check" || url.pathname === "/api/explainers/save")) {
+      const b = await body(req);
+      if (!b.script || typeof b.script !== "object" || Array.isArray(b.script)) return send(res, 400, { error: "script: the explainer's JSON object" });
+      try {
+        if (url.pathname === "/api/explainers/check") return send(res, 200, await ask({ cmd: "explainer_check", script: b.script }));
+        const r = await ask({ cmd: "explainer_save", script: b.script });
+        if (!r.saved) return send(res, 422, r);
+        const job = b.render === true ? jobView(startRender(r.slug)) : null;  // the render queue: one at a time
+        return send(res, 200, { ...r, job });
+      } catch (e) { return send(res, e.status || 500, { error: e.message }); }
+    }
+    if (req.method === "POST" && url.pathname === "/api/explainers/preview") {
+      // The preview still (every scene once, Explainer-Sheet): a job beside the render queue, its picture at /sheet.
+      const b = await body(req);
+      if (!b.script || typeof b.script !== "object") return send(res, 400, { error: "script: the explainer's JSON object" });
+      try {
+        const r = await ask({ cmd: "explainer_check", script: b.script });
+        if (!r.ok) return send(res, 422, r);
+        const slug = r.slug, key = `sheet-${slug}`;
+        if (jobs.get(key)?.status === "running") return send(res, 200, jobView(jobs.get(key)));
+        const dir = join(DATA, "explainers", "tmp");
+        mkdirSync(dir, { recursive: true });
+        const file = join(dir, `${slug}.json`);
+        writeFileSync(file, JSON.stringify(b.script));
+        return send(res, 200, jobView(startTask(key, "explainer-sheet", ["explainer", "sheet", file])));
+      } catch (e) { return send(res, e.status || 500, { error: e.message }); }
+    }
+    if (req.method === "GET" && url.pathname === "/api/explainers/sheet") {
+      const slug = url.searchParams.get("slug") || "";
+      if (!isSlug(slug)) return send(res, 400, "slug", "text/plain");
+      return sendFile(req, res, join(DATA, "explainers", "sheets", `${slug}.jpg`));
+    }
+    if (req.method === "POST" && (url.pathname === "/api/explainers/add" || url.pathname === "/api/explainers/queue")) {
+      // add: a folder of scripts (or one file) on this computer becomes drafts, each render queued (one at a time).
+      // queue: renders for drafts already made (`python -m studio explainer add PATH --queue URL` calls this).
+      const b = await body(req);
+      try {
+        let made = [], out = {};
+        if (url.pathname === "/api/explainers/add") {
+          const path = String(b.path || "").trim();
+          if (!path || /^(\\\\|\/\/)/.test(path) || !existsSync(path)) return send(res, 400, { error: "path: a folder of explainer scripts (*.json) on this computer" });
+          out = await ask({ cmd: "explainer_add", path });
+          made = out.made || [];
+        } else {
+          made = Array.isArray(b.slugs) ? b.slugs.filter((s) => isSlug(s)).slice(0, 200) : [];
+          const listed = new Set(((await ask({ cmd: "explainer_list" })).scripts || []).filter((s) => s.made).map((s) => s.slug));
+          const unknown = made.filter((s) => !listed.has(s));
+          if (unknown.length) return send(res, 400, { error: `not explainer drafts: ${unknown.join(", ")}` });
+        }
+        const queued = b.render === false ? [] : made.map((s) => startRender(s).slug);
+        return send(res, 200, { ...out, made, queued });
+      } catch (e) { return send(res, e.status || 500, { error: e.message }); }
     }
     if (req.method === "GET" && url.pathname === "/api/stills/file") {
       const id = url.searchParams.get("id") || "", f = url.searchParams.get("f") || "";

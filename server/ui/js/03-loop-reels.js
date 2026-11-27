@@ -275,9 +275,12 @@ function renderReels() {
   mkPicksSync(); mkFootWatch();  // the ticks are kept per project (BL-136); the footage numbers follow new reels (BL-134)
   if (!SEGMENTS.includes(homeFilter)) homeFilter = "all";
   const counts = stateCounts(R);
-  const shown = R.filter((r) => !r.house && (homeFilter === "all" || reelState(r) === homeFilter) && reelPicked(r))
+  // One console for every video type (server/ui/js/22-console.js): the type filter, then state, theme and network.
+  const other = vxSel === "vlog" || vxSel === "photo";
+  vxLoadPerf();
+  const shown = vxFilter(R, vxSel).filter((r) => !r.house && (homeFilter === "all" || reelState(r) === homeFilter) && reelPicked(r))
     .sort((a, b) => STATE_ORDER.indexOf(reelState(a)) - STATE_ORDER.indexOf(reelState(b)));
-  const house = homeFilter === "all" && !rTheme && !rNet ? R.filter((r) => r.house) : [];
+  const house = homeFilter === "all" && !rTheme && !rNet && vxSel === "all" ? R.filter((r) => r.house) : [];
   $("#home").innerHTML = `
     <div class="pagehead rhead">${crumbs([tr("nav.reels"), homeFilter === "all" ? null : "#/"], ...(homeFilter === "all" ? [] : [[tr(STATE_KEY[homeFilter])]]))}
       <span class="meta">${trR("home.sum", { n: counts.all, f: overview.library?.ranch ?? "…" })}${foot.h?.more ? ` · <a href="#/footage">${tr("fh.moreest", { r: moreReels() })}</a>` : ""}</span>
@@ -285,13 +288,16 @@ function renderReels() {
       ${review.length ? `<button data-act="review">${ico("eye", "sm")}${tr("act.review")} <span class="meta">${review.length}</span></button>` : ""}
       ${review.length > 1 ? `<button id="approveAll" ${approveBusy ? "disabled" : ""}>${ico("check", "sm")}${approveBusy ? esc(approveBusy) : tr(approveArm ? "act.approveallsure" : "act.approveall", { n: review.length })}</button>` : ""}
       <button id="toggleMaker" class="${showMaker ? "on" : ""}">${ico("clapper", "sm")}${tr("act.make")}</button>
+      <button class="primary" data-vxnew="1" aria-expanded="${vxNewOpen}">${ico("plus", "sm")}${tr("vx.new")}</button>
     </div>
-    ${homeFilter === "all" && !showMaker ? (none ? firstHtml() : leadHtml()) : ""}
+    ${vxNewHtml()}
+    ${none && vxSel === "all" ? "" : vxTypeBar(R)}
+    ${homeFilter === "all" && !showMaker && vxSel === "all" ? (none ? firstHtml() : leadHtml()) : ""}
     ${showMaker ? makerHtml() : ""}
     <div id="queueBox">${queueBoxHtml()}</div>
-    ${homeFilter === "all" ? vlogRowHtml() : ""}
-    ${none ? "" : `<div class="reeltools">${segBar(counts)}${reelPickBar(R)}${shown.length ? groupBar() : ""}</div>
-    ${shown.length ? groupReels(shown).map(groupHtml).join("") : `<div class="reels"><div class="empty mascot" style="grid-column:1/-1">${kenji("point")}<b>${tr("home.emptyfilter")}</b><span>${tr("home.emptyfilterhint")}</span>
+    ${homeFilter === "all" && vxSel === "all" ? vlogRowHtml() : ""}
+    ${other ? vxOtherHtml() : none ? "" : `<div class="reeltools">${segBar(vxSel === "all" ? counts : stateCounts(vxFilter(R, vxSel)))}${reelPickBar(R)}${shown.length ? groupBar() : ""}</div>
+    ${shown.length ? groupReels(shown).map(groupHtml).join("") : vxSel !== "all" && !vxFilter(R, vxSel).some((r) => !r.house) ? vxEmptyHtml() : `<div class="reels"><div class="empty mascot" style="grid-column:1/-1">${kenji("point")}<b>${tr("home.emptyfilter")}</b><span>${tr("home.emptyfilterhint")}</span>
         <button data-hf="all" data-rpickclear="1">${tr("st.all")}</button></div></div>`}`}
     ${house.length ? groupHtml({ key: "house", items: house, house: true }, 99) : ""}`;
 }
@@ -652,7 +658,7 @@ function reelCard(r) {
   const vid = !busyJob(r) ? reelVid(r) : "";
   return `<article class="rcard st-${s}" data-open="${r.slug}"${vid ? ` data-vid="${esc(vid)}"` : ""} tabindex="0" role="link" title="${esc(`${r.house ? "★ " : ""}${tr(KINDS[kindOf(r)].label)} · ${r.slug}${r.sameHook > 2 ? " · " + tr("w.samehook", { n: r.sameHook }) : ""}`)}" aria-label="${esc(`${r.title || r.slug} · ${stateLine(r, s)}${unreviewed ? " · " + tr("st.review") : ""}`)}">
     <div class="thumb" style="background-image:url('${r.hook ? thumb(r.hook, 360) + "&v=" + (r.updated || 0) : ""}')">
-      <span class="spill s-${s}">${s === "posted" ? ico("check", "sm") : s === "scheduled" ? ico("cal", "sm") : ""}${esc(stateLine(r, s))}</span><span class="chip dur">${r.seconds}s</span>${r.rendered && !busyJob(r) ? scoreBadge(r.slug) : ""}
+      <span class="spill s-${s}">${s === "posted" ? ico("check", "sm") : s === "scheduled" ? ico("cal", "sm") : ""}${esc(stateLine(r, s))}</span><span class="chip dur">${r.seconds}s</span>${r.house ? "" : vxChip(r)}${r.rendered && !busyJob(r) ? scoreBadge(r.slug) : ""}
       ${unreviewed ? `<span class="review-dot" title="${tr("st.review")}">${ico("eye", "sm")}</span>` : ""}${consent}
       ${quickPlayHtml(r)}
       ${busyJob(r) ? `<div class="ring"><div>${ico(j.status === "queued" ? "hourglass" : j.kind === "youtube" ? "send" : "clapper")}<div class="meta live-label" style="margin-top:6px">${esc(j.status === "queued" ? tr("job.queued", { n: j.position }) : j.label || "")}</div>
@@ -666,11 +672,12 @@ function reelCard(r) {
       ${flags ? `<div class="meta row-tight">${flags}</div>` : ""}
       ${wordsLine(r)}
       ${r.rendered && !r.house ? netStrip(r) : ""}
+      ${r.rendered && !r.house ? vxNumHtml(r) : ""}
       ${s === "draft" ? `<div class="card-acts"><button class="go" data-render="${esc(r.slug)}">${ico("clapper", "sm")}${tr("act.makeit")}</button></div>` : ""}
       ${ready ? `<div class="card-acts">
         <button class="go ${unreviewed ? "review" : ""}" data-go="${esc(r.slug)}">${ico(unreviewed ? "eye" : "send", "sm")}${tr(unreviewed ? "act.reviewone" : "act.post")}</button>
-        <button class="mini" data-remake="${esc(r.theme || "")}" title="${esc(tr("act.newversiontip"))}">${ico("refresh", "sm")}${tr("act.newversion")}</button>
-        <button class="mini" data-alt="${esc(r.slug)}" title="${esc(tr("act.openingtip"))}">${ico("clapper", "sm")}${tr("act.opening")}</button>
+        ${vxType(r) === "explainer" ? `<a class="btn mini" href="#/explainer/${esc(r.slug)}">${ico("type", "sm")}${tr("ex.edit")}</a>` : `<button class="mini" data-remake="${esc(r.theme || "")}" title="${esc(tr("act.newversiontip"))}">${ico("refresh", "sm")}${tr("act.newversion")}</button>
+        <button class="mini" data-alt="${esc(r.slug)}" title="${esc(tr("act.openingtip"))}">${ico("clapper", "sm")}${tr("act.opening")}</button>`}
         <button class="mini ${isSkipped(r.slug) ? "on" : ""}" data-skip="${r.slug}">${ico("x", "sm")}${tr(isSkipped(r.slug) ? "act.unskip" : "act.skip")}</button></div>` : ""}
     </div></article>`;
 }

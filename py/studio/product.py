@@ -9,14 +9,16 @@ OVERVIEW: fetch: read a kit's manifest (an https URL, such as a release kit's si
           <data>/product/<name>/. Nothing in a kit is ever run: no script, no SVG, no HTML.
           plan: the timeline for one preset (shared/product-presets.json): which screens fit, how long each one holds,
           the captions, checked against the preset's spec (length, fps, size) before anything renders.
-          build: render that timeline, encode it to the preset's spec (H.264, its level and bit rate, stereo AAC), then
-          check the file itself with ffprobe. Footage sources are not touched: kits live in their own folder.
+          build: render that timeline, encode it with the render's encoding (studio.product_encoding: the preset's
+          defaults, the kit's hints, this project's defaults, the render's own choice), then check the file itself with
+          ffprobe against the preset and its store's rules. Footage sources are not touched: kits live in their own folder.
           review / estimate: the studio's AI reviewer (studio.ai.review_file) on a rendered product video, priced first
           and inside the same AI limits; optional, never part of a render.
 DEPENDENCIES: Pillow, ffmpeg + ffprobe (studio.config), npx remotion (studio.remotion)
 USAGE: python -m studio.product <action> with the request JSON on stdin; prints one line:
          RESULT {"ok": true, "data": {...}} or RESULT {"ok": false, "error": "<one plain sentence>", "code": "...", "status": 4xx|5xx}
-       actions: presets, fetch, kits, kit, plan, estimate, review, last-review.
+       actions: presets, fetch, kits, kit, plan, encoding (check settings), encoding-info, encoding-save (this project's
+       defaults), prepare (check and keep a render's encoding before it is queued), estimate, review, last-review.
        python -m studio product build <video id> renders one (the studio's render queue runs it, STAGE/PROGRESS lines).
 NOTES: A video id is pv-<kit name>--<preset> (both lowercase, digits and single dashes), so it is a studio slug and a
        job key. A kit URL's query string (a signed link's token) is never written to disk.
@@ -39,6 +41,7 @@ import wave
 from datetime import datetime, timezone
 from pathlib import Path
 
+from studio import product_encoding as pe
 from studio.config import DATA, ROOT, ffmpeg_bin, ffprobe_bin
 
 PRESETS: dict = json.loads((ROOT / "shared" / "product-presets.json").read_text(encoding="utf-8"))["presets"]
@@ -95,9 +98,9 @@ OVERLAP = 0.5  # scenes cross-fade over this much
 
 
 class KitError(ValueError):
-    def __init__(self, message: str, code: str = "bad_kit", status: int = 400):
+    def __init__(self, message: str, code: str = "bad_kit", status: int = 400, errors: list | None = None):
         super().__init__(message)
-        self.code, self.status = code, status
+        self.code, self.status, self.errors = code, status, errors
 
 
 # ---------- names ----------
@@ -283,6 +286,27 @@ def validate_manifest(m) -> dict:
                 warn.append("expiresAt: the kit's links have expired; export a fresh kit if downloads fail")
         except ValueError:
             errs.append("expiresAt: an ISO 8601 time, e.g. 2026-11-28T00:00:00Z")
+    enc = m.get("encoding")
+    if enc is not None:
+        # The kit's encoding hints (docs/product-kit.md › Encoding): only their shape here; their values are checked
+        # when a render resolves them (studio.product_encoding), where a bad hint is a warning and is left out.
+        if not isinstance(enc, dict) or set(enc) - {"default", "presets"}:
+            warn.append("encoding: an object with default and presets (left out)")
+        elif len(json.dumps(enc)) > 20000:
+            warn.append("encoding: longer than 20000 characters (left out)")
+        else:
+            keep = {}
+            if isinstance(enc.get("default"), dict):
+                keep["default"] = enc["default"]
+            per = enc.get("presets") if isinstance(enc.get("presets"), dict) else {}
+            unknown = sorted(str(k) for k in per if k not in PRESETS)
+            if unknown:
+                warn.append(f"encoding.presets: not a preset here: {', '.join(unknown[:5])} (left out)")
+            mine = {k: v for k, v in per.items() if k in PRESETS and isinstance(v, dict)}
+            if mine:
+                keep["presets"] = mine
+            if keep:
+                out["encoding"] = keep
     if errs:
         more = f" (and {len(errs) - 8} more)" if len(errs) > 8 else ""
         raise KitError("The kit does not match docs/product-kit.md: " + "; ".join(errs[:8]) + more + ".")
@@ -345,28 +369,45 @@ def preset(pid) -> dict:
     return p
 
 
-def check_spec(pid: str, seconds: float, fps: float, width: int, height: int) -> list[str]:
-    """What breaks the preset's spec, in plain words ([] when it fits)."""
+def _fps_max(pid: str) -> float | None:
+    """The store's highest frame rate, when it requires one (App Store: 30)."""
+    return next((r["max"] for r in pe.store_of(pid).get("rules", []) if r["field"] == "fps" and "max" in r and r["level"] == "error"), None)
+
+
+def check_spec(pid: str, seconds: float, fps: float, width: int, height: int, want_fps: float | None = None) -> list[str]:
+    """What breaks the preset's spec, in plain words ([] when it fits). want_fps: the render's frame rate (its encoding),
+    else the preset's."""
     p = preset(pid)
+    want = want_fps or p["fps"]
+    top = _fps_max(pid)
     out = []
     if seconds < p["minSec"] - 1e-6 or seconds > p["maxSec"] + 1e-6:
         out.append(f"{p['label']} must be {p['minSec']}-{p['maxSec']} s long; this would be {seconds:.1f} s")
-    if fps > 30 + 1e-6 or abs(fps - p["fps"]) > 1e-6:
-        out.append(f"{p['label']} plays at {p['fps']} fps (at most 30); this would be {fps:g} fps")
+    if (top and fps > top + 1e-6) or abs(fps - want) > 1e-6:
+        out.append(f"{p['label']} plays at {want:g} fps{f' (at most {top:g})' if top else ''}; this would be {fps:g} fps")
     if (width, height) != (p["width"], p["height"]):
         out.append(f"{p['label']} is {p['width']}x{p['height']}; this would be {width}x{height}")
     return out
 
 
-def verify_file(pid: str, probe: dict, size_bytes: int) -> list[str]:
-    """The rendered file against the preset, from ffprobe's JSON (-show_streams -show_format)."""
+def verify_file(pid: str, probe: dict, size_bytes: int, settings: dict | None = None) -> list[str]:
+    """The rendered file against the preset, its store's required rules and the settings it was made with, from
+    ffprobe's JSON (-show_streams -show_format): what breaks them ([] when it fits). verify_report adds the warnings."""
+    return verify_report(pid, probe, size_bytes, settings)["errors"]
+
+
+def verify_report(pid: str, probe: dict, size_bytes: int, settings: dict | None = None) -> dict:
+    """{"errors": [...], "warnings": [...], "measured": {...}}: the file's structure (codec, profile, level, pixels,
+    stereo, size, length, picture size) and the store's rules (studio.product_encoding.check_file), in plain words."""
     p = preset(pid)
     enc = p["encode"]
+    s = settings or pe.finish(pid, pe.defaults(pid))[0]
+    measured = pe.measure(probe, size_bytes)
     streams = probe.get("streams") or []
     v = next((s for s in streams if s.get("codec_type") == "video"), None)
     a = next((s for s in streams if s.get("codec_type") == "audio"), None)
     if not v:
-        return ["the file has no picture"]
+        return {"errors": ["the file has no picture"], "warnings": [], "measured": measured}
     num, _, den = str(v.get("avg_frame_rate") or v.get("r_frame_rate") or "0/1").partition("/")
     try:
         fps = float(num) / float(den or 1)
@@ -376,14 +417,15 @@ def verify_file(pid: str, probe: dict, size_bytes: int) -> list[str]:
         seconds = float(v.get("duration") or (probe.get("format") or {}).get("duration") or 0)
     except ValueError:
         seconds = 0.0
-    out = check_spec(pid, round(seconds, 2), round(fps, 3), int(v.get("width") or 0), int(v.get("height") or 0))
+    out = check_spec(pid, round(seconds, 2), round(fps, 3), int(v.get("width") or 0), int(v.get("height") or 0), s["fps"])
     if v.get("codec_name") != "h264":
         out.append(f"the picture must be H.264 (it is {v.get('codec_name')})")
     if str(v.get("profile") or "").lower() not in ("high", "main", "constrained baseline", "baseline"):
         out.append(f"H.264 profile must be High or lower (it is {v.get('profile')})")
-    want = int(round(float(enc["level"]) * 10))
+    level = s.get("level") or enc["level"]
+    want = int(round(float(level) * 10))
     if int(v.get("level") or 0) > want:
-        out.append(f"H.264 level must be {enc['level']} or lower (it is {int(v.get('level') or 0) / 10:g})")
+        out.append(f"H.264 level must be {level} or lower (it is {int(v.get('level') or 0) / 10:g})")
     if v.get("pix_fmt") != "yuv420p":
         out.append(f"pixels must be yuv420p (they are {v.get('pix_fmt')})")
     if not a:
@@ -393,17 +435,14 @@ def verify_file(pid: str, probe: dict, size_bytes: int) -> list[str]:
             out.append(f"sound must be stereo AAC (it is {a.get('codec_name')}, {a.get('channels')} channels)")
         if int(a.get("sample_rate") or 0) not in (44100, 48000):
             out.append(f"sound must be 44.1 or 48 kHz (it is {a.get('sample_rate')} Hz)")
-        # Apple lists 256 kbps AAC; a digitally silent track measures about 2 kbps. 90 % allows for the encoder's own
-        # rate control (the quiet bed measures about 253 kbps).
-        try:
-            kbps = int(a.get("bit_rate") or 0) / 1000
-        except ValueError:
-            kbps = 0.0
-        if kbps < enc["audioKbps"] * 0.9:
-            out.append(f"sound must be about {enc['audioKbps']} kbps AAC (it is {kbps:.0f} kbps)")
     if size_bytes > enc["maxMb"] * 1024 * 1024:
         out.append(f"the file must be at most {enc['maxMb']} MB (it is {size_bytes / 1024 / 1024:.0f} MB)")
-    return out
+    # The store's rules on the measured rates (a digitally silent track measures about 2 kbps against Apple's 256 kbps
+    # AAC; the quiet bed about 253 kbps), and the frame rate the render was set to (once: check_spec said it already).
+    errs, warns = pe.check_file(pid, measured, s)
+    said_fps = any("fps" in x for x in out)
+    out += [e["text"] for e in errs if not (e["field"] == "fps" and said_fps)]
+    return {"errors": out, "warnings": [w["text"] for w in warns], "measured": measured}
 
 
 # ---------- fetching a kit ----------
@@ -745,7 +784,7 @@ def list_kits() -> list[dict]:
             kit = json.loads((d / "kit.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        rendered = sorted(p.stem for p in (d / "renders").glob("*.json")) if (d / "renders").is_dir() else []
+        rendered = sorted(p.stem for p in (d / "renders").glob("*.json") if p.stem in PRESETS) if (d / "renders").is_dir() else []
         thumb = next((s["after"]["thumb"] for s in kit.get("screens", []) if s.get("after")), None) \
             or next((r["file"]["thumb"] for r in kit.get("recordings", [])), None)
         out.append({"name": d.name, "app": kit["app"]["name"], "version": kit.get("release", {}).get("version", ""), "screens": len(kit.get("screens", [])),
@@ -798,10 +837,11 @@ def _aspect_ok(w: int, h: int, cw: int, ch: int) -> bool:
     return abs((w / h) / (cw / ch) - 1) <= 0.18
 
 
-def plan(kit: dict, pid: str) -> dict:
-    """The timeline for one preset. Raises KitError when nothing in the kit fits or the result breaks the spec."""
+def plan(kit: dict, pid: str, fps: float | None = None) -> dict:
+    """The timeline for one preset at its frame rate (or the render's, fps). Raises KitError when nothing in the kit fits
+    or the result breaks the spec."""
     p = preset(pid)
-    W, H, fps = p["width"], p["height"], p["fps"]
+    W, H, fps = p["width"], p["height"], int(fps or p["fps"])
     full = p["frame"] == "none"
     warn: list[str] = []
     base = f"product-kits/{kit['name']}/files"
@@ -923,7 +963,7 @@ def plan(kit: dict, pid: str) -> dict:
     end = {"from": at, "dur": frames(SEC_HOLD if full else SEC_END), "kind": "overlay" if full else "card"}
     duration = end["from"] + end["dur"]
     seconds = round(duration / fps, 3)
-    problems = check_spec(pid, seconds, fps, W, H)
+    problems = check_spec(pid, seconds, fps, W, H, fps)
     if problems:
         raise KitError("The video would not fit the preset: " + "; ".join(problems) + ".", "spec", 422)
     family, faces = fonts(kit, base)
@@ -997,22 +1037,102 @@ def _silence(path: Path, seconds: float, rate: int) -> None:
             frames -= n
 
 
-def encode_args(pid: str, src: Path, wav: Path, dest: Path, seconds: float) -> list[str]:
-    """ffmpeg arguments that make a file inside the preset's spec (shared/product-presets.json encode)."""
+def encode_args(pid: str, src: Path, wav: Path, dest: Path, seconds: float, settings: dict | None = None, music: dict | None = None) -> list[str]:
+    """ffmpeg arguments for the render's encoding (studio.product_encoding: finished settings; the preset's own when
+    None). music: {"file", "volume"} from the audio library, mixed over the quiet bed (which keeps the sound's bit rate
+    up through the track's own quiet moments) with a short fade in and out."""
     p = preset(pid)
-    e = p["encode"]
-    return [str(ffmpeg_bin()), "-y", "-v", "error", "-i", str(src), "-i", str(wav), "-map", "0:v:0", "-map", "1:a:0", "-t", f"{seconds:.3f}",
-            "-r", str(p["fps"]), "-vf", f"scale={p['width']}:{p['height']}:flags=lanczos,setsar=1,format=yuv420p",
-            "-c:v", "libx264", "-profile:v", e["profile"], "-level:v", e["level"], "-preset", "medium",
-            "-b:v", f"{e['videoKbps']}k", "-maxrate", f"{e['maxKbps']}k", "-bufsize", f"{e['maxKbps'] * 2}k", "-g", str(p["fps"] * 2),
-            # Intensity and mid/side stereo off: they fold the quiet bed's two channels together and the track falls to
-            # about 240 kbps (_silence).
-            "-c:a", "aac", "-b:a", f"{e['audioKbps']}k", "-aac_is", "0", "-aac_ms", "0", "-ar", str(e["audioRate"]), "-ac", "2",
-            "-map_metadata", "-1", "-movflags", "+faststart", str(dest)]
+    s = settings or pe.finish(pid, pe.defaults(pid))[0]
+    rate = s["audioRate"]
+    args = [str(ffmpeg_bin()), "-y", "-v", "error", "-protocol_whitelist", "file", "-i", str(src), "-i", str(wav)]
+    if music:
+        fade = max(0.0, seconds - 1.5)
+        mix = (f"[2:a]aformat=sample_fmts=fltp:sample_rates={rate}:channel_layouts=stereo,volume={float(music['volume']):.3f},"
+               f"afade=t=in:d=0.4,afade=t=out:st={fade:.3f}:d=1.5[m];"
+               f"[1:a]aformat=sample_fmts=fltp:sample_rates={rate}:channel_layouts=stereo[d];[d][m]amix=inputs=2:duration=first:normalize=0[a]")
+        args += ["-stream_loop", "-1", "-i", str(music["file"]), "-filter_complex", mix, "-map", "0:v:0", "-map", "[a]"]
+    else:
+        args += ["-map", "0:v:0", "-map", "1:a:0"]
+    return args + ["-t", f"{seconds:.3f}", "-r", str(s["fps"]), "-vf", f"scale={p['width']}:{p['height']}:flags=lanczos,setsar=1,format=yuv420p",
+                   *pe.video_args(s),
+                   # Intensity and mid/side stereo off: they fold the quiet bed's two channels together and the track falls
+                   # to about 240 kbps (_silence).
+                   "-c:a", "aac", "-b:a", f"{s['audioKbps']}k", "-aac_is", "0", "-aac_ms", "0", "-ar", str(rate), "-ac", "2",
+                   "-map_metadata", "-1", "-movflags", "+faststart", str(dest)]
+
+
+def _render_file(name: str, pid: str) -> Path:
+    """The encoding a queued render was given (POST /api/product/render keeps it here; build reads it)."""
+    return HOME / name / "renders" / f"{pid}-encoding.json"
+
+
+def encoding_for(name: str, pid: str, render: dict | None = None, kit: dict | None = None) -> dict:
+    """The resolved encoding of one render (studio.product_encoding.resolve): the preset, the kit's hints, this
+    project's defaults, then the render's own fields (given, or the ones kept when it was queued)."""
+    kit = kit if kit is not None else load_kit(name)
+    if render is None:
+        try:
+            render = json.loads(_render_file(name, pid).read_text(encoding="utf-8")).get("encoding") or {}
+        except (OSError, ValueError):
+            render = {}
+    return pe.resolve(pid, kit=kit.get("encoding") or {}, render=render)
+
+
+def _refuse(r: dict) -> None:
+    if r["errors"]:
+        raise KitError("The encoding does not fit: " + "; ".join(e["text"] for e in r["errors"]) + ".", "bad_encoding", 400, errors=r["errors"])
+
+
+def prepare(req: dict) -> dict:
+    """Before a render is queued: check its encoding against the preset and its store, check the timeline at its frame
+    rate, and keep the encoding for build. Refused (400, each error with its field) when a required rule breaks."""
+    name, pid = kit_name(str(req.get("name") or "")), str(req.get("preset") or "")
+    preset(pid)
+    kit = load_kit(name)
+    render = req.get("encoding")
+    r = encoding_for(name, pid, render or {}, kit)
+    _refuse(r)
+    pl = plan(kit, pid, r["settings"]["fps"])
+    f = _render_file(name, pid)
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps({"encoding": pe.check_layer(render, "encoding")[0] if render else {}}, ensure_ascii=False), encoding="utf-8")
+    return {"settings": r["settings"], "warnings": r["warnings"], "sources": r["sources"],
+            "plan": {"seconds": pl["seconds"], "scenes": len(pl["scenes"]), "warnings": pl["warnings"]}}
+
+
+def check_encoding(req: dict) -> dict:
+    """The page's Encoding panel: the settings these fields resolve to, with errors and warnings by field. A kit's name
+    is optional (its hints are a layer)."""
+    pid = str(req.get("preset") or "")
+    preset(pid)
+    kit = load_kit(str(req["name"])) if req.get("name") else {}
+    return pe.resolve(pid, kit=kit.get("encoding") or {}, render=req.get("encoding") or {})
+
+
+def save_encoding(req: dict) -> dict:
+    """Save this project's default encoding for one preset (encoding: null clears it)."""
+    pid = str(req.get("preset") or "")
+    preset(pid)
+    try:
+        saved = pe.save_project(pid, req.get("encoding") or None)
+    except ValueError as err:
+        raise KitError(str(err), "bad_encoding", 400) from None
+    return {"project": saved, **pe.resolve(pid, render={})}
+
+
+def _encode(pid: str, raw: Path, final: Path, pl: dict, s: dict, music: dict | None) -> None:
+    wav = final.with_suffix(".silence.wav")
+    _silence(wav, pl["seconds"], s["audioRate"])
+    try:
+        r = subprocess.run(encode_args(pid, raw, wav, final, pl["seconds"], s, music), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60 * 20)
+    finally:
+        wav.unlink(missing_ok=True)
+    if r.returncode != 0 or not final.exists():
+        raise KitError("Encoding failed: " + ((r.stderr or "").strip().splitlines() or ["ffmpeg failed"])[-1][:300], "render", 500)
 
 
 def build(vid: str) -> dict:
-    """Render one product video: plan, Remotion, encode to spec, check the file. Prints STAGE/PROGRESS and RESULT."""
+    """Render one product video: plan, Remotion, encode, check the file. Prints STAGE/PROGRESS and RESULT."""
     from studio.remotion import _remotion
 
     parsed = parse_video_id(vid)
@@ -1021,7 +1141,14 @@ def build(vid: str) -> dict:
     name, pid = parsed
     kit = load_kit(name)
     _stage(1, 4, "planning the product video")
-    pl = plan(kit, pid)
+    enc = encoding_for(name, pid, kit=kit)
+    _refuse(enc)
+    s = enc["settings"]
+    music = None
+    if s["audioBed"].get("kind") == "music":
+        track = pe._music(s["audioBed"])[0]
+        music = {"file": track["file"], "volume": s["audioBed"]["volume"]} if track else None
+    pl = plan(kit, pid, s["fps"])
     out = HOME / name / "renders"
     out.mkdir(parents=True, exist_ok=True)
     props = out / f"{pid}-props.json"
@@ -1034,23 +1161,30 @@ def build(vid: str) -> dict:
         log = raw.with_suffix(".log")
         tail = log.read_text(encoding="utf-8", errors="replace").strip().splitlines()[-3:] if log.exists() else []
         raise KitError("The render failed: " + (" | ".join(tail)[-400:] or "see the render log"), "render", 500)
-    _stage(3, 4, f"encoding to the {pl['preset']['label']} spec")
-    wav = out / f"{pid}.silence.wav"
-    _silence(wav, pl["seconds"], PRESETS[pid]["encode"]["audioRate"])
-    r = subprocess.run(encode_args(pid, raw, wav, final, pl["seconds"]), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60 * 20)
-    wav.unlink(missing_ok=True)
-    if r.returncode != 0 or not final.exists():
-        raise KitError("Encoding failed: " + ((r.stderr or "").strip().splitlines() or ["ffmpeg failed"])[-1][:300], "render", 500)
+    mode = {"cbr": "constrained CBR", "vbr": "VBR", "crf": "CRF"}[s["rateControl"]]
+    _stage(3, 4, f"encoding to the {pl['preset']['label']} spec ({mode})")
+    _encode(pid, raw, final, pl, s, music)
+    warnings = list(pl["warnings"]) + [w["text"] for w in enc["warnings"]]
+    # A floor under VBR or CRF: a picture too still to reach it is encoded again as constrained CBR at the floor.
+    if s.get("minKbps") and s["rateControl"] != "cbr":
+        got = pe.measure(_probe(final), final.stat().st_size).get("videoKbps")
+        if got is not None and got < s["minKbps"] * 0.97:
+            s = pe.floor_settings(s)
+            print(f"STAGE 3/4 encoding again as constrained CBR at the {s['videoKbps']} kbps floor ({got:g} kbps was under it)", flush=True)
+            _encode(pid, raw, final, pl, s, music)
+            warnings.append(f"The picture was too still for {mode} to reach the {s['videoKbps']} kbps floor ({got:g} kbps), so it was encoded again as constrained CBR at the floor.")
     raw.unlink(missing_ok=True)
     _stage(4, 4, "checking the file against the spec")
     probe = _probe(final)
     size = final.stat().st_size
-    problems = verify_file(pid, probe, size)
-    v = next((s for s in probe.get("streams") or [] if s.get("codec_type") == "video"), {})
+    rep = verify_report(pid, probe, size, s)
+    problems = rep["errors"]
+    v = next((x for x in probe.get("streams") or [] if x.get("codec_type") == "video"), {})
     res = {"id": vid, "kit": name, "preset": pid, "label": pl["preset"]["label"], "file": str(final), "bytes": size,
            "seconds": round(float(v.get("duration") or (probe.get("format") or {}).get("duration") or 0), 3), "width": v.get("width"), "height": v.get("height"),
            "fps": v.get("avg_frame_rate"), "profile": v.get("profile"), "level": v.get("level"), "ok": not problems, "problems": problems,
-           "warnings": pl["warnings"], "made": datetime.now().isoformat(timespec="seconds")}
+           "warnings": warnings + rep["warnings"], "encoding": {k: s[k] for k in s if k != "profile"}, "measured": rep["measured"],
+           "store": pe.store_of(pid)["name"], "made": datetime.now().isoformat(timespec="seconds")}
     (out / f"{pid}.json").write_text(json.dumps(res, ensure_ascii=False, indent=2), encoding="utf-8")
     if problems:
         raise KitError("The file does not meet the spec: " + "; ".join(problems) + ".", "spec", 500)
@@ -1133,6 +1267,11 @@ def last_review(req: dict) -> dict:
 
 # ---------- command line ----------
 
+def _fps(v) -> int | None:
+    """A frame rate from a request: one of the encoding's choices, else the preset's own (None)."""
+    return int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and v in pe.FIELDS["fps"]["enum"] else None
+
+
 def presets_view() -> dict:
     return {"presets": PRESETS, "schema": SCHEMA, "version": MAJOR}
 
@@ -1142,7 +1281,11 @@ ACTIONS = {
     "fetch": lambda req: fetch(req),
     "kits": lambda req: {"kits": list_kits()},
     "kit": lambda req: kit_view(str(req.get("name") or "")),
-    "plan": lambda req: plan(load_kit(str(req.get("name") or "")), str(req.get("preset") or "")),
+    "plan": lambda req: plan(load_kit(str(req.get("name") or "")), str(req.get("preset") or ""), _fps(req.get("fps"))),
+    "encoding": check_encoding,
+    "encoding-info": lambda req: pe.view(),
+    "encoding-save": save_encoding,
+    "prepare": prepare,
     "estimate": estimate,
     "review": review,
     "last-review": last_review,
@@ -1164,7 +1307,7 @@ def main(argv: list[str] | None = None) -> int:
             raise KitError("the request must be a JSON object", "bad_input")
         out = {"ok": True, "data": ACTIONS[action](req)}
     except KitError as err:
-        out = {"ok": False, "error": str(err), "code": err.code, "status": err.status}
+        out = {"ok": False, "error": str(err), "code": err.code, "status": err.status, **({"errors": err.errors} if err.errors else {})}
     except Exception as err:  # the AI reviewer's own refusals (studio.ai.AiError) keep their words and status
         status = getattr(err, "status", None)
         if isinstance(status, int):

@@ -91,9 +91,54 @@ Every preset is in [shared/product-presets.json](../shared/product-presets.json)
 | `social-9x16` | 1080×1920 | 6-60 s | The same, with captions inside the networks' safe zone. |
 | `social-1x1` | 1080×1080 | 6-60 s | The same, square. |
 
-**Encoding:** 30 fps, H.264 High profile at level 4.0 or lower, yuv420p, 8-11 Mbps, and a stereo AAC track at 256 kbps and 48 kHz. The track is a quiet bed, not digital silence: silence encodes to about
-2 kbps whatever the encoder is told, so the studio lays one-step dither (about -90 dBFS, below hearing) and the track
-measures about 253 kbps. The check after the render reads the track's real bit rate.
+Every preset renders H.264 High profile, yuv420p, with a stereo AAC track. Its default encoding meets its store (next section).
+
+## Encoding
+
+Each render's encoding is set in four layers. A layer changes only the fields it names:
+
+1. **The preset's default**, which meets its store (below).
+2. **The kit's hints**, the manifest's `encoding` (`default` for every preset, `presets` for one). A kit is someone else's file, so a hint that is out of range or unknown is left out with a warning. A kit never blocks a render.
+3. **This project's default**, saved from the page (**Save as this project's default**) or with `POST /api/product/encoding/defaults`. It is kept in `<data>/product-encoding.json`.
+4. **The render's own choice**, from the page's Encoding panel, `POST /api/product/render` `encoding`, or MCP `make_product_video` `encoding`.
+
+| Field | Range | What it does |
+|---|---|---|
+| `rateControl` | `cbr`, `vbr`, `crf` | `cbr`: constrained CBR, one held rate. `vbr`: a target with a ceiling. `crf`: a quality. |
+| `videoKbps` | 300-80000 | The target bit rate (`cbr`, `vbr`). |
+| `minKbps` | 300-80000 | The floor (`vbr`, `crf`). A file that comes out under it is encoded again as constrained CBR at the floor. Under `cbr` it is the target. |
+| `maxKbps` | 300-100000 | The ceiling (`vbr`, `crf`). Under `cbr` it is the target. |
+| `bufsizeKbits` | 300-200000 | The VBV buffer. It must be at least 1/8 s of the ceiling. |
+| `crf` | 0-51 | The quality under `crf`; lower is better. |
+| `fps` | 24, 25, 30, 48, 50, 60 | The frame rate. The render's timeline is planned at this rate too. |
+| `keyframeSec` | 0.25-10 | Seconds between keyframes. |
+| `audioKbps` | 64-512 | The AAC bit rate. |
+| `audioRate` | 44100, 48000 | The sample rate. |
+| `audioBed` | `{kind: "dither"}` or `{kind: "music", id, volume}` | The sound under the picture. See [The sound](#the-sound). |
+
+**Why constrained CBR:** libx264 ignores a minimum rate on its own, and plain VBR made 0.55 Mbps from a still screen (measured 27 Nov 2026). Under `cbr` the target, the minimum and the maximum are one rate, and x264 pads still screens with filler (`nal-hrd=cbr`). The same still screen then held 10.9 Mbps.
+
+**The H.264 level** is the lowest level from the preset's (4.0) that fits the picture size, the frame rate, the ceiling and the buffer. For example, a 9:16 social cut at 60 fps is level 4.2. A store that caps the level (App Store: 4.0) refuses settings that need more. Under `crf` it also caps the peak rate at the level's limit: 25 Mbps and a 31,250 kbit buffer at level 4.0.
+
+**Errors and warnings:** each store's rules are in `shared/product-presets.json` `encoding.stores`, with their source:
+
+- **Error:** the store requires it. The page will not render, `POST /api/product/render` answers 400 with `errors` naming each field, and the check after the render refuses the file.
+- **Warning:** the store recommends it. The render goes ahead, and the note is shown before and after.
+
+| Store | Default | Requires (error) | Recommends (warning) |
+|---|---|---|---|
+| App Store ([spec](https://developer.apple.com/help/app-store-connect/reference/app-preview-specifications)) | Constrained CBR 11 Mbps, 11 Mbit buffer, 30 fps, a keyframe every 2 s, AAC 256 kbps at 48 kHz | At most 30 fps; H.264 up to High profile level 4.0 (a ceiling of at most 25 Mbps, a buffer of at most 31,250 kbit); AAC at least 256 kbps; 44.1 or 48 kHz; 15-30 s; at most 500 MB | A target of 10-12 Mbps (Apple: "Target bit rate"); AAC at 256 kbps, not more |
+| Google Play ([YouTube upload settings](https://support.google.com/youtube/answer/1722171)) | VBR 10 Mbps, ceiling 12, floor 8, a keyframe every 0.5 s, AAC 384 kbps at 48 kHz | Nothing beyond the preset's size and length | 8 Mbps for 1080p at 24-30 fps, 12 Mbps at 48-60 fps; AAC 384 kbps; 48 kHz; a keyframe every 0.5 s (a closed GOP of half the frame rate) |
+| Social | VBR 10 Mbps (1:1: 8 Mbps), ceiling 12 (1:1: 10), a keyframe every 2 s, AAC 256 kbps at 48 kHz | Nothing beyond the ranges | Nothing |
+
+**After the render** the studio reads the file with ffprobe. It shows what it measured: the picture's and the sound's bit rates, the sample rate, channels, frame rate, profile, level and size. Each value is judged against the same rules, with a tolerance for the encoder's own rate control: 90 % for Apple's 256 kbps, 95 % for the other rates. It also warns when constrained CBR comes out more than 10 % under its target.
+
+### The sound
+
+- **`dither`** (the default) is a quiet bed, not digital silence. Silence encodes to about 2 kbps whatever the encoder is told, and Apple lists 256 kbps AAC. So the studio lays one-step TPDF dither (about -90 dBFS, below hearing), with the encoder's intensity and mid/side stereo off. The track measures about 253 kbps.
+- **`music`** mixes a track from the audio library (Reels › Audio, by its file name) over that bed, at `volume` (0-1, default 0.5), with a 0.4 s fade in and a 1.5 s fade out. The bed keeps the bit rate up through the track's quiet moments.
+  - A track whose licence is not CC0 or public domain gets a warning: make sure you may use it in a store listing.
+  - A kit can name a library track but cannot send one. A named track that is not in the library falls back to the quiet bed, with a warning.
 
 **App Store** ([app preview specifications](https://developer.apple.com/help/app-store-connect/reference/app-preview-specifications), read 27 Nov 2026):
 

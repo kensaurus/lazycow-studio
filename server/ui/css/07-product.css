@@ -141,3 +141,28 @@
     .pv-pregrid { grid-template-columns: minmax(0, 1fr); }
     .pv-stage { width: min(100%, calc(58vh * var(--ar, .5625))); }
   }
+
+  /* The Encoding panel (22-product.js pvEncHtml): the preset's store-compliant defaults, the main choices, an Advanced
+     disclosure, each field's own error (the store requires it) or warning (it recommends it), and what ffprobe measured. */
+  .pv-enc { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel2); }
+  .pv-enc > header { display: grid; gap: 1px; }
+  .pv-enc .pv-esum { font-variant-numeric: tabular-nums; }
+  .pv-egrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px 12px; }
+  .pv-ef { display: grid; gap: 2px; align-content: start; min-width: 0; font-size: var(--fs-sm); }
+  .pv-ef > span:first-child { color: var(--mute); }
+  .pv-ef input, .pv-ef select { width: 100%; min-width: 0; font-variant-numeric: tabular-nums; }
+  .pv-ef input[aria-invalid="true"], .pv-ef select[aria-invalid="true"] { border-color: var(--bad); outline-color: var(--bad); }
+  .pv-ef .pv-esrc { font-size: var(--fs-xs); color: var(--mute); }
+  .pv-ef .pv-esrc.render { color: var(--accent); }
+  .pv-emsg { font-size: var(--fs-xs); line-height: 1.35; }
+  .pv-emsg:empty { display: none; }
+  .pv-emsg .err { color: var(--bad); display: block; } .pv-emsg .warn { color: var(--warn); display: block; }
+  .pv-adv > summary { cursor: pointer; font-size: var(--fs-sm); padding: 2px 0; }
+  .pv-adv[open] > summary { margin-bottom: 6px; }
+  .pv-adv .meta { margin: 6px 0 0; }
+  .pv-eact { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .pv-elist { margin: 0; padding-left: 18px; font-size: var(--fs-sm); }
+  .pv-elist .err { color: var(--bad); } .pv-elist .warn { color: var(--warn); }
+  .pv-measured { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 10px; margin: 0; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+  .pv-measured dt { color: var(--mute); } .pv-measured dd { margin: 0; }
+  .pv-measured dd.bad { color: var(--bad); } .pv-measured dd.warn { color: var(--warn); }

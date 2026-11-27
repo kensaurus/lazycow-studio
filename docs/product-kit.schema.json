@@ -116,9 +116,45 @@
       "description": "One change per line, in plain words. A line with a surface captions that screen; the rest caption screens in order, and up to four left over make a What's new card (not in App Store previews)."
     },
     "expiresAt": { "type": "string", "format": "date-time", "description": "When the kit's signed links stop working." },
-    "source": { "type": "object", "description": "Who made the kit (ignored by the studio).", "properties": { "name": { "type": "string" }, "url": { "type": "string" } } }
+    "source": { "type": "object", "description": "Who made the kit (ignored by the studio).", "properties": { "name": { "type": "string" }, "url": { "type": "string" } } },
+    "encoding": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional encoding hints (docs/product-kit.md › Encoding): default for every preset, presets for one. The studio layers them over each preset's store-compliant defaults; this project's defaults and the render's own choice come after them. A hint that is out of range, unknown or against a rule the store requires is left out with a warning: a kit never blocks a render.",
+      "properties": {
+        "default": { "$ref": "#/$defs/encoding" },
+        "presets": { "type": "object", "propertyNames": { "enum": ["appstore-iphone", "appstore-iphone-55", "appstore-ipad", "play-promo", "social-9x16", "social-1x1"] }, "additionalProperties": { "$ref": "#/$defs/encoding" } }
+      }
+    }
   },
   "$defs": {
+    "encoding": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A product render's encoding (shared/product-presets.json encoding.fields; docs/openapi.yaml ProductEncoding). cbr = constrained CBR, one held rate; vbr = a target and a ceiling, with an optional floor; crf = a quality with an optional ceiling.",
+      "properties": {
+        "rateControl": { "enum": ["cbr", "vbr", "crf"] },
+        "videoKbps": { "type": "integer", "minimum": 300, "maximum": 80000 },
+        "minKbps": { "type": "integer", "minimum": 300, "maximum": 80000 },
+        "maxKbps": { "type": "integer", "minimum": 300, "maximum": 100000 },
+        "bufsizeKbits": { "type": "integer", "minimum": 300, "maximum": 200000 },
+        "crf": { "type": "number", "minimum": 0, "maximum": 51 },
+        "fps": { "enum": [24, 25, 30, 48, 50, 60] },
+        "keyframeSec": { "type": "number", "minimum": 0.25, "maximum": 10 },
+        "audioKbps": { "type": "integer", "minimum": 64, "maximum": 512 },
+        "audioRate": { "enum": [44100, 48000] },
+        "audioBed": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "enum": ["dither", "music"] },
+            "id": { "type": "string", "maxLength": 200, "description": "music: a music file's name in the studio's audio library (a kit cannot send a track)." },
+            "volume": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        }
+      }
+    },
     "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,39}$", "description": "Unique across screens and recordings." },
     "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
     "viewport": {
