@@ -105,7 +105,7 @@ export function saveUpload(req, res, { inbox, name: rawName, folder, onSaved, re
   const answer = reply || ((code, msg) => send(res, code, msg));
   const name = safeName(rawName || "");
   const ext = extname(name).toLowerCase();
-  if (ext === ".png" || ext === ".webp") return answer(415, "PNG and WebP are treated as screenshots and graphics, not footage. Save the photo as JPEG (or send the original from the camera), then add it.");
+  if (ext === ".png" || ext === ".webp") return answer(415, "PNG and WebP are treated as screenshots and graphics, not footage. Save the photo as JPEG (or send the original from the camera), then add it. App screenshots make product videos instead: Reels › Product videos.");
   if (!DROP_TYPES.includes(ext)) return answer(415, `Only photos and videos (${DROP_TYPES.join(" ")}).`);
   const size = Number(req.headers["content-length"] || 0);
   if (!size) return answer(411, "No file.");

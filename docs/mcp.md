@@ -28,6 +28,7 @@ If the studio is not running, every tool answers: "Lazycow Studio is not running
 | `make_reels` | One new reel per theme from the newest footage, queued to render | yes, on this computer |
 | `make_reel` | One new reel for one theme under a name you choose | yes, on this computer |
 | `remix_reel` | Re-render only a reel's sound | yes, on this computer |
+| `make_product_video` | An app's release kit (screens before and after, recordings, changelog, brand) made into an App Store preview, a Play promo or a social cut ([product-kit.md](product-kit.md)); returns the video id for `job_status` | yes, on this computer (downloads the kit; no AI; posts nothing) |
 | `job_status` | Progress of a render, remix, upload or post | no |
 | `cancel_job` | Stop a render or remix | yes, on this computer |
 | `list_posts` | The posting log | no |
@@ -43,7 +44,7 @@ If the studio is not running, every tool answers: "Lazycow Studio is not running
 | `research_page` | One page's summary, selling points, and what it says that the approved copy does not | no (reads the web) |
 | `research_events` | Upcoming events near the project's home place, with a post-by date | no (reads the web) |
 | `research_links` | Whether every link in planned or scheduled posts and the profile kit still loads | no (reads the web) |
-| `ai_estimate` | The price of AI tools on one reel (per tool, total) against the per-reel, total and daily limits | yes (spends nothing) |
+| `ai_estimate` | The price of AI tools on one reel (per tool, total) against the per-reel, total and daily limits; a product video id takes `review` only | yes (spends nothing) |
 | `ai_review` | A video model watches a rendered reel: hook and look scores, captions that do not match their shot, unapproved claims, 1-3 fixes | yes for the reel (suggestions only; one review costs about $0.01, cached per render) |
 | `ai_run` | Apply AI tools (sharpen, slowmo, living, foley, behind, music, voice) to a reel or an AI copy (`into`), then render; refuses over a limit | no (spends money inside the limits; never approves or posts) |
 | `perf_summary` | What worked and what did not across posted reels (look, recipe, layout, length, hook, posting time) in plain sentences with their uncertainty ([perf-api.md](perf-api.md)) | no |
@@ -51,6 +52,13 @@ If the studio is not running, every tool answers: "Lazycow Studio is not running
 | `perf_posts` | Every post of the last days with its latest numbers (views, likes, comments, shares, saves, % watched); the best of each network marked | no |
 | `youtube_channel` | Each connected YouTube channel: totals, Shorts / long / live summed, the newest uploads with views, engaged views, watch time and % watched | no |
 | `list_comments` | Comments from YouTube, Bluesky and the Facebook Page, sorted into questions (by topic), praise and spam, with the reply drafted from the owner's saved answers | no (replying is a person's action in the studio) |
+
+**Product videos need no AI and post nothing.** `make_product_video({ kitUrl, preset, name? })` downloads a release kit
+(https only; every file is checked and size-capped; nothing in it is run) and queues the render behind any reel. It
+returns an id such as `pv-quiet-notes-1-4-0--appstore-iphone`. Follow it with `job_status`; when it is done, the
+result holds `file` (the path on this computer), `url` (the studio's link), and the checked spec (`width`, `height`,
+`seconds`, `fps`, `profile`, `level`, `ok`, `problems`). `ai_estimate` with `tools: ["review"]` and `ai_review` take the
+same id, inside the AI limits. Presets, the kit's schema and the App Store and Google Play rules: [product-kit.md](product-kit.md).
 
 **Research is read-only.** The `research_*` tools return suggestions with their source URLs; their words are not
 approved copy and nothing is posted. They need a Firecrawl key in the studio (Settings › Keys & AI); answers are cached
@@ -175,6 +183,6 @@ Arguments are checked against each tool's schema first; a bad one never reaches 
 Tests (`npm test`):
 
 - `test/mcp.test.mjs`: the protocol, the refusals (no approve tool, unapproved reels, AI over the limits), no secrets.
-- `test/mcp-every-tool.test.mjs`: all 31 tools, each called once against a fake studio, through `server/mcp.mjs` and
+- `test/mcp-every-tool.test.mjs`: all 32 tools, each called once against a fake studio, through `server/mcp.mjs` and
   through the npm package (`npx lazycow mcp`); and every route the tools call is in `docs/openapi.yaml`.
 - `test/lazycow-package.test.mjs`: the npm package (files, attribution, client, installer).

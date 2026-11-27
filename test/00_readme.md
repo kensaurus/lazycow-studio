@@ -10,6 +10,7 @@
 | `helper.test.mjs`, `chrome-bridge.test.mjs` | The Chrome helper and the Chrome link |
 | `health.test.mjs` | The machine check and restart rules |
 | `mcp.test.mjs`, `perf-mcp.test.mjs` | The MCP server's tools and the results tools |
+| `product.test.mjs` | Product videos: one preset list (presets file, MCP enum, OpenAPI), each preset inside its store's spec, the `make_product_video` schema (`py/tests/test_product.py`: the kit check, safe download, timeline and file check) |
 | `profiles.test.mjs` | Profile kits |
 
 Run `npm test` (Node) and `cd py && PYTHONPATH=. <venv python> -m pytest -q` (Python). `npx tsc --noEmit -p .` has two known errors (`document.fonts.add` in `src/Story.tsx` and `src/brand.ts`).

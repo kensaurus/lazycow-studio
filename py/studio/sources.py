@@ -295,7 +295,8 @@ def discover(path: str) -> dict:
             outputs += 1
             continue
         if p.suffix.lower() not in KEEP:
-            # .png / .webp: website graphics and screenshots, shown but never auto-ingested.
+            # .png / .webp: website graphics and screenshots, shown but never auto-ingested. App screenshots go into a
+            # product video's release kit instead (studio.product), never into the footage library.
             graphics += 1
             exts[p.suffix.lower()] += 1
             continue

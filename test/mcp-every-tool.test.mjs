@@ -3,7 +3,7 @@
  * PURPOSE: Every MCP tool works end to end, and every studio route the MCP server calls is a real, documented route.
  * OVERVIEW: (1) A static contract: each "/api/..." path in server/mcp.mjs is a path in docs/openapi.yaml (which
  *           test/openapi-routes.test.mjs ties to server/review.mjs). (2) A fake studio answers every route the tools use;
- *           each of the 30 tools is called once with valid arguments, through the packaged copy too (npx lazycow mcp),
+ *           each of the 32 tools is called once with valid arguments, through the packaged copy too (npx lazycow mcp),
  *           and must answer without an error, with text, and through the routes it is documented to use.
  * USAGE: npm test
  */
@@ -78,6 +78,8 @@ function fakeStudio() {
     "GET /api/perf/channel": () => ({ channels: [{ channel: "Test", subscribers: 1, views: 10, byKind: { short: { videos: 1, views: 10, median: 10 } }, items: [] }] }),
     "GET /api/comments": () => ({ counts: { open: 1, questions: 1 }, networks: { youtube: { ok: true, count: 1 } }, items: [{ id: "youtube:1", network: "youtube", author: "A", text: "Is there Wi-Fi?", kind: "question", topics: ["work"], state: "open", draft: { text: "Fibre, 100 Mbps." } }] }),
     "POST /api/comments/check": () => ({ counts: { open: 1, questions: 1 }, networks: { youtube: { ok: true, count: 1 } }, items: [{ id: "youtube:1", network: "youtube", author: "A", text: "Is there Wi-Fi?", kind: "question", topics: ["work"], state: "open", draft: { text: "Fibre, 100 Mbps." } }] }),
+    "POST /api/product/kits": (q, b) => ({ name: b.name || "demo-1-0", app: { name: "Demo" }, release: { version: "1.0" }, screens: [{ id: "home" }], recordings: [], warnings: [] }),
+    "POST /api/product/render": (q, b) => ({ id: `pv-${b.name}--${b.preset}`, job: { ...job(`pv-${b.name}--${b.preset}`, "queued"), kind: "product" }, plan: { seconds: 20, scenes: 3, warnings: [] } }),
     "GET /api/perf/suggest": () => ({ ready: false, measured: 3, needed: 15, note: "Exploring.", suggestions: [{ mode: "explore", look: "punch", recipe: "r", style: "s", length: "short", hour: 19 }] }),
   };
   const server = createServer((req, res) => {
@@ -129,6 +131,7 @@ const CASES = {
   make_reels: [{ themes: ["fire"], since: "2026-10-01" }, "POST /api/autopilot"],
   make_reel: [{ theme: "fire", slug: "fire-1114" }, "POST /api/assemble"],
   remix_reel: [{ slug: "fire-1107" }, "POST /api/remix"],
+  make_product_video: [{ kitUrl: "https://kits.example/demo/manifest.json", preset: "social-9x16", name: "demo-1-0" }, "POST /api/product/render"],
   job_status: [{ slug: "fire-1107" }, "GET /api/job"],
   cancel_job: [{ slug: "fire-1107" }, "POST /api/job/cancel"],
   list_posts: [{ network: "bluesky" }, "GET /api/posts"],

@@ -7,7 +7,8 @@
  *          publish approved reels, switch projects and read the log; and research (ideas, a website
  *          check against the approved facts, a page read, local events, a link check), read-only; and AI assist
  *          (ai_estimate, ai_review, ai_run: priced first, inside the studio's caps, docs/ai-api.md); and performance
- *          (perf_summary, perf_suggest: read-only, docs/perf-api.md).
+ *          (perf_summary, perf_suggest: read-only, docs/perf-api.md); and product videos from an app's release kit
+ *          (make_product_video: an App Store preview, a Play promo or a social cut, docs/product-kit.md).
  * OVERVIEW: Zero dependencies. Speaks newline-delimited JSON-RPC 2.0 over stdio. It is a thin
  *           client of the studio's own HTTP API (server/review.mjs on 127.0.0.1:STUDIO_PORT,
  *           default 4317): every tool is one or a few HTTP calls, so the studio stays the one
@@ -72,6 +73,7 @@ const INSTRUCTIONS = [
   "ai_* tools spend money (fal.ai, OpenRouter) only inside the studio's AI limits: call ai_estimate first; ai_run refuses over a limit and never changes an approved reel (use into: a new slug); ai_review only suggests.",
   "perf_summary and perf_suggest are read-only: how posted reels did per network and what to try next; suggestions only steer how drafts are made.",
   "perf_posts, youtube_channel and list_comments are read-only: every post's numbers, every video on the YouTube channel, and the comments people left. Replying to a comment is a person's action in the studio (Results › Comments).",
+  "make_product_video turns an app's release kit (screenshots before and after, recordings, changelog, brand) into a store preview or social cut on this computer: it downloads the kit, queues the render and returns a video id for job_status; it uses no AI and posts nothing (ai_review can review the result, priced first).",
   `The studio must be running (npm run review in the studio folder) at ${BASE}.`,
 ].join(" ");
 
@@ -174,6 +176,10 @@ function research(action, args) {
   return studio("POST", `/api/research/${action}`, payload, { timeoutMs: 170_000 });
 }
 const AI_TOOLS = ["review", "sharpen", "slowmo", "living", "foley", "behind", "music", "voice"];
+/* Product video presets: the keys of shared/product-presets.json (inlined: this file is copied into the npm package, which
+   has no shared/; test/product.test.mjs keeps the two in step). */
+const PRODUCT_PRESETS = ["appstore-iphone", "appstore-iphone-55", "appstore-ipad", "play-promo", "social-9x16", "social-1x1"];
+const KIT_NAME = "^[a-z0-9]+(-[a-z0-9]+)*$";
 /** {slug, tools, options: {into}} for /api/ai/estimate and /api/ai/run. */
 const aiBody = (a) => ({ slug: a.slug, tools: a.tools, ...(a.into ? { options: { into: a.into } } : {}) });
 /** The research summary, then every source URL (each answer cites where it came from). */
@@ -336,9 +342,33 @@ const TOOLS = [
     },
   },
   {
+    name: "make_product_video",
+    title: "Make a product video from a release kit",
+    description: "Turn an app's release kit (a JSON manifest with screenshots before and after, short screen recordings, changelog lines, brand colours, font and logo: docs/product-kit.md) into a product video on this computer, and queue it to render. Presets: appstore-iphone (886x1920), appstore-iphone-55 (1080x1920), appstore-ipad (1200x1600): App Store app previews, 15-30 s, 30 fps, H.264, the app full screen with captions (App Review Guideline 2.3.4); play-promo (1920x1080, for the YouTube link Google Play takes); social-9x16 and social-1x1 (drawn devices, a before -> after reveal, an end card). The kit is downloaded first (https only, size-capped, every file checked; nothing in it is run); a kit of the same name and its earlier renders are replaced. Returns the video id: follow it with job_status slug=<id>; when it is done its result holds the file path and a /api/product/file link. Uses no AI and posts nothing; ai_estimate and ai_review take the id to review the result inside the AI limits.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        kitUrl: { type: "string", pattern: "^(https://|file:)", description: "The release kit's manifest: an https:// link (a release kit's signed link) or file:///path/to/kit/manifest.json on this computer." },
+        preset: { type: "string", enum: PRODUCT_PRESETS, description: `One of: ${PRODUCT_PRESETS.join(", ")}.` },
+        name: { type: "string", pattern: KIT_NAME, description: "A name for the kit, e.g. \"my-app-1-4\" (lowercase, digits, single dashes). Leave out for the app's name and version." },
+      },
+      required: ["kitUrl", "preset"],
+      additionalProperties: false,
+    },
+    annotations: { title: "Make a product video", readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+    async run(a) {
+      const kit = await studio("POST", "/api/product/kits", { kitUrl: a.kitUrl, ...(a.name ? { name: a.name } : {}) }, { timeoutMs: 16 * 60_000 });
+      const r = await studio("POST", "/api/product/render", { name: kit.name, preset: a.preset });
+      const warn = [...(kit.warnings || []), ...(r.plan?.warnings || [])];
+      return reply(`Kit ${kit.name} (${kit.app?.name || "app"}${kit.release?.version ? ` ${kit.release.version}` : ""}: ${(kit.screens || []).length} screens, ${(kit.recordings || []).length} recordings) is in. ` +
+        `Queued ${r.id}: ${r.plan?.seconds ?? "?"} s, ${r.plan?.scenes ?? "?"} scenes, ${jobLine(r.job)}. Follow it with job_status slug=${r.id}.${warn.length ? ` Notes: ${warn.join(" ")}` : ""}`,
+        { id: r.id, kit: kit.name, preset: a.preset, job: slimJob(r.job), plan: r.plan, warnings: warn });
+    },
+  },
+  {
     name: "job_status",
     title: "Job status",
-    description: "Progress of background jobs. With a slug: that job (a render or remix uses the reel slug; a post uses \"post-<slug>-<network>\"; a YouTube upload uses the reel slug; footage scans use \"footage\"). Without a slug: every render that is queued or running.",
+    description: "Progress of background jobs. With a slug: that job (a render or remix uses the reel slug; a product video uses its id \"pv-<kit>--<preset>\" and, when done, its result holds the file and its link; a post uses \"post-<slug>-<network>\"; a YouTube upload uses the reel slug; footage scans use \"footage\"). Without a slug: every render that is queued or running.",
     inputSchema: {
       type: "object",
       properties: { slug: { type: "string", pattern: SLUG, description: "Job key; leave out to list active renders." } },
@@ -349,7 +379,8 @@ const TOOLS = [
       if (a.slug) {
         const job = await studio("GET", `/api/job?slug=${encodeURIComponent(a.slug)}`);
         if (!job || job.status === "none") return reply(`No job for ${a.slug} since the studio last started. Finished jobs are in read_log.`);
-        return reply(`${a.slug}: ${jobLine(job)}.`, job);
+        const done = job.status === "done" && job.result?.file ? ` File: ${job.result.file} (${job.result.width}x${job.result.height}, ${job.result.seconds} s; in the studio: ${job.result.url}).` : "";
+        return reply(`${a.slug}: ${jobLine(job)}.${done}`, job);
       }
       const [health, o] = await Promise.all([studio("GET", "/api/health"), studio("GET", "/api/overview")]);
       const active = (o.reels || []).filter((r) => ["queued", "running"].includes(r.job?.status)).map((r) => ({ slug: r.slug, ...slimJob(r.job) }));
@@ -681,11 +712,12 @@ const TOOLS = [
       return reply(withSources(r), { broken: r.broken, unsure: r.unsure, checked: r.checked, cached: r.cached, cost: r.cost });
     },
   },
-  /* ---------- AI assist (docs/ai-api.md): priced first, inside the studio's caps, never applied to an approved reel ---------- */
+  /* ---------- AI assist (docs/ai-api.md): priced first, inside the studio's caps, never applied to an approved reel.
+     A product video's id takes the reviewer (ai_estimate tools ["review"], ai_review). ---------- */
   {
     name: "ai_estimate",
     title: "AI: price the tools for a reel",
-    description: "Price AI tools on one reel before anything is spent: review (a video model watches the reel and suggests fixes), sharpen (soft or low-res clips), slowmo (smooth slow motion), living (a real still gets a slow camera move), foley (natural sound made from the picture for shots that have none), behind (the headline sits behind the opening shot's subject), music (an instrumental bed made for the reel), voice (a Japanese AI voice reads the approved words). Returns the cost per tool, the total, the per-reel / total / daily limits and whether it fits. Spends nothing.",
+    description: "Price AI tools on one reel before anything is spent: review (a video model watches the reel and suggests fixes), sharpen (soft or low-res clips), slowmo (smooth slow motion), living (a real still gets a slow camera move), foley (natural sound made from the picture for shots that have none), behind (the headline sits behind the opening shot's subject), music (an instrumental bed made for the reel), voice (a Japanese AI voice reads the approved words). A product video id (pv-<kit>--<preset>, from make_product_video) takes review only. Returns the cost per tool, the total, the per-reel / total / daily limits and whether it fits. Spends nothing.",
     inputSchema: {
       type: "object",
       properties: {
@@ -710,7 +742,7 @@ const TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        slug: { type: "string", pattern: SLUG, description: "A rendered reel." },
+        slug: { type: "string", pattern: SLUG, description: "A rendered reel, or a rendered product video's id (pv-<kit>--<preset>)." },
         fresh: { type: "boolean", default: false, description: "Review again even if this render was already reviewed (costs again)." },
         last_only: { type: "boolean", default: false, description: "Only return the last stored review; never spends." },
       },

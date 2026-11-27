@@ -167,9 +167,16 @@ const PROXIES = join(DATA, "proxies", "lib");
 // The drafts folder too: a project other than the ranch keeps them in DATA/drafts (py/studio/reels.py DRAFTS), and the
 // post panel's video there answered 403, a black player (the ranch's drafts sit under MEDIA).
 const ALLOWED = [RENDERS, join(DATA, "review"), join(DATA, "library"), join(DATA, "keyframes"), join(DATA, "thumbs"), join(DATA, "audio"), PROXIES, join(ROOT, "public", "mezz"), MEDIA,
-  pick("STUDIO_DRAFTS", join(DATA, "drafts")), join(DATA, "versions"), join(DATA, "stills")]
+  pick("STUDIO_DRAFTS", join(DATA, "drafts")), join(DATA, "versions"), join(DATA, "stills"), join(DATA, "product")]
   .map(pathKey);  // folded where the file system ignores case (server/trust.mjs)
 const HOUSE = ["view", "fire", "field", "winter"];
+/* Product videos (py/studio/product.py, docs/product-kit.md): a kit's files and renders live in DATA/product/<name>; the
+   presets (size, fps, length) in shared/product-presets.json. A video id is pv-<kit name>--<preset>, a slug and a job key. */
+const PRODUCT = join(DATA, "product");
+const PV_PRESETS = JSON.parse(readFileSync(join(ROOT, "shared", "product-presets.json"), "utf8")).presets;
+const PV_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const PV_ID = /^pv-([a-z0-9]+(?:-[a-z0-9]+)*)--([a-z0-9]+(?:-[a-z0-9]+)*)$/;
+const pvParse = (id) => { const m = PV_ID.exec(String(id || "")); return m && PV_PRESETS[m[2]] && m[1].length <= 40 ? { name: m[1], preset: m[2] } : null; };
 const TYPES = { ".mp4": "video/mp4", ".mov": "video/quicktime", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".m4a": "audio/mp4",
   ".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg", ".oga": "audio/ogg", ".flac": "audio/flac", ".json": "application/json" };
 const ENV = { ...process.env, PYTHONPATH: join(ROOT, "py"), PYTHONIOENCODING: "utf-8", PYTHONUNBUFFERED: "1" };
@@ -695,6 +702,32 @@ function pyRun(module, action, input, limit, what) {
   const clear = () => perfRuns.delete(key);
   run.then(clear, clear);
   return run;
+}
+/* Product videos (py/studio/product.py): one short Python call per request, the request JSON on stdin and `RESULT {...}`
+   on stdout, like research. A kit's download can take minutes (its recordings are re-encoded), so fetch waits longest. */
+const PV_TIMEOUT = { fetch: 15 * 60_000, review: 320_000 };
+function pvRun(action, input = {}) {
+  const limit = PV_TIMEOUT[action] || 60_000;
+  return new Promise((ok, fail) => {
+    const child = spawn(PY, ["-m", "studio.product", action], { cwd: ROOT, env: ENV, windowsHide: true });
+    let out = "", err = "", late = false;
+    const timer = setTimeout(() => { late = true; killTree(child); }, limit);
+    child.stdout.on("data", (c) => { out += c; });
+    child.stderr.on("data", (c) => { err += c; });
+    child.stdin.on("error", () => {});
+    child.on("error", (e) => { clearTimeout(timer); fail(Object.assign(new Error(`Product videos could not start Python: ${e.message}`), { status: 500 })); });
+    child.on("exit", (code) => {
+      clearTimeout(timer);
+      if (late) return fail(Object.assign(new Error(`The product video step "${action}" took longer than ${Math.round(limit / 60_000)} minutes and was stopped. Try again.`), { status: 504, code: "timeout" }));
+      const line = out.split(/\r?\n/).reverse().find((l) => l.startsWith("RESULT "));
+      let r = null;
+      try { r = line ? JSON.parse(line.slice(7)) : null; } catch { r = null; }
+      if (!r) return fail(Object.assign(new Error(lastError(err) || `studio.product ${action} failed (exit ${code})`), { status: 500 }));
+      if (!r.ok) return fail(Object.assign(new Error(r.error), { status: r.status || 500, code: r.code || "error" }));
+      ok(r.data);
+    });
+    child.stdin.end(JSON.stringify(input));
+  });
 }
 /** The fields each performance action takes (anything else is dropped before Python sees it; Python checks values). */
 function perfInput(action, b) {
@@ -1251,7 +1284,7 @@ const QUEUE_FILE = join(RENDERS, "queue.json");
 let queueFrozen = false;
 function saveQueue() {
   if (queueFrozen) return;
-  const list = [...(running && !running.cancelled ? [running] : []), ...queue].filter((j) => ["build", "remix"].includes(j.kind)).map((j) => ({ slug: j.slug, kind: j.kind }));
+  const list = [...(running && !running.cancelled ? [running] : []), ...queue].filter((j) => ["build", "remix", "product"].includes(j.kind)).map((j) => ({ slug: j.slug, kind: j.kind }));
   try { mkdirSync(RENDERS, { recursive: true }); writeFileSync(QUEUE_FILE, JSON.stringify(list)); } catch { /* resuming is a convenience */ }
 }
 function restoreQueue() {
@@ -1260,7 +1293,7 @@ function restoreQueue() {
   try { list = JSON.parse(readFileSync(QUEUE_FILE, "utf8")); } catch { return; }
   let n = 0;
   for (const e of Array.isArray(list) ? list : []) {
-    try { if (isSlug(e.slug) && ["build", "remix"].includes(e.kind)) { startRender(e.slug, e.kind); n++; } } catch { /* a reel that cannot render now is skipped */ }
+    try { if (isSlug(e.slug) && ["build", "remix", "product"].includes(e.kind) && (e.kind !== "product" || pvParse(e.slug))) { startRender(e.slug, e.kind); n++; } } catch { /* a reel that cannot render now is skipped */ }
   }
   if (n) console.log(`resumed ${n} render${n === 1 ? "" : "s"} from before the restart`);
 }
@@ -1291,7 +1324,7 @@ function cancelJob(slug) {
     killTree(job.child);
     return job;
   }
-  if (!["build", "remix"].includes(job.kind)) { const err = new Error(job.kind + " cannot be stopped"); err.status = 409; throw err; }
+  if (!["build", "remix", "product"].includes(job.kind)) { const err = new Error(job.kind + " cannot be stopped"); err.status = 409; throw err; }
   if (job.status === "queued") {
     queue.splice(queue.indexOf(job), 1);
     saveQueue();
@@ -1315,7 +1348,7 @@ function startRender(slug, kind = "build") {
   // A job being stopped is not busy: a new render asked for meanwhile queues behind it instead of vanishing.
   if (prev && !prev.cancelled && (prev.status === "queued" || prev.status === "running") && prev.kind === kind) return prev;
   if (prev?.status === "queued") queue.splice(queue.indexOf(prev), 1);
-  const job = { slug, kind, status: "queued", queued: Date.now(), lines: [], stage: 0, stages: 7, done: 0, of: 0, label: kind === "remix" ? "waiting to mix sound" : "waiting its turn" };
+  const job = { slug, kind, status: "queued", queued: Date.now(), lines: [], stage: 0, stages: kind === "product" ? 4 : 7, done: 0, of: 0, label: kind === "remix" ? "waiting to mix sound" : "waiting its turn" };
   jobs.set(slug, job);
   queue.push(job);
   pump();
@@ -1328,7 +1361,8 @@ function pump() {
   running = job;
   saveQueue();
   mkdirSync(RENDERS, { recursive: true });
-  const args = job.kind === "remix" ? ["reels", "--remix", job.slug] : ["reels", "--build", job.slug];
+  // A product video (py/studio/product.py) waits in the same line: one render at a time, whatever it is.
+  const args = job.kind === "remix" ? ["reels", "--remix", job.slug] : job.kind === "product" ? ["product", "build", job.slug] : ["reels", "--build", job.slug];
   const child = spawn(PY, ["-m", "studio", ...args], { cwd: ROOT, env: ENV, detached: process.platform !== "win32", windowsHide: true });
   Object.defineProperty(job, "child", { value: child, enumerable: false, configurable: true });
   Object.assign(job, { status: "running", started: Date.now(), label: job.kind === "remix" ? "mixing sound" : "starting" });
@@ -1341,6 +1375,7 @@ function pump() {
       if (stage) { job.stage = +stage[1]; job.stages = +stage[2]; job.done = 0; job.of = 0; job.label = stage[3]; (job.stageAt ||= {})[job.stage] ??= Date.now(); moved = true; continue; }
       const step = /^PROGRESS (\d+)\/(\d+) (.*)$/.exec(line);
       if (step) { job.done = +step[1]; job.of = +step[2]; job.label = step[3]; moved = true; continue; }
+      if (line.startsWith("RESULT ")) continue;  // a product video's result: read whole from its stdout at the end
       if (line && !/Matplotlib|colour-science|warn\(|setPreferableTarget|graph engine|HF Hub|QuickGELU|installation-guide/.test(line)) job.lines.push(line);
     }
     job.lines = job.lines.slice(-40);
@@ -1348,6 +1383,9 @@ function pump() {
   };
   child.stdout.on("data", push);
   child.stderr.on("data", push);
+  // A product video ends with `RESULT {...}` (its file and checked spec); a chunk may cut that line, so keep the tail.
+  let out = "";
+  if (job.kind === "product") child.stdout.on("data", (c) => { out = (out + c).slice(-256 * 1024); });
   // Exit, or a spawn error with no exit: either way the job ends once and the queue moves on.
   let finished = false;
   const finish = (code) => {
@@ -1355,7 +1393,16 @@ function pump() {
     finished = true;
     job.status = job.cancelled ? "cancelled" : code === 0 ? "done" : "error"; job.ended = Date.now();
     if (job.cancelled) job.label = "stopped: some files may be half-made, render again before approving";
-    else if (code === 0) { job.stage = job.stages; job.done = 1; job.of = 1; job.label = "ready to review"; }
+    else if (code === 0) { job.stage = job.stages; job.done = 1; job.of = 1; job.label = job.kind === "product" ? "ready: the file meets the preset's spec" : "ready to review"; }
+    if (job.kind === "product") {
+      const line = out.split(/\r?\n/).reverse().find((l) => l.startsWith("RESULT "));
+      try { job.result = line ? JSON.parse(line.slice(7)) : null; } catch { job.result = null; }
+    }
+    if (job.kind === "product" && job.result?.file) {
+      // The finished file as a path and a link (job_status shows both); a second render of the same id replaces it.
+      const id = pvParse(job.slug);
+      if (id) job.result = { ...job.result, url: `/api/product/file?name=${id.name}&kind=video&preset=${id.preset}` };
+    }
     try { writeFileSync(join(RENDERS, `job-${job.slug}.log`), job.lines.join("\n")); } catch { /* the log is a convenience */ }
     recordJob(job);
     if (jobs.get(job.slug) === job) broadcast("job", job);  // a newer job for this reel speaks for it now
@@ -1846,7 +1893,7 @@ const history = loadHistory();
 /* The Problems list: problems.json beside the project's data, checked every 5 minutes and after each job. */
 // A look-only studio (STUDIO_QUIET) starts from the running studio's list but keeps its own copy, never rewriting it.
 const PROBLEMS = problemStore(join(DATA, "problems.json"), QUIET ? { saveTo: join(DATA, "tmp", `problems-${PORT}.json`) } : {});
-const PROBLEM_KINDS = { build: "make", remix: "remix", versions: "re-cut", vlog: "long video", vlogup: "upload", publish: "post", upload: "upload" };
+const PROBLEM_KINDS = { build: "make", remix: "remix", versions: "re-cut", vlog: "long video", vlogup: "upload", publish: "post", upload: "upload", product: "product video" };
 /* What a job did, in words ("helper-perf" is "Reading view numbers"): [English, Japanese], or null for a reel's own name. */
 function jobWords(slug = "") {
   if (slug === "helper-perf") return ["Reading view numbers", "再生数の読み取り"];
@@ -1881,6 +1928,7 @@ function noteJobProblem(job) {
   // A reel's make or remix: the fix is on the reel (Make again), not in the log (17 Nov: 11 cards said "See the log").
   const reelJob = ["build", "remix"].includes(job.kind) && SLUG_RX.test(job.slug || "");
   const fix = verUse ? ["Versions", "バージョン", "#/versions"] : /^vlog/.test(job.slug || "") ? ["Long videos", "長い動画", "#/videos"]
+    : job.kind === "product" ? ["Product videos", "プロダクト動画", "#/product"]
     : reelJob ? ["Open the reel", "リールを開く", `#/reel/${job.slug}`] : ["See the log", "ログを見る", "#/log/activity"];
   const last = String((job.lines || []).slice(-1)[0] || job.label || "");
   const cause = jobCause(job.lines || [], last);
@@ -2009,7 +2057,7 @@ function jobView(job) {
   return { slug: job.slug, kind: job.kind, status: job.status, position: pos, stage: job.stage, stages: job.stages,
     done: job.done || 0, of: job.of || 0, pct: jobPct(job), label: job.label, result: job.result || null,
     lines: job.lines.slice(-6), seconds: Math.round(((job.ended || Date.now()) - from) / 1000), eta: jobEta(job),
-    cancellable: ["build", "remix"].includes(job.kind) && ["queued", "running"].includes(job.status),
+    cancellable: ["build", "remix", "product"].includes(job.kind) && ["queued", "running"].includes(job.status),
     ...(job.stageAt && from ? { stageAt: Object.fromEntries(Object.entries(job.stageAt).map(([k, t]) => [k, Math.max(0, Math.round((t - from) / 1000))])) } : {}),
     ...(["build", "remix"].includes(job.kind) ? { typical: medianSeconds(history, job.kind), stageTypical: stageTypical(job.kind) } : {}),
     ...(job.causeOf ? { cause: job.causeOf } : {}) };
@@ -2796,6 +2844,79 @@ const server = createServer(async (req, res) => {
       if (vlogBusy()) return send(res, 409, { error: "A long video is being planned or built; wait for it to finish." });
       return send(res, 200, jobView(startTask(`vlog-${b.n}`, "vlog", ["vlog", "build", String(b.n)])));
     }
+    /* ---------- product videos (py/studio/product.py, docs/product-kit.md): an app's release kit (screens before and
+       after, recordings, changelog lines, brand) made into an App Store preview, a Play promo or a social cut. The render
+       waits in the render queue like a reel and needs no AI; nothing here posts. ---------- */
+    if (req.method === "GET" && url.pathname === "/api/product") {
+      try {
+        const r = await pvRun("kits");
+        const now = Date.now();
+        const list = [...jobs.values()].filter((j) => j.kind === "product" && (["queued", "running"].includes(j.status) || (j.ended && now - j.ended < 6 * 3600e3)));
+        return send(res, 200, { presets: PV_PRESETS, kits: r.kits, jobs: list.map(jobView) });
+      } catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
+    if (req.method === "GET" && url.pathname === "/api/product/kit") {
+      const name = url.searchParams.get("name") || "";
+      if (!PV_NAME.test(name) || name.length > 40) return send(res, 400, { error: "name: a kit's name from GET /api/product." });
+      try {
+        const kit = await pvRun("kit", { name });
+        const jobsOf = Object.fromEntries(Object.keys(PV_PRESETS).map((p) => [p, jobs.get(`pv-${name}--${p}`)]).filter(([, j]) => j).map(([p, j]) => [p, jobView(j)]));
+        return send(res, 200, { ...kit, jobs: jobsOf });
+      } catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
+    if (req.method === "GET" && url.pathname === "/api/product/plan") {
+      const name = url.searchParams.get("name") || "", preset = url.searchParams.get("preset") || "";
+      if (!PV_NAME.test(name) || name.length > 40 || !PV_PRESETS[preset]) return send(res, 400, { error: `name and preset (${Object.keys(PV_PRESETS).join(", ")}).` });
+      try { return send(res, 200, await pvRun("plan", { name, preset })); }
+      catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
+    if (req.method === "POST" && url.pathname === "/api/product/kits") {
+      const b = await body(req);
+      const input = {};
+      if (typeof b.kitUrl === "string" && b.kitUrl.trim()) {
+        const u = b.kitUrl.trim();
+        if (u.length > 4000 || !/^(https:\/\/|file:)/i.test(u)) return send(res, 400, { error: "kitUrl: the release kit's https:// link (or a file: link to a kit on this computer).", code: "bad_input" });
+        input.kitUrl = u;
+      } else if (typeof b.kitPath === "string" && b.kitPath.trim()) {
+        if (b.kitPath.length > 1000) return send(res, 400, { error: "kitPath: a folder on this computer.", code: "bad_input" });
+        input.kitPath = b.kitPath.trim();
+      } else return send(res, 400, { error: "kitUrl: the release kit's https:// link (or kitPath: a kit folder on this computer).", code: "bad_input" });
+      if (b.name !== undefined && b.name !== null && b.name !== "") {
+        if (typeof b.name !== "string" || !PV_NAME.test(b.name) || b.name.length > 40) return send(res, 400, { error: "name: lowercase letters, digits and single dashes (at most 40).", code: "bad_input" });
+        input.name = b.name;
+      }
+      // A kit being rendered is never replaced under its render.
+      input.busy = [...new Set([...jobs.values()].filter((j) => j.kind === "product" && ["queued", "running"].includes(j.status)).map((j) => pvParse(j.slug)?.name).filter(Boolean))];
+      try { return send(res, 200, await pvRun("fetch", input)); }
+      catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
+    if (req.method === "POST" && url.pathname === "/api/product/render") {
+      const b = await body(req);
+      if (typeof b.name !== "string" || !PV_NAME.test(b.name) || b.name.length > 40) return send(res, 400, { error: "name: a kit's name from GET /api/product.", code: "bad_input" });
+      if (typeof b.preset !== "string" || !PV_PRESETS[b.preset]) return send(res, 400, { error: `preset: one of ${Object.keys(PV_PRESETS).join(", ")}.`, code: "bad_input" });
+      try {
+        // The plan first: a kit that cannot make this preset (no screen of the right shape, too short) says why now.
+        const plan = await pvRun("plan", { name: b.name, preset: b.preset });
+        diskGuard();
+        const id = `pv-${b.name}--${b.preset}`;
+        const job = startRender(id, "product");
+        return send(res, 200, { id, job: jobView(job), plan: { seconds: plan.seconds, scenes: plan.scenes.length, warnings: plan.warnings } });
+      } catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
+    }
+    if (req.method === "GET" && url.pathname === "/api/product/file") {
+      const name = url.searchParams.get("name") || "", kind = url.searchParams.get("kind") || "";
+      if (!PV_NAME.test(name) || name.length > 40) return send(res, 400, "name", "text/plain");
+      if (kind === "video") {
+        const preset = url.searchParams.get("preset") || "";
+        if (!PV_PRESETS[preset]) return send(res, 400, "preset", "text/plain");
+        if (url.searchParams.get("download") === "1") res.setHeader("content-disposition", `attachment; filename="${name}-${preset}.mp4"`);
+        return sendFile(req, res, join(PRODUCT, name, "renders", `${preset}.mp4`));
+      }
+      // A kit's own files, by the names py/studio/product.py gives them (never a name from the kit).
+      const f = url.searchParams.get("file") || "";
+      if (kind !== "file" || !/^(s-[a-z0-9-]{1,40}-(before|after)(\.thumb\.jpg|\.png)|r-[a-z0-9-]{1,40}(\.thumb\.jpg|\.mp4)|logo\.png)$/.test(f)) return send(res, 400, "kind and file", "text/plain");
+      return sendFile(req, res, join(PRODUCT, name, "files", f));
+    }
     if (req.method === "GET" && url.pathname === "/api/vlogs/file") {
       const n = Number(url.searchParams.get("n")), kind = url.searchParams.get("kind");
       if (!Number.isInteger(n) || n < 1 || n > VLOG_MAX || !["master", "thumb", "srt"].includes(kind)) return send(res, 400, "n and kind", "text/plain");
@@ -3439,12 +3560,18 @@ const server = createServer(async (req, res) => {
       catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
     }
     if (req.method === "POST" && url.pathname === "/api/ai/estimate") {
-      try { return send(res, 200, await ai("estimate", aiInput(await body(req)))); }
+      try {
+        const b = await body(req);
+        // A product video (pv-<kit>--<preset>): only the reviewer, priced the same way, inside the same limits.
+        if (pvParse(b.slug)) return send(res, 200, await pvRun("estimate", { slug: b.slug, tools: aiInput(b).tools }));
+        return send(res, 200, await ai("estimate", aiInput(b)));
+      }
       catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
     }
     if (req.method === "POST" && url.pathname === "/api/ai/run") {
       try {
         const b = await body(req);
+        if (pvParse(b.slug)) return send(res, 400, { error: "A product video takes only the reviewer (ai_review); its render uses no AI.", code: "bad_input" });
         const input = aiInput(b);
         // Priced and checked against the caps here, so a refusal comes back at once instead of as a failed job.
         const est = await ai("estimate", input);
@@ -3454,7 +3581,11 @@ const server = createServer(async (req, res) => {
       } catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
     }
     if (req.method === "GET" && url.pathname === "/api/ai/review") {
-      try { return send(res, 200, await ai("last-review", aiInput({ slug: url.searchParams.get("slug") }, { needTools: false }))); }
+      try {
+        const slug = url.searchParams.get("slug");
+        if (pvParse(slug)) return send(res, 200, await pvRun("last-review", { slug }));
+        return send(res, 200, await ai("last-review", aiInput({ slug }, { needTools: false })));
+      }
       catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
     }
     if (req.method === "POST" && url.pathname === "/api/ai/review") {
@@ -3462,6 +3593,7 @@ const server = createServer(async (req, res) => {
         const b = await body(req);
         const input = aiInput(b, { needTools: false });
         if (b.fresh === true) input.fresh = true;
+        if (pvParse(b.slug)) return send(res, 200, await pvRun("review", input));
         return send(res, 200, await ai("review", input));
       } catch (e) { return send(res, e.status || 500, { error: e.message, code: e.code || "error" }); }
     }
