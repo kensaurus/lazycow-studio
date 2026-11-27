@@ -179,6 +179,37 @@ const AI_TOOLS = ["review", "sharpen", "slowmo", "living", "foley", "behind", "m
    has no shared/; test/product.test.mjs keeps the two in step). */
 const PRODUCT_PRESETS = ["appstore-iphone", "appstore-iphone-55", "appstore-ipad", "play-promo", "social-9x16", "social-1x1"];
 const KIT_NAME = "^[a-z0-9]+(-[a-z0-9]+)*$";
+/* A product render's encoding (shared/product-presets.json encoding.fields, inlined for the same reason; test/product.test.mjs
+   keeps the ranges in step). The studio checks each value again, and the preset's store rules: a rule the store requires
+   refuses the render with the field named, one it recommends comes back as a note. */
+const PRODUCT_ENCODING = {
+  type: "object",
+  description: "Optional encoding for this render; every field is optional and anything left out keeps the preset's store-compliant default (the App Store presets: constrained CBR at 11 Mbps, 30 fps, AAC 256 kbps at 48 kHz). rateControl cbr = one held rate (target = min = max, still screens padded so the rate never drops); vbr = a target with a ceiling and an optional floor (minKbps: a file under it is encoded again as CBR at the floor); crf = a quality (0-51, lower is better) with an optional ceiling.",
+  properties: {
+    rateControl: { type: "string", enum: ["cbr", "vbr", "crf"], description: "cbr, vbr or crf." },
+    videoKbps: { type: "integer", minimum: 300, maximum: 80000, description: "Target video bit rate in kbps (cbr, vbr)." },
+    minKbps: { type: "integer", minimum: 300, maximum: 80000, description: "Floor in kbps (vbr, crf); under cbr it is the target." },
+    maxKbps: { type: "integer", minimum: 300, maximum: 100000, description: "Ceiling in kbps (vbr, crf); under cbr it is the target. Inside the H.264 level (App Store: level 4.0, at most 25000)." },
+    bufsizeKbits: { type: "integer", minimum: 300, maximum: 200000, description: "VBV buffer in kbit (App Store: at most 31250)." },
+    crf: { type: "number", minimum: 0, maximum: 51, description: "CRF quality (crf only)." },
+    fps: { type: "integer", enum: [24, 25, 30, 48, 50, 60], description: "Frame rate (App Store: at most 30)." },
+    keyframeSec: { type: "number", minimum: 0.25, maximum: 10, description: "Seconds between keyframes (Google Play/YouTube recommends 0.5)." },
+    audioKbps: { type: "integer", minimum: 64, maximum: 512, description: "AAC bit rate in kbps (App Store: 256; YouTube recommends 384)." },
+    audioRate: { type: "integer", enum: [44100, 48000], description: "Sample rate in Hz." },
+    audioBed: {
+      type: "object",
+      description: "The sound under the picture: {kind: \"dither\"} (a quiet bed, the default) or {kind: \"music\", id: \"<a music file in the studio's audio library>\", volume: 0-1}.",
+      properties: {
+        kind: { type: "string", enum: ["dither", "music"] },
+        id: { type: "string", maxLength: 200, description: "A music file's name in the audio library (Reels > Audio)." },
+        volume: { type: "number", minimum: 0, maximum: 1 },
+      },
+      required: ["kind"],
+      additionalProperties: false,
+    },
+  },
+  additionalProperties: false,
+};
 /** {slug, tools, options: {into}} for /api/ai/estimate and /api/ai/run. */
 const aiBody = (a) => ({ slug: a.slug, tools: a.tools, ...(a.into ? { options: { into: a.into } } : {}) });
 /** The research summary, then every source URL (each answer cites where it came from). */
@@ -350,6 +381,7 @@ const TOOLS = [
         kitUrl: { type: "string", pattern: "^(https://|file:)", description: "The release kit's manifest: an https:// link (a release kit's signed link) or file:///path/to/kit/manifest.json on this computer." },
         preset: { type: "string", enum: PRODUCT_PRESETS, description: `One of: ${PRODUCT_PRESETS.join(", ")}.` },
         name: { type: "string", pattern: KIT_NAME, description: "A name for the kit, e.g. \"my-app-1-4\" (lowercase, digits, single dashes). Leave out for the app's name and version." },
+        encoding: PRODUCT_ENCODING,
       },
       required: ["kitUrl", "preset"],
       additionalProperties: false,
@@ -357,11 +389,13 @@ const TOOLS = [
     annotations: { title: "Make a product video", readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     async run(a) {
       const kit = await studio("POST", "/api/product/kits", { kitUrl: a.kitUrl, ...(a.name ? { name: a.name } : {}) }, { timeoutMs: 16 * 60_000 });
-      const r = await studio("POST", "/api/product/render", { name: kit.name, preset: a.preset });
-      const warn = [...(kit.warnings || []), ...(r.plan?.warnings || [])];
+      const r = await studio("POST", "/api/product/render", { name: kit.name, preset: a.preset, ...(a.encoding ? { encoding: a.encoding } : {}) });
+      const warn = [...(kit.warnings || []), ...(r.plan?.warnings || []), ...(r.encoding?.warnings || []).map((w) => w.text)];
+      const s = r.encoding?.settings;
+      const enc = s ? ` Encoding: ${s.rateControl === "crf" ? `CRF ${s.crf}` : `${s.rateControl.toUpperCase()} ${s.videoKbps} kbps`}, ${s.fps} fps, AAC ${s.audioKbps} kbps at ${s.audioRate} Hz, H.264 level ${s.level}.` : "";
       return reply(`Kit ${kit.name} (${kit.app?.name || "app"}${kit.release?.version ? ` ${kit.release.version}` : ""}: ${(kit.screens || []).length} screens, ${(kit.recordings || []).length} recordings) is in. ` +
-        `Queued ${r.id}: ${r.plan?.seconds ?? "?"} s, ${r.plan?.scenes ?? "?"} scenes, ${jobLine(r.job)}. Follow it with job_status slug=${r.id}.${warn.length ? ` Notes: ${warn.join(" ")}` : ""}`,
-        { id: r.id, kit: kit.name, preset: a.preset, job: slimJob(r.job), plan: r.plan, warnings: warn });
+        `Queued ${r.id}: ${r.plan?.seconds ?? "?"} s, ${r.plan?.scenes ?? "?"} scenes, ${jobLine(r.job)}.${enc} Follow it with job_status slug=${r.id}; its result holds the measured bit rates.${warn.length ? ` Notes: ${warn.join(" ")}` : ""}`,
+        { id: r.id, kit: kit.name, preset: a.preset, job: slimJob(r.job), plan: r.plan, encoding: s || null, warnings: warn });
     },
   },
   {
@@ -876,14 +910,16 @@ const TOOLS = [
 const BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
 
 /* ---------- argument check (the subset of JSON Schema the tools above use) ---------- */
-function checkArgs(schema, args) {
+function checkArgs(schema, args, at = "") {
   if (args === undefined || args === null) args = {};
-  if (typeof args !== "object" || Array.isArray(args)) return "arguments must be an object";
+  if (typeof args !== "object" || Array.isArray(args)) return at ? `${at.slice(0, -1)} must be an object` : "arguments must be an object";
   const props = schema.properties || {};
-  for (const k of schema.required || []) if (args[k] === undefined) return `${k} is required`;
-  for (const [k, v] of Object.entries(args)) {
-    const p = props[k];
+  for (const k of schema.required || []) if (args[k] === undefined) return `${at}${k} is required`;
+  for (const [key, v] of Object.entries(args)) {
+    const p = props[key], k = `${at}${key}`;
     if (!p) { if (schema.additionalProperties === false) return `unknown argument ${k}; allowed: ${Object.keys(props).join(", ") || "none"}`; continue; }
+    if (p.type === "object" && v !== undefined && v !== null) { const bad = checkArgs(p, v, `${k}.`); if (bad) return bad; continue; }
+    if (p.maxLength !== undefined && typeof v === "string" && v.length > p.maxLength) return `${k} must be at most ${p.maxLength} characters`;
     if (v === undefined || v === null) continue;
     const t = p.type;
     if (t === "string" && typeof v !== "string") return `${k} must be a string`;

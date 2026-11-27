@@ -1,46 +1,91 @@
 {
   "_documentation": {
     "FILE": "shared/product-presets.json",
-    "PURPOSE": "Every product-video preset (docs/product-kit.md): size, frame rate, length window and how screens are shown. Read by the ProductPreview composition (src/Root.tsx), the Python engine (py/studio/product.py: spec checks before and after a render) and the studio page.",
-    "SOURCES": "App Store: developer.apple.com/help/app-store-connect/reference/app-preview-specifications (read 27 Nov 2026): 15-30 s, H.264 up to High Profile level 4.0 at 10-12 Mbps, at most 30 fps, stereo AAC 256 kbps at 44.1 or 48 kHz, at most 500 MB; accepted portrait sizes 886x1920 (every iPhone with Face ID or Dynamic Island), 1080x1920 (iPhone with Home button, 5.5\"), 1200x1600 (iPad 13\" and 11\"). App Review Guideline 2.3.4: previews may only use video screen captures of the app itself, with narration and text overlays allowed, so App Store presets show the app full screen with no device frame and no 'before' screen. Google Play: the promo video is a YouTube link (Play Console > Main store listing > Video), landscape recommended.",
-    "NOTES": "frame: none = the app fills the picture (App Store); device = phone, tablet or browser drawn around each screen. compare: true = a before -> after reveal where a screen has both. Sizes are even (H.264 4:2:0). Every size here fits H.264 level 4.0 at 30 fps (at most 8192 macroblocks a frame, 245760 a second)."
+    "PURPOSE": "Every product-video preset (docs/product-kit.md): size, frame rate, length window, how screens are shown, the default encoding, and each store's encoding rules. Read by the ProductPreview composition (src/Root.tsx), the Python engine (py/studio/product.py and product_encoding.py: spec checks before and after a render) and the studio page.",
+    "SOURCES": "App Store: developer.apple.com/help/app-store-connect/reference/app-preview-specifications (read 27 Nov 2026): 15-30 s, H.264 up to High Profile level 4.0 (required), a target bit rate of 10-12 Mbps (Apple's word: target), at most 30 fps, stereo AAC 256 kbps at 44.1 or 48 kHz, at most 500 MB; accepted portrait sizes 886x1920 (every iPhone with Face ID or Dynamic Island), 1080x1920 (iPhone with Home button, 5.5\"), 1200x1600 (iPad 13\" and 11\"). App Review Guideline 2.3.4: previews may only use video screen captures of the app itself, with narration and text overlays allowed, so App Store presets show the app full screen with no device frame and no 'before' screen. Google Play: the promo video is a YouTube link (Play Console > Main store listing > Video), landscape recommended. YouTube recommended upload encoding settings (support.google.com/youtube/answer/1722171, read 27 Nov 2026), all recommendations: H.264 High, closed GOP of half the frame rate, VBR, 8 Mbps for 1080p at 24-30 fps and 12 Mbps at 48-60 fps, AAC-LC stereo at 48 kHz, 384 kbps.",
+    "NOTES": "frame: none = the app fills the picture (App Store); device = phone, tablet or browser drawn around each screen. compare: true = a before -> after reveal where a screen has both. Sizes are even (H.264 4:2:0). Every size here fits H.264 level 4.0 at 30 fps (at most 8192 macroblocks a frame, 245760 a second).",
+    "ENCODING": "encode: each preset's default encoding (py/studio/product_encoding.py), which a kit, the project's defaults and a render may override inside encoding.fields. rateControl cbr = constrained CBR: target = min = max with x264's CBR filler (nal-hrd=cbr), so still screens still reach the rate (plain VBR fell to 0.55 Mbps on a still screen, 27 Nov 2026; libx264 ignores -minrate on its own). minKbps under vbr or crf is a floor: a file under it is encoded again as constrained CBR at the floor. encoding.stores: each store's rules; level error = the store requires it (the render is refused), warn = the store recommends it. levelMax: the highest H.264 level the store takes."
   },
   "presets": {
     "appstore-iphone": {
       "label": "App Store · iPhone (6.9\" to 5.8\")",
       "store": "app-store", "width": 886, "height": 1920, "fps": 30, "minSec": 15, "maxSec": 30, "targetSec": 24,
       "frame": "none", "compare": false, "orientation": "portrait", "screens": ["phone"],
-      "encode": { "profile": "high", "level": "4.0", "videoKbps": 11000, "maxKbps": 12000, "audioKbps": 256, "audioRate": 48000, "maxMb": 500 }
+      "encode": { "profile": "high", "level": "4.0", "maxMb": 500, "rateControl": "cbr", "videoKbps": 11000, "bufsizeKbits": 11000, "keyframeSec": 2,
+                  "audioKbps": 256, "audioRate": 48000, "audioBed": { "kind": "dither" } }
     },
     "appstore-iphone-55": {
       "label": "App Store · iPhone 5.5\" (Home button)",
       "store": "app-store", "width": 1080, "height": 1920, "fps": 30, "minSec": 15, "maxSec": 30, "targetSec": 24,
       "frame": "none", "compare": false, "orientation": "portrait", "screens": ["phone"],
-      "encode": { "profile": "high", "level": "4.0", "videoKbps": 11000, "maxKbps": 12000, "audioKbps": 256, "audioRate": 48000, "maxMb": 500 }
+      "encode": { "profile": "high", "level": "4.0", "maxMb": 500, "rateControl": "cbr", "videoKbps": 11000, "bufsizeKbits": 11000, "keyframeSec": 2,
+                  "audioKbps": 256, "audioRate": 48000, "audioBed": { "kind": "dither" } }
     },
     "appstore-ipad": {
       "label": "App Store · iPad 13\" and 11\"",
       "store": "app-store", "width": 1200, "height": 1600, "fps": 30, "minSec": 15, "maxSec": 30, "targetSec": 24,
       "frame": "none", "compare": false, "orientation": "portrait", "screens": ["tablet"],
-      "encode": { "profile": "high", "level": "4.0", "videoKbps": 11000, "maxKbps": 12000, "audioKbps": 256, "audioRate": 48000, "maxMb": 500 }
+      "encode": { "profile": "high", "level": "4.0", "maxMb": 500, "rateControl": "cbr", "videoKbps": 11000, "bufsizeKbits": 11000, "keyframeSec": 2,
+                  "audioKbps": 256, "audioRate": 48000, "audioBed": { "kind": "dither" } }
     },
     "play-promo": {
       "label": "Google Play promo (16:9, upload to YouTube)",
       "store": "google-play", "width": 1920, "height": 1080, "fps": 30, "minSec": 15, "maxSec": 120, "targetSec": 30,
       "frame": "device", "compare": true, "orientation": "landscape", "screens": ["phone", "tablet", "desktop"],
-      "encode": { "profile": "high", "level": "4.0", "videoKbps": 10000, "maxKbps": 12000, "audioKbps": 256, "audioRate": 48000, "maxMb": 1000 }
+      "encode": { "profile": "high", "level": "4.0", "maxMb": 1000, "rateControl": "vbr", "videoKbps": 10000, "minKbps": 8000, "maxKbps": 12000, "bufsizeKbits": 24000,
+                  "keyframeSec": 0.5, "audioKbps": 384, "audioRate": 48000, "audioBed": { "kind": "dither" } }
     },
     "social-9x16": {
       "label": "Social 9:16 (Reels, Shorts, TikTok)",
       "store": "social", "width": 1080, "height": 1920, "fps": 30, "minSec": 6, "maxSec": 60, "targetSec": 20,
       "frame": "device", "compare": true, "orientation": "portrait", "screens": ["phone", "tablet", "desktop"],
-      "encode": { "profile": "high", "level": "4.0", "videoKbps": 10000, "maxKbps": 12000, "audioKbps": 256, "audioRate": 48000, "maxMb": 1000 }
+      "encode": { "profile": "high", "level": "4.0", "maxMb": 1000, "rateControl": "vbr", "videoKbps": 10000, "maxKbps": 12000, "bufsizeKbits": 24000,
+                  "keyframeSec": 2, "audioKbps": 256, "audioRate": 48000, "audioBed": { "kind": "dither" } }
     },
     "social-1x1": {
       "label": "Social 1:1 (feeds)",
       "store": "social", "width": 1080, "height": 1080, "fps": 30, "minSec": 6, "maxSec": 60, "targetSec": 16,
       "frame": "device", "compare": true, "orientation": "square", "screens": ["phone", "tablet", "desktop"],
-      "encode": { "profile": "high", "level": "4.0", "videoKbps": 8000, "maxKbps": 10000, "audioKbps": 256, "audioRate": 48000, "maxMb": 1000 }
+      "encode": { "profile": "high", "level": "4.0", "maxMb": 1000, "rateControl": "vbr", "videoKbps": 8000, "maxKbps": 10000, "bufsizeKbits": 20000,
+                  "keyframeSec": 2, "audioKbps": 256, "audioRate": 48000, "audioBed": { "kind": "dither" } }
+    }
+  },
+  "encoding": {
+    "fields": {
+      "rateControl": { "enum": ["cbr", "vbr", "crf"] },
+      "videoKbps": { "type": "integer", "min": 300, "max": 80000 },
+      "minKbps": { "type": "integer", "min": 300, "max": 80000 },
+      "maxKbps": { "type": "integer", "min": 300, "max": 100000 },
+      "bufsizeKbits": { "type": "integer", "min": 300, "max": 200000 },
+      "crf": { "type": "number", "min": 0, "max": 51 },
+      "fps": { "enum": [24, 25, 30, 48, 50, 60] },
+      "keyframeSec": { "type": "number", "min": 0.25, "max": 10 },
+      "audioKbps": { "type": "integer", "min": 64, "max": 512 },
+      "audioRate": { "enum": [44100, 48000] },
+      "audioBed": { "kind": { "enum": ["dither", "music"] }, "volume": { "type": "number", "min": 0, "max": 1 } }
+    },
+    "stores": {
+      "app-store": {
+        "name": "App Store", "source": "https://developer.apple.com/help/app-store-connect/reference/app-preview-specifications", "levelMax": "4.0",
+        "rules": [
+          { "field": "fps", "max": 30, "level": "error", "why": "App Store app previews play at most 30 fps" },
+          { "field": "videoKbps", "min": 10000, "max": 12000, "level": "warn", "why": "Apple's target bit rate for H.264 app previews is 10-12 Mbps" },
+          { "field": "audioKbps", "min": 256, "level": "error", "fileTolerance": 0.9, "why": "Apple lists 256 kbps AAC for app previews" },
+          { "field": "audioKbps", "max": 256, "level": "warn", "why": "Apple lists 256 kbps AAC for app previews" },
+          { "field": "audioRate", "oneOf": [44100, 48000], "level": "error", "why": "App Store app previews take 44.1 or 48 kHz sound" }
+        ]
+      },
+      "google-play": {
+        "name": "Google Play (a YouTube video)", "source": "https://support.google.com/youtube/answer/1722171",
+        "rules": [
+          { "field": "videoKbps", "min": 8000, "level": "warn", "when": { "fpsMax": 30 }, "why": "YouTube recommends 8 Mbps for 1080p at 24-30 fps" },
+          { "field": "videoKbps", "min": 12000, "level": "warn", "when": { "fpsMin": 31 }, "why": "YouTube recommends 12 Mbps for 1080p at 48-60 fps" },
+          { "field": "audioKbps", "min": 384, "level": "warn", "why": "YouTube recommends 384 kbps for stereo sound" },
+          { "field": "audioRate", "oneOf": [48000], "level": "warn", "why": "YouTube recommends 48 kHz sound" },
+          { "field": "keyframeSec", "max": 0.5, "level": "warn", "why": "YouTube recommends a closed GOP of half the frame rate (a keyframe every 0.5 s)" }
+        ]
+      },
+      "social": { "name": "Social networks", "source": "", "rules": [] }
     }
   }
 }

@@ -3,6 +3,7 @@ node_modules/
 .env.local
 public/mezz/
 public/stills/
+public/explainer/
 dist/
 .DS_Store
 __pycache__/

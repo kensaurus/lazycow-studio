@@ -2302,7 +2302,7 @@ paths:
       summary: The presets (shared/product-presets.json), the kits added so far (newest first) and product renders of the last 6 hours.
       responses:
         "200":
-          description: "{presets: {<id>: {label, width, height, fps, minSec, maxSec, targetSec, frame, compare, ...}}, kits: [{name, app, version, screens, recordings, rendered, thumb, fetched}], jobs: [Job]}"
+          description: "{presets: {<id>: {label, width, height, fps, minSec, maxSec, targetSec, frame, compare, encode, ...}}, kits: [{name, app, version, screens, recordings, rendered, thumb, fetched}], jobs: [Job], encoding: {fields (each field's range or choices), stores (each store's rules: level error = required, warn = recommended), defaults ({<preset>: ProductEncoding as resolved}), project (this project's saved defaults), music ([{id, title, license}] from the audio library)}}"
         default: { $ref: "#/components/responses/CodedError" }
   /api/product/kit:
     get:
@@ -2322,6 +2322,7 @@ paths:
       parameters:
         - { name: name, in: query, required: true, schema: { type: string } }
         - { name: preset, in: query, required: true, schema: { $ref: "#/components/schemas/ProductPreset" } }
+        - { name: fps, in: query, schema: { type: integer, enum: [24, 25, 30, 48, 50, 60] }, description: "The render's frame rate when its encoding changes it (default: the preset's)." }
       responses:
         "200": { description: "The ProductPreview props: {preset, durationInFrames, seconds, app, brand, fonts, logo, labels, title, scenes, news, end, warnings}" }
         "422": { description: "Nothing in the kit fits this preset, or the result would break its spec (length, fps, size). `error` says which.", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
@@ -2354,7 +2355,7 @@ paths:
       tags: [Product videos]
       operationId: renderProductVideo
       summary: Queue one product video in the render queue (one render at a time, after any reel). Its job key and video id is pv-<name>--<preset>.
-      description: "The plan is checked first, so a kit that cannot make this preset answers 422 at once. When the job is done its result is {id, file, url, bytes, seconds, width, height, fps, profile, level, ok, problems, warnings}: the file was checked with ffprobe against the preset (H.264 level, fps, size, length, stereo AAC)."
+      description: "The encoding is resolved first (the preset's store-compliant defaults, the kit's hints, this project's defaults, then `encoding`) and checked against the preset's store: a rule the store requires refuses the render with 400 and `errors` naming each field; a rule it only recommends comes back in `encoding.warnings`. Then the plan, so a kit that cannot make this preset answers 422 at once. When the job is done its result is {id, file, url, bytes, seconds, width, height, fps, profile, level, ok, problems, warnings, encoding, measured, store}: the file was checked with ffprobe against the preset (H.264 level, fps, size, length, stereo AAC) and the store's rules on what it measured (`measured`: videoKbps, audioKbps, audioRate, channels, fps, profile, level, seconds, mb)."
       parameters: [{ $ref: "#/components/parameters/Origin" }]
       requestBody:
         required: true
@@ -2366,6 +2367,7 @@ paths:
               properties:
                 name: { type: string, pattern: "^[a-z0-9]+(-[a-z0-9]+)*$" }
                 preset: { $ref: "#/components/schemas/ProductPreset" }
+                encoding: { $ref: "#/components/schemas/ProductEncoding" }
       responses:
         "200":
           description: Queued.
@@ -2377,8 +2379,50 @@ paths:
                   id: { type: string, example: pv-my-app-1-4--appstore-iphone }
                   job: { $ref: "#/components/schemas/Job" }
                   plan: { type: object, properties: { seconds: { type: number }, scenes: { type: integer }, warnings: { type: array, items: { type: string } } } }
+                  encoding: { $ref: "#/components/schemas/ProductEncodingCheck" }
+        "400": { description: "The encoding breaks a rule the store requires, or a field is out of its range: `errors` [{field, text}] names each.", content: { application/json: { schema: { $ref: "#/components/schemas/ProductEncodingError" } } } }
         "422": { description: The kit cannot make this preset; `error` says why. }
         "507": { description: Not enough free disk space to render. }
+        default: { $ref: "#/components/responses/CodedError" }
+  /api/product/encoding/check:
+    post:
+      tags: [Product videos]
+      operationId: checkProductEncoding
+      summary: What a render's encoding resolves to for one preset (and kit), with each error and warning by field. Renders and saves nothing.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [preset]
+              properties:
+                preset: { $ref: "#/components/schemas/ProductPreset" }
+                name: { type: string, pattern: "^[a-z0-9]+(-[a-z0-9]+)*$", maxLength: 40, description: "A kit, whose encoding hints are a layer." }
+                encoding: { $ref: "#/components/schemas/ProductEncoding" }
+      responses:
+        "200": { description: The resolved settings., content: { application/json: { schema: { $ref: "#/components/schemas/ProductEncodingCheck" } } } }
+        default: { $ref: "#/components/responses/CodedError" }
+  /api/product/encoding/defaults:
+    post:
+      tags: [Product videos]
+      operationId: saveProductEncodingDefaults
+      summary: Save this project's default encoding for one preset (<data>/product-encoding.json); `encoding` null clears it. Refused (400) when a rule the store requires breaks.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [preset]
+              properties:
+                preset: { $ref: "#/components/schemas/ProductPreset" }
+                encoding: { oneOf: [{ $ref: "#/components/schemas/ProductEncoding" }, { type: "null" }] }
+      responses:
+        "200": { description: "{project: {presets: {<preset>: ProductEncoding}}} and the preset's settings as now resolved (ProductEncodingCheck)." }
+        "400": { description: The encoding does not fit., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         default: { $ref: "#/components/responses/CodedError" }
   /api/product/file:
     get:
@@ -2420,6 +2464,91 @@ paths:
       responses:
         "200": { description: The job. }
         "409": { description: Photo posts are already being made. }
+  /api/explainers:
+    get:
+      tags: [Reels]
+      operationId: listExplainers
+      summary: The explainer script library (<data>/explainers/scripts) — each script's slug, title, seconds, scene kinds, whether it is made and its review status — and the preview jobs.
+      responses:
+        "200": { description: "{scripts: [{slug, file, title, seconds, kinds, made, status, rendered}], sheets: [job]}" }
+  /api/explainers/script:
+    get:
+      tags: [Reels]
+      operationId: explainerScript
+      summary: One explainer's script (the draft's own, else the library's).
+      parameters:
+        - { name: slug, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: "{slug, script | null}" }
+  /api/explainers/check:
+    post:
+      tags: [Reels]
+      operationId: checkExplainer
+      summary: Check an explainer script before anything renders — unknown scene kinds, missing fields, library ids that are not there, clips past their end, text too long for its place, the fact guard and (ranch workspace) the campsite wording rule.
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [script], properties: { script: { type: object, description: "The script: {slug, title, accent?, snow?, music, scenes, yt, ig, tags} (docs/user-guide.md, Explainers)." } } }
+      responses:
+        "200": { description: "{ok, errors: [str], warnings: [str], seconds, slug, scenes}" }
+  /api/explainers/save:
+    post:
+      tags: [Reels]
+      operationId: saveExplainer
+      summary: Save a checked script as a draft explainer (a project with kind explainer); render true queues its render (one at a time). It waits for a person's approval like every reel.
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [script], properties: { script: { type: object }, render: { type: boolean } } }
+      responses:
+        "200": { description: "{slug, ok, saved, errors, warnings, seconds, job}" }
+        "422": { description: The script does not pass its checks (errors say why). }
+  /api/explainers/preview:
+    post:
+      tags: [Reels]
+      operationId: previewExplainer
+      summary: Render the preview still (every scene's settled frame, Explainer-Sheet) as a job beside the render queue; the picture is at /api/explainers/sheet.
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [script], properties: { script: { type: object } } }
+      responses:
+        "200": { description: The job (sheet-<slug>). }
+        "422": { description: The script does not pass its checks. }
+  /api/explainers/sheet:
+    get:
+      tags: [Reels]
+      operationId: explainerSheet
+      summary: The preview still of one explainer (JPEG).
+      parameters:
+        - { name: slug, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: The JPEG. }
+        "404": { description: No preview yet. }
+  /api/explainers/add:
+    post:
+      tags: [Reels]
+      operationId: addExplainers
+      summary: Every *.json script in a folder on this computer (or one file) becomes a draft explainer; each render is queued, one at a time, and shows in the console.
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [path], properties: { path: { type: string }, render: { type: boolean, default: true } } }
+      responses:
+        "200": { description: "{made: [slug], failed: [{file, slug, errors}], warnings: {slug: [str]}, queued: [slug]}" }
+        "400": { description: Not a folder or script on this computer. }
+  /api/explainers/queue:
+    post:
+      tags: [Reels]
+      operationId: queueExplainers
+      summary: Queue renders for explainer drafts already made (python -m studio explainer add PATH --queue URL calls this).
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [slugs], properties: { slugs: { type: array, items: { type: string } } } }
+      responses:
+        "200": { description: "{made, queued}" }
+        "400": { description: A slug that is not an explainer draft. }
   /api/stills/file:
     get:
       tags: [Reels]
@@ -5186,6 +5315,51 @@ components:
       type: string
       enum: [appstore-iphone, appstore-iphone-55, appstore-ipad, play-promo, social-9x16, social-1x1]
       description: A key of shared/product-presets.json (docs/product-kit.md › Presets).
+    ProductEncoding:
+      type: object
+      additionalProperties: false
+      description: "A product render's encoding (docs/product-kit.md › Encoding; shared/product-presets.json encoding.fields). Every field is optional: one left out keeps the layer below (the preset's store-compliant default, the kit's hint, this project's default). cbr = constrained CBR, one held rate (target = min = max, x264's filler keeps still screens at the rate); vbr = a target and a ceiling, with an optional floor (a file under it is encoded again as CBR at the floor); crf = a quality with an optional ceiling."
+      properties:
+        rateControl: { type: string, enum: [cbr, vbr, crf] }
+        videoKbps: { type: integer, minimum: 300, maximum: 80000, description: Target video bit rate (cbr, vbr). }
+        minKbps: { type: integer, minimum: 300, maximum: 80000, description: "Floor (vbr, crf); the target under cbr." }
+        maxKbps: { type: integer, minimum: 300, maximum: 100000, description: "Ceiling (vbr, crf); the target under cbr. Inside the H.264 level (App Store: level 4.0, at most 25000)." }
+        bufsizeKbits: { type: integer, minimum: 300, maximum: 200000, description: "VBV buffer (App Store: at most 31250)." }
+        crf: { type: number, minimum: 0, maximum: 51 }
+        fps: { type: integer, enum: [24, 25, 30, 48, 50, 60], description: "App Store: at most 30." }
+        keyframeSec: { type: number, minimum: 0.25, maximum: 10 }
+        audioKbps: { type: integer, minimum: 64, maximum: 512 }
+        audioRate: { type: integer, enum: [44100, 48000] }
+        audioBed:
+          type: object
+          additionalProperties: false
+          required: [kind]
+          properties:
+            kind: { type: string, enum: [dither, music], description: "dither: a quiet bed below hearing (holds the AAC bit rate); music: a track from the audio library over it." }
+            id: { type: string, maxLength: 200, description: "music: a music file's name in the audio library." }
+            volume: { type: number, minimum: 0, maximum: 1 }
+    ProductEncodingIssue:
+      type: object
+      required: [field, text]
+      properties:
+        field: { type: string, description: "The ProductEncoding field it is about (empty: the whole)." }
+        text: { type: string, description: One plain sentence. }
+    ProductEncodingCheck:
+      type: object
+      properties:
+        preset: { $ref: "#/components/schemas/ProductPreset" }
+        store: { type: string }
+        settings: { type: object, description: "Every ProductEncoding field as resolved, plus level and profile (the H.264 level these settings need)." }
+        errors: { type: array, items: { $ref: "#/components/schemas/ProductEncodingIssue" }, description: Rules the store requires, and ranges. }
+        warnings: { type: array, items: { $ref: "#/components/schemas/ProductEncodingIssue" }, description: Rules the store recommends. }
+        sources: { type: object, additionalProperties: { type: string, enum: [preset, kit, project, render] }, description: Which layer set each field. }
+    ProductEncodingError:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+        code: { type: string, example: bad_encoding }
+        errors: { type: array, items: { $ref: "#/components/schemas/ProductEncodingIssue" } }
     Job:
       type: object
       description: |

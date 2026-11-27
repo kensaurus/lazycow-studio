@@ -1,7 +1,8 @@
 """
 FILE: py/studio/__main__.py
 PURPOSE: Command line for the studio.
-OVERVIEW: ingest, shots, tag, luts, reels (build / package / remix), product (build: a product video, studio.product), vlog, review, extras, verify,
+OVERVIEW: ingest, shots, tag, luts, reels (build / package / remix), explainer (check / add / build / sheet / list),
+          product (build: a product video, studio.product), vlog, review, extras, verify,
           youtube (connect / upload / schedule / list), posts (posting log and reminders),
           gphotos (pick and import footage from Google Photos), media backfill-gps (positions from video tags,
           drone logs and time), places (offline place names: status / download).
@@ -34,8 +35,17 @@ def main() -> None:
             stream.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, ValueError):
             pass
+    if sys.argv[1:2] == ["explainer"]:  # explainers have their own commands (studio.explainer main: check, add, build, sheet, list)
+        from studio.explainer import main as explainer_main
+
+        if sys.argv[2:3] in (["build"], ["add"]) and "--queue" not in sys.argv:
+            from studio.priority import background_priority
+
+            background_priority()  # a render: below the studio's own pages, as reels --build
+        raise SystemExit(explainer_main(sys.argv[2:]))
     parser = argparse.ArgumentParser(prog="studio")
     sub = parser.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("explainer", help="explainers: check, add PATH [--render | --queue URL], build SLUG, sheet FILE|SLUG, list")
 
     ing = sub.add_parser("ingest")
     ing.add_argument("--proxy", action="store_true")

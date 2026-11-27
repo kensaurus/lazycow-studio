@@ -38,6 +38,8 @@ Others worth knowing: caniuse-lite (CC-BY-4.0, browser data used by the bundler)
 |---|---|---|
 | remotion, @remotion/cli, @remotion/google-fonts | On-screen words, layout, render | Remotion License (see above) |
 | @remotion/captions | Caption timing helpers | MIT |
+| @remotion/paths | The explainer's drawn arcs and paths (evolvePath) | MIT |
+| @remotion/noise (with simplex-noise) | The explainer mascot's idle wobble | MIT |
 | react, react-dom | Remotion compositions | MIT |
 | zod | Checking reel files | MIT |
 | budoux (Google) | Natural Japanese line breaks | Apache-2.0 |

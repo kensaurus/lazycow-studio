@@ -827,6 +827,10 @@ def build(slug: str, reel: dict | None = None, out: Path | None = None, candidat
     files for each network are not touched."""
     sizes = ("9x16",) if candidate else ("9x16", "4x5", "16x9")
     reel = reel or get_reel(slug)
+    if reel.get("kind") == "explainer":  # a video type of its own (studio.explainer): its own composition, same outputs
+        from studio.explainer import build as build_explainer
+
+        return build_explainer(slug)
     plan_json()
     stage(1, "grading the best moment of each clip")
     tall, wide, meta = _shots(reel)
@@ -965,6 +969,10 @@ def remix(slug: str) -> dict:
     """New music or effects only: re-mix the rendered picture, re-package, refresh the manifest.
     Seconds, not minutes. A changed reel goes back to 'rendered' for a fresh approval."""
     reel = get_reel(slug)
+    if reel.get("kind") == "explainer":  # its music is drawn into the picture: a new mix is a new render
+        from studio.explainer import build as build_explainer
+
+        return build_explainer(slug)
     out = DATA / "renders" / f"story-{slug}"
     total = sum(s["sec"] for s in reel["shots"])
     stage(5, "mixing music and sound effects")
@@ -1228,6 +1236,10 @@ def _place(src: Path, dest: Path) -> None:
 def package(slug: str, only: list[str] | None = None) -> list[str]:
     """Copy the rendered masters into one Drive draft folder per channel, with cover and post."""
     reel = get_reel(slug)
+    if reel.get("kind") == "explainer":  # 9:16 only, its own post texts (studio.explainer.package)
+        from studio.explainer import package as package_explainer
+
+        return package_explainer(slug, only)
     out = DATA / "renders" / f"story-{slug}"
     masters = {a: out / f"{slug}_{a}.mp4" for a in ("9x16", "4x5", "16x9")}
     missing = [str(p) for p in masters.values() if not p.exists()]

@@ -3,9 +3,14 @@
    Google Play promo or a social cut. Add a kit by its link (or a kit folder on this computer), look through its screens
    (drag a screen's slider, or use its arrow keys, to compare before and after), pick a preset (each card says whether the
    kit fits it and its spec), watch the moving storyboard drawn from the same timeline the render uses, render, download.
-   The render uses no AI; the optional reviewer is priced first. Nothing here posts. Keys pv.*. */
+   The render uses no AI; the optional reviewer is priced first. Nothing here posts. Keys pv.*.
+   Encoding (pvEnc*): the preset's store-compliant defaults (py/studio/product_encoding.py), the main choices and an
+   Advanced disclosure; each field is range-checked as it is typed (encoding.fields from GET /api/product) and the whole is
+   checked against the store's rules by POST /api/product/encoding/check (errors: the store requires it, warnings: it
+   recommends it). The render sends only the fields changed here; "Save as this project's default" keeps them. */
 const PV = { view: null, loading: false, err: null, kit: null, kitName: null, kitBusy: false, preset: null, plan: null, planOf: "", planErr: null,
-  adding: false, addErr: null, jobs: {}, review: {}, anim: null, playing: true, t0: 0, at: 0 };
+  adding: false, addErr: null, jobs: {}, review: {}, anim: null, playing: true, t0: 0, at: 0,
+  enc: { of: "", values: {}, check: null, local: {}, busy: false, seq: 0, timer: 0 } };
 const pvHex = (c) => (/^#[0-9a-fA-F]{6}$/.test(String(c || "")) ? c : "#0d0f14");
 const pvFile = (name, f) => `/api/product/file?name=${encodeURIComponent(name)}&kind=file&file=${encodeURIComponent(f)}`;
 const pvVideo = (name, preset, v, dl) => `/api/product/file?name=${encodeURIComponent(name)}&kind=video&preset=${encodeURIComponent(preset)}${v ? `&v=${encodeURIComponent(v)}` : ""}${dl ? "&download=1" : ""}`;
@@ -249,15 +254,20 @@ function pvPaintAct() {
   if (!k || !p) { box.innerHTML = ""; return; }
   const id = pvId(), j = PV.jobs[id], fit = k.fits?.[PV.preset], made = k.renders?.[PV.preset];
   const busy = pvActive(j);
+  const keep = pvEncFocus();
+  if (PV.enc.of !== pvEncKey()) pvEncStart();
+  const blocked = (PV.enc.check?.errors || []).length > 0 || Object.keys(PV.enc.local).length > 0;
   const prog = busy ? `<div class="pv-prog"><div class="bar"><i style="width:${j.pct || 0}%"></i></div>
       <span class="meta">${esc(j.status === "queued" ? tr("pv.job.queued", { n: j.position || 1 }) : j.label || tr("pv.job.running"))} · ${j.pct || 0}%${j.eta != null ? ` · ${esc(mins(j.eta))}` : ""}</span>
       <button type="button" data-cancel="${esc(id)}">${ico("x", "sm")}${esc(tr("pv.job.stop"))}</button></div>` : "";
   const failed = j && j.status === "error" ? `<p class="warnline" role="alert">${ico("alert", "sm")} ${esc((j.lines || []).slice(-1)[0] || j.label || tr("pv.job.failed"))}</p>` : "";
   const result = made && !busy ? pvResultHtml(k, PV.preset, made, id) : "";
-  box.innerHTML = `<div class="pv-acthead"><b>${esc(p.label)}</b><span class="meta">${esc(tr("pv.act.spec", { w: p.width, h: p.height, f: p.fps, a: p.minSec, b: p.maxSec }))}</span></div>
-    ${busy ? "" : `<button type="button" class="primary" data-pvrender="1" ${fit?.ok ? "" : "disabled"}>${ico("clapper", "sm")}${esc(tr(made ? "pv.act.again" : "pv.act.go"))}</button>
-      <span class="meta">${esc(fit?.ok ? tr("pv.act.noai") : fit?.why || tr("pv.pre.nofit"))}</span>`}
+  box.innerHTML = `<div class="pv-acthead"><b>${esc(p.label)}</b><span class="meta">${esc(tr("pv.act.spec", { w: p.width, h: p.height, f: pvEncSettings().fps || p.fps, a: p.minSec, b: p.maxSec }))}</span></div>
+    ${fit?.ok ? `<section class="pv-enc" id="pvEnc" aria-labelledby="pvEncH"></section>` : ""}
+    ${busy ? "" : `<button type="button" class="primary" data-pvrender="1" ${fit?.ok && !blocked ? "" : "disabled"}>${ico("clapper", "sm")}${esc(tr(made ? "pv.act.again" : "pv.act.go"))}</button>
+      <span class="meta">${esc(!fit?.ok ? fit?.why || tr("pv.pre.nofit") : blocked ? tr("pv.act.blocked") : tr("pv.act.noai"))}</span>`}
     ${prog}${failed}${result}`;
+  pvEncPaint(keep, busy);
   if (made && PV.review[id] === undefined) {
     PV.review[id] = null;
     api(`/api/ai/review?slug=${encodeURIComponent(id)}`).then((r) => { PV.review[id] = r?.review ? r.review : null; if (r?.review) pvPaintAct(); }).catch(() => {});
@@ -277,6 +287,8 @@ function pvResultHtml(k, preset, r, id) {
     <div class="pv-rmeta">
       <p class="${r.ok ? "okline" : "warnline"}">${ico(r.ok ? "check" : "alert", "sm")} ${esc(r.ok ? tr("pv.res.ok", { l: p.label }) : (r.problems || []).join(" "))}</p>
       <ul class="pv-checks">${checks.map(([t, ok]) => `<li class="${ok ? "ok" : "bad"}">${ico(ok ? "check" : "x", "sm")}${esc(t)}</li>`).join("")}</ul>
+      ${pvMeasuredHtml(p, r)}
+      ${(r.warnings || []).length ? `<ul class="pv-elist" aria-label="${esc(tr("pv.res.warns"))}">${r.warnings.map((w) => `<li class="warn">${esc(w)}</li>`).join("")}</ul>` : ""}
       <p class="meta">${esc(tr("pv.res.made", { t: String(r.made || "").replace("T", " ").slice(0, 16) }))}</p>
       <div class="row wrap"><a class="btn primary" href="${pvVideo(k.name, preset, r.made, true)}" download>${ico("download", "sm")}${esc(tr("pv.res.dl"))}</a>
         <button type="button" data-pvcopy="${esc(r.file || "")}">${ico("copy", "sm")}${esc(tr("pv.res.copy"))}</button>
@@ -286,12 +298,228 @@ function pvResultHtml(k, preset, r, id) {
 }
 async function pvRender() {
   if (!PV.kit || !PV.preset) return;
+  const values = PV.enc.values;
   try {
-    const r = await post("/api/product/render", { name: PV.kit.name, preset: PV.preset });
+    const r = await post("/api/product/render", { name: PV.kit.name, preset: PV.preset, ...(Object.keys(values).length ? { encoding: values } : {}) });
     PV.jobs[r.id] = r.job;
     toast(`${ico("clapper", "sm")} ${esc(tr("pv.job.queuedt", { s: pvSec(r.plan?.seconds || 0) }))}`, 5000);
-  } catch (err) { toast(`${ico("alert", "sm")} ${esc(err.message)}`, 9000); }
+  } catch (err) {
+    if (err.errors) PV.enc.check = { ...(PV.enc.check || {}), errors: err.errors };
+    toast(`${ico("alert", "sm")} ${esc(err.message)}`, 9000);
+  }
   pvPaintAct();
+}
+
+/* ---------- the Encoding panel ---------- */
+const PVE_MODE = ["minKbps", "maxKbps", "bufsizeKbits", "crf"];  // dropped when the rate control changes (product_encoding.merge)
+const PVE_MBPS = new Set(["videoKbps", "minKbps", "maxKbps", "bufsizeKbits"]);  // shown in Mbps / Mbit, sent in kbps / kbit
+const pvEncKey = () => (PV.kit && PV.preset ? `${PV.kit.name}|${PV.preset}` : "");
+const pvEncInfo = () => PV.view?.encoding || { fields: {}, stores: {}, defaults: {}, music: [], project: {} };
+const pvEncSettings = () => PV.enc.check?.settings || pvEncInfo().defaults?.[PV.preset] || {};
+const pvMb = (k) => (k == null || k === "" ? "" : String(Math.round(Number(k) / 10) / 100));
+function pvEncStart() {
+  clearTimeout(PV.enc.timer);
+  PV.enc = { of: pvEncKey(), values: {}, check: null, local: {}, busy: false, seq: 0, timer: 0 };
+  if (PV.enc.of) pvEncCheck(0);
+}
+/* The focused field and what is typed in it, so a repaint (a check's answer, a job's progress) never eats a keystroke. */
+function pvEncFocus() {
+  const el = document.activeElement;
+  return el && el.closest?.("#pvEnc") && el.id ? { id: el.id, value: el.value } : null;
+}
+function pvEncCheck(delay = 350) {
+  clearTimeout(PV.enc.timer);
+  const key = PV.enc.of;
+  PV.enc.timer = setTimeout(async () => {
+    const seq = ++PV.enc.seq;
+    PV.enc.busy = true; pvEncMsgs();
+    try {
+      const r = await post("/api/product/encoding/check", { preset: PV.preset, name: PV.kit?.name, ...(Object.keys(PV.enc.values).length ? { encoding: PV.enc.values } : {}) });
+      if (seq === PV.enc.seq && key === PV.enc.of) PV.enc.check = r;
+    } catch (err) {
+      if (seq === PV.enc.seq && key === PV.enc.of) PV.enc.check = { ...(PV.enc.check || {}), errors: err.errors || [{ field: "", text: err.message }], warnings: [] };
+    }
+    if (seq !== PV.enc.seq || key !== PV.enc.of) return;
+    PV.enc.busy = false;
+    if (page === "product") pvPaintAct();
+  }, delay);
+}
+const pvEncSrc = (f) => { const s = PV.enc.check?.sources?.[f]; return s ? `<small class="pv-esrc ${esc(s)}">${esc(tr(`pv.enc.src.${s}`))}</small>` : ""; };
+function pvEncIssues(f) {
+  const c = PV.enc.check || {};
+  const local = PV.enc.local[f] ? [`<span class="err">${esc(PV.enc.local[f])}</span>`] : [];
+  return local.concat((c.errors || []).filter((e) => e.field === f).map((e) => `<span class="err">${esc(e.text)}</span>`),
+    (c.warnings || []).filter((e) => e.field === f).map((e) => `<span class="warn">${esc(e.text)}</span>`)).join("");
+}
+const pvEncBad = (f) => !!PV.enc.local[f] || (PV.enc.check?.errors || []).some((e) => e.field === f);
+function pvEncNum(f, label, { mbps = PVE_MBPS.has(f), step, disabled = false, note = "" } = {}) {
+  const spec = pvEncInfo().fields[f] || {}, s = pvEncSettings();
+  const raw = PV.enc.values[f] ?? s[f];
+  const val = raw == null ? "" : mbps ? pvMb(raw) : String(raw);
+  const lo = spec.min != null ? (mbps ? spec.min / 1000 : spec.min) : "", hi = spec.max != null ? (mbps ? spec.max / 1000 : spec.max) : "";
+  return `<label class="pv-ef"><span>${esc(label)}</span>
+    <input id="pve-${f}" type="number" inputmode="decimal" data-pvenc="${f}" value="${esc(val)}" min="${lo}" max="${hi}" step="${step || (mbps ? 0.1 : spec.type === "integer" ? 1 : 0.05)}"
+      ${disabled ? "disabled" : ""} aria-invalid="${pvEncBad(f)}" aria-describedby="pvem-${f}">
+    ${disabled && note ? `<small class="pv-esrc">${esc(note)}</small>` : pvEncSrc(f)}<span class="pv-emsg" id="pvem-${f}" aria-live="polite">${pvEncIssues(f)}</span></label>`;
+}
+function pvEncSel(f, label, opts, cur) {
+  return `<label class="pv-ef"><span>${esc(label)}</span>
+    <select id="pve-${f}" data-pvenc="${f}" aria-invalid="${pvEncBad(f)}" aria-describedby="pvem-${f}">${opts.map(([v, t]) => `<option value="${esc(String(v))}" ${String(v) === String(cur) ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>
+    ${pvEncSrc(f)}<span class="pv-emsg" id="pvem-${f}" aria-live="polite">${pvEncIssues(f)}</span></label>`;
+}
+function pvEncSummary(s) {
+  if (!s.rateControl) return "";
+  const rc = s.rateControl === "crf" ? `CRF ${s.crf}${s.maxKbps ? ` ≤ ${pvMb(s.maxKbps)} Mbps` : ""}` : s.rateControl === "cbr" ? `CBR ${pvMb(s.videoKbps)} Mbps` : `VBR ${pvMb(s.videoKbps)} Mbps (≤ ${pvMb(s.maxKbps)})`;
+  const bed = s.audioBed?.kind === "music" ? tr("pv.enc.sum.music") : tr("pv.enc.sum.dither");
+  return [rc, s.minKbps && s.rateControl !== "cbr" ? `${tr("pv.enc.sum.floor")} ${pvMb(s.minKbps)} Mbps` : "", `${s.fps} fps`, tr("pv.enc.sum.gop", { s: s.keyframeSec }),
+    `AAC ${s.audioKbps} kbps ${s.audioRate / 1000} kHz`, bed, `H.264 High ${s.level || ""}`].filter(Boolean).join(" · ");
+}
+function pvEncHtml(busy) {
+  const p = PV.view?.presets?.[PV.preset], info = pvEncInfo();
+  const store = info.stores?.[p?.store] || { name: "", rules: [] }, s = pvEncSettings(), c = PV.enc.check || {};
+  const head = `<header><b id="pvEncH">${esc(tr("pv.enc.h"))}</b><span class="meta pv-esum">${esc(pvEncSummary(s))}</span>
+    <span class="meta">${esc(store.rules?.length ? tr("pv.enc.lead", { s: store.name }) : tr("pv.enc.leadnone"))}${store.source ? ` <a href="${escUrl(store.source)}" target="_blank" rel="noopener">${esc(tr("pv.enc.rules"))}</a>` : ""}</span></header>`;
+  if (busy) return head;
+  const mode = PV.enc.values.rateControl || s.rateControl || "vbr";
+  const bedNow = PV.enc.values.audioBed || s.audioBed || { kind: "dither" };
+  const music = info.music || [];
+  const bedOpts = [["dither", tr("pv.enc.bed.dither")], ...music.map((m) => [`music:${m.id}`, tr("pv.enc.bed.music", { t: m.title })])];
+  const bedCur = bedNow.kind === "music" ? `music:${bedNow.id}` : "dither";
+  const fields = info.fields || {};
+  const main = [
+    pvEncSel("rateControl", tr("pv.enc.rc"), (fields.rateControl?.enum || ["cbr", "vbr", "crf"]).map((m) => [m, tr(`pv.enc.rc.${m}`)]), mode),
+    mode === "crf" ? pvEncNum("crf", tr("pv.enc.crf"), { step: 1 }) : pvEncNum("videoKbps", tr("pv.enc.target")),
+    pvEncSel("audioBed", tr("pv.enc.bed"), bedOpts, bedCur),
+    bedNow.kind === "music" ? `<label class="pv-ef"><span>${esc(tr("pv.enc.vol"))}</span><input id="pve-volume" type="range" min="0" max="1" step="0.05" data-pvenc="volume" value="${esc(String(bedNow.volume ?? 0.5))}" aria-describedby="pvem-audioBed"></label>` : "",
+  ].join("");
+  const cbr = mode === "cbr";
+  const adv = [
+    pvEncNum("minKbps", tr("pv.enc.min"), { disabled: cbr, note: tr("pv.enc.eqtarget") }),
+    pvEncNum("maxKbps", tr("pv.enc.max"), { disabled: cbr, note: tr("pv.enc.eqtarget") }),
+    pvEncNum("bufsizeKbits", tr("pv.enc.buf")),
+    pvEncSel("fps", tr("pv.enc.fps"), (fields.fps?.enum || [24, 25, 30]).map((f) => [f, `${f} fps`]), PV.enc.values.fps ?? s.fps),
+    pvEncNum("keyframeSec", tr("pv.enc.gop"), { step: 0.25 }),
+    pvEncNum("audioKbps", tr("pv.enc.akbps"), { step: 32 }),
+    pvEncSel("audioRate", tr("pv.enc.arate"), (fields.audioRate?.enum || [44100, 48000]).map((r) => [r, `${r / 1000} kHz`]), PV.enc.values.audioRate ?? s.audioRate),
+  ].join("");
+  const known = new Set(["rateControl", "videoKbps", "crf", "audioBed", "minKbps", "maxKbps", "bufsizeKbits", "fps", "keyframeSec", "audioKbps", "audioRate"]);
+  const loose = [...(c.errors || []).filter((e) => !known.has(e.field)).map((e) => `<li class="err">${esc(e.text)}</li>`),
+    ...(c.warnings || []).filter((e) => !known.has(e.field)).map((e) => `<li class="warn">${esc(e.text)}</li>`)].join("");
+  const advOpen = PV.enc.advOpen ?? Object.keys(PV.enc.values).some((k) => !["rateControl", "videoKbps", "crf", "audioBed"].includes(k));
+  const nErr = (c.errors || []).length + Object.keys(PV.enc.local).length, nWarn = (c.warnings || []).length;
+  const state = PV.enc.busy ? tr("pv.enc.checking") : nErr ? tr("pv.enc.errs", { n: nErr }) : nWarn ? tr("pv.enc.warns", { n: nWarn, s: store.name || "" }) : c.settings ? tr("pv.enc.ok", { s: store.name || p?.label || "" }) : "";
+  const proj = !!(info.project?.presets?.[PV.preset]);
+  return `${head}
+    <div class="pv-egrid">${main}</div>
+    <details class="pv-adv" data-pvadv="1" ${advOpen ? "open" : ""}><summary>${esc(tr("pv.enc.adv"))}</summary>
+      <div class="pv-egrid">${adv}</div>
+      <p class="meta">${esc(cbr ? tr("pv.enc.cbr.note") : tr("pv.enc.floor.note"))}</p></details>
+    ${loose ? `<ul class="pv-elist">${loose}</ul>` : ""}
+    <div class="pv-eact"><span class="meta" role="status" aria-live="polite" id="pvEncState">${esc(state)}</span><span class="grow"></span>
+      <button type="button" class="chip" data-pvencreset="1" ${Object.keys(PV.enc.values).length ? "" : "disabled"}>${ico("refresh", "sm")}${esc(tr("pv.enc.reset"))}</button>
+      <button type="button" class="chip" data-pvencsave="1" ${Object.keys(PV.enc.values).length && !nErr ? "" : "disabled"}>${ico("check", "sm")}${esc(tr("pv.enc.save"))}</button>
+      ${proj ? `<button type="button" class="chip" data-pvencclear="1">${ico("x", "sm")}${esc(tr("pv.enc.clear"))}</button>` : ""}</div>`;
+}
+function pvEncPaint(keep, busy) {
+  const box = document.getElementById("pvEnc");
+  if (!box) return;
+  box.innerHTML = pvEncHtml(busy);
+  if (keep) {
+    const el = document.getElementById(keep.id);
+    if (el) { if (el.tagName === "INPUT") el.value = keep.value; el.focus({ preventScroll: true }); }
+  }
+}
+/* Only the messages and the state line, while a check is on its way (the fields stay as typed). */
+function pvEncMsgs() {
+  const st = document.getElementById("pvEncState");
+  if (st && PV.enc.busy) st.textContent = tr("pv.enc.checking");
+}
+/* One field typed or chosen: kept as this render's choice, range-checked now, then checked whole against the store. */
+function pvEncInput(el) {
+  const f = el.dataset.pvenc, spec = pvEncInfo().fields[f] || {}, v = PV.enc.values;
+  delete PV.enc.local[f];
+  if (f === "rateControl") {
+    v.rateControl = el.value;
+    for (const k of PVE_MODE) delete v[k];
+    if (el.value !== "crf" && v.videoKbps == null && pvEncSettings().videoKbps == null) v.videoKbps = pvEncInfo().defaults?.[PV.preset]?.videoKbps;
+    pvPaintAct();
+    document.getElementById("pve-rateControl")?.focus({ preventScroll: true });
+    return pvEncCheck(0);
+  }
+  if (f === "audioBed") {
+    const bed = el.value.startsWith("music:") ? { kind: "music", id: el.value.slice(6), volume: (v.audioBed || pvEncSettings().audioBed)?.volume ?? 0.5 } : { kind: "dither" };
+    v.audioBed = bed;
+    pvPaintAct();
+    document.getElementById("pve-audioBed")?.focus({ preventScroll: true });
+    return pvEncCheck(0);
+  }
+  if (f === "volume") {
+    v.audioBed = { ...(v.audioBed || pvEncSettings().audioBed), volume: Math.min(1, Math.max(0, Number(el.value) || 0)) };
+    return pvEncCheck();
+  }
+  if (el.tagName === "SELECT") { v[f] = Number(el.value); return pvEncCheck(0); }
+  if (el.value === "") { delete v[f]; return pvEncCheck(); }
+  const mbps = PVE_MBPS.has(f);
+  let n = Number(el.value);
+  if (!Number.isFinite(n)) { PV.enc.local[f] = tr("pv.enc.nan"); return pvEncLocal(f); }
+  if (mbps) n = Math.round(n * 1000);
+  if (spec.type === "integer") n = Math.round(n);
+  if ((spec.min != null && n < spec.min) || (spec.max != null && n > spec.max)) {
+    PV.enc.local[f] = tr("pv.enc.range", { a: mbps ? spec.min / 1000 : spec.min, b: mbps ? spec.max / 1000 : spec.max });
+    delete v[f];
+    return pvEncLocal(f);
+  }
+  v[f] = n;
+  pvEncLocal(f);
+  pvEncCheck();
+}
+/* A range error shown at once, beside its field, without a repaint. */
+function pvEncLocal(f) {
+  const m = document.getElementById(`pvem-${f}`), el = document.getElementById(`pve-${f}`);
+  if (m) m.innerHTML = pvEncIssues(f);
+  if (el) el.setAttribute("aria-invalid", String(pvEncBad(f)));
+  const btn = document.querySelector("[data-pvrender]");
+  if (btn && PV.kit?.fits?.[PV.preset]?.ok) btn.disabled = Object.keys(PV.enc.local).length > 0 || (PV.enc.check?.errors || []).length > 0;
+}
+async function pvEncSave(clear) {
+  try {
+    const r = await post("/api/product/encoding/defaults", { preset: PV.preset, encoding: clear ? null : PV.enc.values });
+    if (PV.view?.encoding) PV.view.encoding.project = r.project;
+    toast(`${ico("check", "sm")} ${esc(tr(clear ? "pv.enc.cleared" : "pv.enc.saved", { p: PV.view?.presets?.[PV.preset]?.label || PV.preset }))}`, 5000);
+    PV.enc.values = {}; PV.enc.local = {};
+    pvEncCheck(0);
+  } catch (err) {
+    if (err.errors) PV.enc.check = { ...(PV.enc.check || {}), errors: err.errors };
+    toast(`${ico("alert", "sm")} ${esc(err.message)}`, 9000);
+    pvPaintAct();
+  }
+}
+/* What ffprobe measured in the finished file, each value against the store's rule (a 0.31.0 result has none of it). */
+function pvMeasuredHtml(p, r) {
+  const m = r.measured;
+  if (!m) return "";
+  const rules = pvEncInfo().stores?.[p.store]?.rules || [];
+  const judge = (f, v) => {
+    if (v == null) return "";
+    let out = "";
+    for (const ru of rules) {
+      if (ru.field !== f) continue;
+      const w = ru.when || {};
+      if ((w.fpsMax && m.fps > w.fpsMax) || (w.fpsMin && m.fps < w.fpsMin)) continue;
+      const tol = ru.fileTolerance ?? (f.endsWith("Kbps") ? 0.95 : 1);
+      const bad = ru.oneOf ? !ru.oneOf.includes(v) : (ru.min != null && v < ru.min * tol) || (ru.max != null && v > ru.max / tol);
+      if (bad) { out = ru.level === "error" ? "bad" : out || "warn"; }
+    }
+    return out;
+  };
+  const e = r.encoding || {};
+  const rows = [
+    [tr("pv.res.m.video"), m.videoKbps != null ? `${pvMb(m.videoKbps)} Mbps${e.rateControl ? ` (${e.rateControl.toUpperCase()}${e.videoKbps ? ` ${pvMb(e.videoKbps)}` : e.crf != null ? ` ${e.crf}` : ""})` : ""}` : "?", judge("videoKbps", m.videoKbps)],
+    [tr("pv.res.m.audio"), m.audioKbps != null ? `${Math.round(m.audioKbps)} kbps ${m.audioCodec || ""} · ${m.audioRate ? m.audioRate / 1000 : "?"} kHz · ${m.channels || "?"} ch` : "?", judge("audioKbps", m.audioKbps) || judge("audioRate", m.audioRate)],
+    [tr("pv.res.m.picture"), `${m.width}×${m.height} · ${m.fps} fps · ${m.profile || ""} ${m.level || ""} · ${m.pixFmt || ""}`, judge("fps", m.fps)],
+    [tr("pv.res.m.file"), `${m.seconds} s · ${m.mb} MB`, ""],
+  ];
+  return `<details class="pv-adv" open><summary>${esc(tr("pv.res.measured"))}</summary><dl class="pv-measured">${rows.map(([k, v, cls]) => `<dt>${esc(k)}</dt><dd class="${cls}">${esc(v)}</dd>`).join("")}</dl></details>`;
 }
 async function pvReview(id) {
   try {
@@ -326,19 +554,27 @@ document.addEventListener("submit", (e) => {
   pvAdd(f);
 });
 document.addEventListener("input", (e) => {
+  const enc = e.target.closest?.("input[data-pvenc]");
+  if (enc) return pvEncInput(enc);
   const r = e.target.closest?.("[data-pvcmp]"); if (!r) return;
   r.parentElement.style.setProperty("--cut", `${r.value}%`);
 });
 document.addEventListener("change", (e) => {
+  const enc = e.target.closest?.("select[data-pvenc]");
+  if (enc) return pvEncInput(enc);
   const r = e.target.closest?.("input[name=pvpreset]"); if (!r) return;
   PV.preset = r.value; PV.plan = null;
   pvPaintAct(); pvPlan();
 });
+document.addEventListener("toggle", (e) => { if (e.target.matches?.("[data-pvadv]")) PV.enc.advOpen = e.target.open; }, true);
 document.addEventListener("click", (e) => {
   const kb = e.target.closest?.("[data-pvkit]");
   if (kb) { if (kb.dataset.pvkit !== PV.kitName) pvOpen(kb.dataset.pvkit); return; }
   if (e.target.closest?.("[data-pvretry]")) { PV.err = null; PV.view = null; renderHome(true); return; }
   if (e.target.closest?.("[data-pvrender]")) return pvRender();
+  if (e.target.closest?.("[data-pvencreset]")) { PV.enc.values = {}; PV.enc.local = {}; pvPaintAct(); return pvEncCheck(0); }
+  if (e.target.closest?.("[data-pvencsave]")) return pvEncSave(false);
+  if (e.target.closest?.("[data-pvencclear]")) return pvEncSave(true);
   const rv = e.target.closest?.("[data-pvreview]");
   if (rv) return pvReview(rv.dataset.pvreview);
   const cp = e.target.closest?.("[data-pvcopy]");

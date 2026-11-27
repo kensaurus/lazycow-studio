@@ -300,7 +300,9 @@ def test_every_preset_is_inside_its_store_and_h264_level_4():
         assert p["fps"] <= 30 and p["minSec"] < p["targetSec"] < p["maxSec"], pid
         mbs = -(-p["width"] // 16) * -(-p["height"] // 16)
         assert mbs <= 8192 and mbs * p["fps"] <= 245760, f"{pid} needs more than H.264 level 4.0"
-        assert p["encode"]["level"] == "4.0" and p["encode"]["audioKbps"] == 256 and p["encode"]["audioRate"] in (44100, 48000)
+        assert p["encode"]["level"] == "4.0" and p["encode"]["audioRate"] in (44100, 48000)
+        # Apple lists 256 kbps AAC; YouTube (the Play promo) recommends 384 kbps for stereo (test_product_encoding).
+        assert p["encode"]["audioKbps"] == {"app-store": 256, "google-play": 384}.get(p["store"], 256), pid
         if p["store"] == "app-store":
             assert (p["width"], p["height"]) in APPLE_PORTRAIT and (p["minSec"], p["maxSec"]) == (15, 30), pid
             assert p["frame"] == "none" and p["compare"] is False and p["encode"]["maxMb"] <= 500, pid
@@ -341,15 +343,16 @@ def test_a_silent_track_below_apples_256_kbps_is_refused():
     # Digital silence: ffmpeg's aac wrote 2275 bit/s for -b:a 256k (27 Nov 2026), which Apple's 256 kbps AAC does not allow.
     for rate in ("2275", "0", None):
         problems = product.verify_file("appstore-iphone", _probe(a={"bit_rate": rate}), 1)
-        assert any("about 256 kbps AAC" in p for p in problems), rate
+        assert any("256 kbps AAC" in p for p in problems), rate
     assert product.verify_file("appstore-iphone", _probe(a={"bit_rate": "240000"}), 1) == []  # inside the encoder's own rate control
 
 
 def test_the_encoder_is_told_the_presets_spec():
     args = product.encode_args("appstore-iphone", Path("in.mp4"), Path("s.wav"), Path("out.mp4"), 24.0)
     joined = " ".join(args)
-    for part in ("-profile:v high", "-level:v 4.0", "-r 30", "scale=886:1920", "format=yuv420p", "-b:v 11000k", "-maxrate 12000k", "-ac 2", "-b:a 256k", "-aac_is 0", "-aac_ms 0", "-ar 48000",
-                 "-map_metadata -1", "+faststart", "-t 24.000"):
+    # Constrained CBR at 11 Mbps (product_encoding): target = min = max with x264's filler, so still screens keep the rate.
+    for part in ("-profile:v high", "-level:v 4.0", "-r 30", "scale=886:1920", "format=yuv420p", "-b:v 11000k", "-minrate 11000k", "-maxrate 11000k",
+                 "-bufsize 11000k", "nal-hrd=cbr", "-ac 2", "-b:a 256k", "-aac_is 0", "-aac_ms 0", "-ar 48000", "-map_metadata -1", "+faststart", "-t 24.000"):
         assert part in joined, part
 
 

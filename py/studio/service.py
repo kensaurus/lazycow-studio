@@ -96,8 +96,11 @@ def _overview() -> dict:
             "title": reel.get("title_ja", ""),
             "theme": reel.get("theme") or slug.split("-")[0],
             "house": slug in house,
-            "seconds": round(sum(s["sec"] for s in reel["shots"]), 1),
-            "clips": len(reel["shots"]),
+            "seconds": round(sum(float(s.get("sec") or 0) for s in (reel.get("explainer") or {}).get("scenes") or []) if reel.get("kind") == "explainer"
+                             else sum(s["sec"] for s in reel["shots"]), 1),
+            "clips": len((reel.get("explainer") or {}).get("scenes") or []) if reel.get("kind") == "explainer" else len(reel["shots"]),
+            # The video type the console's filter reads (server/ui/js/22-console.js vxType): explainer, site walk, long cut, reel.
+            "type": video_type(reel),
             "rendered": rendered,
             "updated": manifest.stat().st_mtime if rendered else None,
             "hook": str(folder / "hook.jpg") if (folder / "hook.jpg").exists() else None,
@@ -133,6 +136,14 @@ def _overview() -> dict:
         })
     out.sort(key=lambda r: (r["house"], -(r["updated"] or 0)))
     return {"reels": out, "library": _library_counts(), "filmNext": _film_next()}
+
+
+def video_type(reel: dict) -> str:
+    """One word for what kind of video a reel record is: "explainer" (studio.explainer), "walk" (a site walk),
+    "long" (the long cut for LinkedIn and Facebook) or "reel" (the short loop)."""
+    if reel.get("kind") == "explainer":
+        return "explainer"
+    return {"site-walk": "walk", "b-explainer": "long"}.get(reel.get("variant") or "", "reel")
 
 
 def _made_view(made) -> dict | None:
@@ -436,6 +447,21 @@ def handle(req: dict) -> object:
         return {"items": rows, "events": events}
     if cmd == "asset":
         return _asset(int(req["id"]))
+    if cmd in ("explainer_check", "explainer_save", "explainer_list", "explainer_add", "explainer_script"):
+        # Explainers (studio.explainer): check a script, save it as a draft, the script library, a folder of scripts.
+        from studio import explainer
+
+        if cmd == "explainer_check":
+            res = explainer.check(req.get("script"))
+            res.pop("media", None)
+            return res
+        if cmd == "explainer_save":
+            return explainer.draft(req.get("script"))
+        if cmd == "explainer_add":
+            return explainer.add(str(req["path"]))
+        if cmd == "explainer_script":
+            return {"slug": req.get("slug"), "script": explainer.script_of(str(req.get("slug") or ""))}
+        return {"scripts": explainer.scripts()}
     if cmd == "ids":
         from studio.db import connect
 

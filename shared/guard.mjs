@@ -19,11 +19,20 @@ const REGISTERED = RANCH.registered || "";
 const BARE = RANCH.bareWord || "";
 const PRICE = new RegExp(spec.pricePattern);
 
+/** Is a banned phrase in the (lower-cased) text? A phrase in Latin letters counts only as whole words ("cow" is not in
+    "coworking"); any other script (Japanese has no spaces) anywhere. Same rule as py/studio/guard.py hit. */
+export function bannedHit(phrase, lower) {
+  const p = String(phrase || "").toLowerCase().trim();
+  if (!p) return false;
+  if (/^[a-z0-9 '-]+$/.test(p)) return new RegExp(`(?<![a-z0-9])${p.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&")}(?![a-z0-9])`).test(lower);
+  return lower.includes(p);
+}
+
 export function copyProblems(text) {
   const problems = [];
   const lower = text.toLowerCase();
   for (const phrase of BANNED) {
-    if (lower.includes(phrase.toLowerCase())) problems.push(`banned:${phrase}`);
+    if (bannedHit(phrase, lower)) problems.push(`banned:${phrase}`);
   }
   if (PRICE.test(text)) problems.push("price");
   if (REGISTERED && BARE && text.replaceAll(REGISTERED, "").includes(BARE)) problems.push("bare-bokujo");

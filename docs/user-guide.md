@@ -376,6 +376,41 @@ The V2 row on the timeline holds cutaways (a detail shot for about a second) and
 - **Headline behind the subject** (AI tab). The opening shot's subject is cut out from its own picture, so the headline sits behind it. It costs about $0.03 a reel. It works with no look or the ember look, after one render.
 - **Whip and zoom looks** use a real camera motion blur on their cuts, with no extra render time.
 
+### Explainers: facts and drawn graphics
+
+**Reels › Explainers** makes short explainers (15-60 s, 9:16) from a script: a paper page with lines that draw
+themselves, numbers with their source, and a few of your own pictures. **New video › Explainer** opens a new script;
+the scripts you have are listed on the left. **Check** says what is wrong in plain words, **Preview frames** draws every
+scene once on one picture (about half a minute), and **Save & render** puts it in the render queue. A made explainer
+waits in **Review** like every reel: only the ones you approve are planned and posted (Shorts, Instagram Reels and
+Stories, Facebook, Bluesky), and their numbers show on their cards with every other video's.
+
+A script is one JSON file:
+
+```json
+{ "slug": "cafe-lunch-101", "title": "Lunch in three numbers #Shorts", "accent": "#c8321f", "snow": false, "music": "auto",
+  "scenes": [
+    { "kind": "cover", "sec": 4, "src": "lib:752@2+8", "kicker": "Explained", "ja": "見出しは2行まで\n*大事な言葉*", "en": "The headline", "big": "12:00" },
+    { "kind": "number", "sec": 5, "value": 30, "unit": "席", "ja": "席は*30*", "en": "30 seats", "source": "where the number comes from" },
+    { "kind": "end", "sec": 4, "src": "lib:1246", "mascot": "tr", "ja": "また*あした*", "en": "See you tomorrow", "lines": ["search words"] } ],
+  "yt": "The YouTube description (hashtags go in tags)", "ig": "The Instagram and Facebook caption", "tags": ["cafe", "lunch"] }
+```
+
+Pictures come from the library: `lib:<id>` for a photo, `lib:<id>@<start>+<seconds>` for a clip (**Footage › Library**
+shows each id). Words between `*` get the highlighter. Every scene has `kind`, `sec` (2-10), `ja`, optional `en` and
+`kicker`; then, by kind: `cover` (src, big?, source?, mascot?), `number` (value, unit?, decimals?, source?), `tally`
+(count 1-45), `checklist` / `nogo` (items 1-4, note?), `card` (src, label?), `route` (from, to, via?), `pair` (left,
+right: a photo or one of the icons), `thermo` (value, unit?, label?, compare?, min?, max?, source?), `compare` (left,
+right: value and words, vs?), `clock` (hours: 3-6 of `{at: "07:00", ja, en}`), `bars` (2-5 of `{value, ja, en, shown?}`,
+unit?), `icons` (3-6 of `{icon, ja, en}`: tent, car, kotatsu, laptop, wifi, shower, fire, star, snowflake, mountain,
+mug, sun, moon, toilet, dumbbell, parking), `steps` (2-4), `quote` (by?) and `end` (src, lines? up to 3, mascot?).
+A whole explainer runs 15 to 60 seconds with 3 to 12 scenes.
+
+To add many at once, put the script files in one folder and use **Add a folder of scripts** on the page, or run
+`python -m studio explainer add <folder> --queue http://127.0.0.1:4317`: each script that passes becomes a draft and
+its render waits its turn, one at a time, on the cards and the status bar; the ones that do not pass are listed with
+what to fix. `python -m studio explainer check <files>` checks without saving.
+
 ### Photo posts: carousels from your photos
 
 **Reels › Photo posts › Make 10, all different** draws ten carousels (and a Story that shares each) from your photos, in

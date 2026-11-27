@@ -348,8 +348,10 @@ function renderReview() {
     const m = revCache[r.slug];
     const ready = m && m !== "loading" && !m.error;
     const words = ready ? (m.beats || []).filter((b) => b.kind !== "end") : [];
-    const strip = ready ? (m.shots || []).map((x) => `<span class="rvshot" style="background-image:url('${thumb(x.thumb, 120)}')" title="${esc(`${x.file} · ${x.sec}s`)}">${x.faces ? `<i class="rvface">${ico("user", "sm")}</i>` : ""}</span>`).join("") : `<div class="skel"><i></i></div>`;
-    const flags = [`<span class="tag rv-cut" title="${esc(tr(cutKey(r.variant) + "hint"))}">${ico(r.variant === "site-walk" ? "camera" : r.variant === "b-explainer" ? "list" : "film", "sm")}${esc(tr(cutKey(r.variant)))}</span>`, tdAutoTag(r), r.faces > 0 && !r.consent && !r.blurFaces && !consentAll() ? `<span class="tag t-unsure">${ico("user", "sm")}${tr("rv.faces", { n: r.faces })}</span>` : "",
+    const isEx = vxType(r) === "explainer";  // an explainer shows its scenes, not clips (py/studio/explainer.py)
+    const strip = ready && isEx ? `<span class="rvkinds">${(m.explainer?.scenes || []).map((k) => `<span class="tag">${esc(k)}</span>`).join("")}</span>`
+      : ready ? (m.shots || []).map((x) => `<span class="rvshot" style="background-image:url('${thumb(x.thumb, 120)}')" title="${esc(`${x.file} · ${x.sec}s`)}">${x.faces ? `<i class="rvface">${ico("user", "sm")}</i>` : ""}</span>`).join("") : `<div class="skel"><i></i></div>`;
+    const flags = [isEx ? `<span class="tag rv-cut">${ico("info", "sm")}${esc(tr("vx.one.explainer"))}</span>` : `<span class="tag rv-cut" title="${esc(tr(cutKey(r.variant) + "hint"))}">${ico(r.variant === "site-walk" ? "camera" : r.variant === "b-explainer" ? "list" : "film", "sm")}${esc(tr(cutKey(r.variant)))}</span>`, tdAutoTag(r), r.faces > 0 && !r.consent && !r.blurFaces && !consentAll() ? `<span class="tag t-unsure">${ico("user", "sm")}${tr("rv.faces", { n: r.faces })}</span>` : "",
       lookChecks(r).length ? `<span class="tag t-unsure">${ico("alert", "sm")}${tr(lookChecks(r).length === 1 ? "card.check1" : "card.checkn", { n: lookChecks(r).length })}</span>` : "",
       r.sameWords > 0 ? `<span class="tag t-mismatch">${tr("w.same", { n: r.sameWords })}</span>` : `<span class="tag t-match">${tr("rv.unique")}</span>`,
       (m?.layers || []).length ? `<span class="tag" title="${esc(tr("rv.layerstip"))}">${ico("layers", "sm")}${tr((m.layers || []).length === 1 ? "rv.layers1" : "rv.layers", { n: (m.layers || []).length })}</span>` : ""].join("");
@@ -366,8 +368,8 @@ function renderReview() {
       <div class="rvacts">${r.status === "approved" ? `<span class="okline">${ico("check", "sm")}${tr("ed.st.approved")}</span>`
           : `<button class="primary" data-revok="${esc(r.slug)}" ${revBusy ? "disabled" : ""}>${tr("rv.approve")}</button>`}
         ${tdRejHtml(r)}
-        <button data-reword="${esc(r.slug)}">${ico("type", "sm")}${tr("w.reword")}</button>
-        ${one ? `<span class="meta">${tr("rv.phoneedit")}</span>` : `<a class="btn" href="#/reel/${esc(r.slug)}">${ico("film", "sm")}${tr("rv.open")}</a>`}
+        ${isEx ? "" : `<button data-reword="${esc(r.slug)}">${ico("type", "sm")}${tr("w.reword")}</button>`}
+        ${one ? `<span class="meta">${tr("rv.phoneedit")}</span>` : isEx ? `<a class="btn" href="#/explainer/${esc(r.slug)}">${ico("type", "sm")}${tr("ex.edit")}</a>` : `<a class="btn" href="#/reel/${esc(r.slug)}">${ico("film", "sm")}${tr("rv.open")}</a>`}
         <span class="meta rvkeys">${esc(tr("ly_rv.keys") + " · " + tr("td_rv.key"))}</span></div></article>`;
   };
   const qflags = (r) => [r.faces > 0 && !r.consent && !r.blurFaces && !consentAll() ? `<i class="rvq-f warn" title="${esc(tr("rv.faces", { n: r.faces }))}">${ico("user", "sm")}</i>` : "",
@@ -546,7 +548,7 @@ function tdPhNext(sets) {
 }
 /* Reels › All reels (landing): with the monitor at the top, every day starts folded to one line (counts and first
    pictures), so the page stays within two screens; a day opened by hand stays open for the visit. */
-const tdOpenGroups = () => (page === "reels" && homeFilter === "all" && !showMaker && overview?.reels?.some((r) => !r.house) ? 0 : 2);
+const tdOpenGroups = () => (page === "reels" && homeFilter === "all" && vxSel === "all" && !showMaker && overview?.reels?.some((r) => !r.house) ? 0 : 2);
 /* ===== end Track D block ===== */
 /* The queue scrolls by itself (never the page) to keep the reel in focus in view. */
 function rvqInView() {

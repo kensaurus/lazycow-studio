@@ -15,6 +15,19 @@ import re
 from studio.config import SPEC
 
 PRICE = re.compile(SPEC["pricePattern"])
+LATIN = re.compile(r"[a-z0-9 '\-]+")
+
+
+def hit(phrase: str, lower: str) -> bool:
+    """Is a banned phrase in the (lower-cased) text? A phrase in Latin letters counts only as whole words ("cow" is not in
+    "coworking": the kotatsu coworking lounge, 27 Nov 2026); any other script (Japanese has no spaces) anywhere in the text.
+    Same rule as shared/guard.mjs bannedHit."""
+    p = phrase.lower().strip()
+    if not p:
+        return False
+    if LATIN.fullmatch(p):
+        return re.search(rf"(?<![a-z0-9]){re.escape(p)}(?![a-z0-9])", lower) is not None
+    return p in lower
 
 
 def problems(text: str) -> list[str]:
@@ -24,7 +37,7 @@ def problems(text: str) -> list[str]:
     found: list[str] = []
     lower = text.lower()
     for phrase in rules["banned"]:
-        if phrase.lower() in lower:
+        if hit(phrase, lower):
             found.append(f"banned:{phrase}")
     if rules["noPrices"] and PRICE.search(text):
         found.append("price")

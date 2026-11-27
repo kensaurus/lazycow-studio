@@ -1,7 +1,7 @@
 /**
  * FILE: src/Root.tsx
- * PURPOSE: Registers the compositions: Story per aspect, the long-form Vlog (16:9) and its thumbnail, photo posts and
- *          product videos (ProductPreview).
+ * PURPOSE: Registers the compositions: Story per aspect, the long-form Vlog (16:9) and its thumbnail, photo posts,
+ *          product videos (ProductPreview), and the Explainer (9:16) and its preview sheet.
  * OVERVIEW: Duration follows the clip list. Empty defaults so Studio can open.
  * DEPENDENCIES: remotion, ./Story, ./Vlog
  * USAGE: registerRoot(RemotionRoot) from index.ts
@@ -14,6 +14,7 @@ import spec from "../shared/spec.json";
 import { Story, storyFrames, type StoryProps } from "./Story";
 import { Vlog, VlogThumb, vlogFrames, type ThumbProps, type VlogProps } from "./Vlog";
 import { Post, emptyPost } from "./Post";
+import { Explainer, ExplainerSheet, explainerFrames, sheetSize, type ExplainerProps, type SheetProps } from "./Explainer";
 import { ProductPreview, emptyProduct } from "./ProductPreview";
 
 const emptyStory: StoryProps = { shots9x16: [], shots16x9: [], beats: [], handle: "@cafe.kumo", bed: null };
@@ -30,6 +31,14 @@ export const RemotionRoot: React.FC = () => (
       durationInFrames={spec.fps} defaultProps={emptyVlog} calculateMetadata={({ props }) => ({ durationInFrames: vlogFrames(props, spec.fps) })} />
     {/* Its thumbnail, in the same typefaces (a still). */}
     <Composition id="Vlog-Thumb" component={VlogThumb} fps={spec.fps} width={1280} height={720} durationInFrames={1} defaultProps={emptyThumb} />
+    {/* An explainer from facts (py/studio/explainer.py): paper, hand-drawn lines, numbers with their source. */}
+    <Composition id="Explainer-9x16" component={Explainer} fps={spec.fps} width={1080} height={1920} durationInFrames={spec.fps}
+      defaultProps={{ scenes: [] } as ExplainerProps} calculateMetadata={({ props }) => ({ durationInFrames: explainerFrames(props, spec.fps) })} />
+    {/* Its preview before a render: every scene's settled frame on one still (the console's Preview frames). */}
+    <Composition id="Explainer-Sheet" component={ExplainerSheet} fps={spec.fps} width={1080} height={524} durationInFrames={1}
+      defaultProps={{ scenes: [] } as SheetProps}
+      // As long as the film (rendered as a still at frame 0): a frame frozen past the composition's end reads as its last.
+      calculateMetadata={({ props }) => ({ ...sheetSize(props), durationInFrames: explainerFrames(props, spec.fps) })} />
     {/* Product videos from an app's release kit (py/studio/product.py, docs/product-kit.md): size from the preset. */}
     <Composition id="ProductPreview" component={ProductPreview} fps={emptyProduct.preset.fps} width={emptyProduct.preset.width} height={emptyProduct.preset.height}
       durationInFrames={emptyProduct.durationInFrames} defaultProps={emptyProduct}

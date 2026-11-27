@@ -54,6 +54,29 @@ export type ReleaseKitRecording = {
   trim?: { from?: number; to?: number };
 };
 
+/** A product render's encoding (docs/product-kit.md › Encoding; shared/product-presets.json encoding.fields). Every field is
+ *  optional: one left out keeps the preset's store-compliant default. */
+export type ReleaseKitEncoding = {
+  rateControl?: "cbr" | "vbr" | "crf";
+  /** kbps, 300-80000 (cbr, vbr). */
+  videoKbps?: number;
+  /** kbps: the floor (vbr, crf); the target under cbr. */
+  minKbps?: number;
+  /** kbps: the ceiling (vbr, crf); the target under cbr. */
+  maxKbps?: number;
+  /** kbit: the VBV buffer. */
+  bufsizeKbits?: number;
+  /** 0-51 (crf). */
+  crf?: number;
+  fps?: 24 | 25 | 30 | 48 | 50 | 60;
+  keyframeSec?: number;
+  /** kbps, 64-512. */
+  audioKbps?: number;
+  audioRate?: 44100 | 48000;
+  /** music: a file in the studio's audio library, by name (a kit cannot send a track). */
+  audioBed?: { kind: "dither" } | { kind: "music"; id: string; volume?: number };
+};
+
 export type ReleaseKit = {
   schema: "lazycow.release-kit";
   version: 1;
@@ -80,4 +103,6 @@ export type ReleaseKit = {
   expiresAt?: string;
   /** Who made the kit; ignored by the studio. */
   source?: { name?: string; url?: string };
+  /** Encoding hints for every preset (default) or one (presets); a hint the studio cannot use is left out with a warning. */
+  encoding?: { default?: ReleaseKitEncoding; presets?: Partial<Record<"appstore-iphone" | "appstore-iphone-55" | "appstore-ipad" | "play-promo" | "social-9x16" | "social-1x1", ReleaseKitEncoding>> };
 };

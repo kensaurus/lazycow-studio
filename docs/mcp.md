@@ -53,11 +53,15 @@ If the studio is not running, every tool answers: "Lazycow Studio is not running
 | `youtube_channel` | Each connected YouTube channel: totals, Shorts / long / live summed, the newest uploads with views, engaged views, watch time and % watched | no |
 | `list_comments` | Comments from YouTube, Bluesky and the Facebook Page, sorted into questions (by topic), praise and spam, with the reply drafted from the owner's saved answers | no (replying is a person's action in the studio) |
 
-**Product videos need no AI and post nothing.** `make_product_video({ kitUrl, preset, name? })` downloads a release kit
+**Product videos need no AI and post nothing.** `make_product_video({ kitUrl, preset, name?, encoding? })` downloads a release kit
 (https only; every file is checked and size-capped; nothing in it is run) and queues the render behind any reel. It
 returns an id such as `pv-quiet-notes-1-4-0--appstore-iphone`. Follow it with `job_status`; when it is done, the
 result holds `file` (the path on this computer), `url` (the studio's link), and the checked spec (`width`, `height`,
-`seconds`, `fps`, `profile`, `level`, `ok`, `problems`). `ai_estimate` with `tools: ["review"]` and `ai_review` take the
+`seconds`, `fps`, `profile`, `level`, `ok`, `problems`, `warnings`), the `encoding` it used and what ffprobe `measured`
+(`videoKbps`, `audioKbps`, `audioRate`, ...). `encoding` is optional: rate control (`cbr`, `vbr`, `crf`), bit rates,
+buffer, frame rate, keyframe interval, AAC bit rate and sample rate, and the sound bed. Anything left out keeps the
+preset's store-compliant default. A rule the store requires refuses the call, naming the field; a rule it recommends
+comes back as a note ([product-kit.md › Encoding](product-kit.md#encoding)). `ai_estimate` with `tools: ["review"]` and `ai_review` take the
 same id, inside the AI limits. Presets, the kit's schema and the App Store and Google Play rules: [product-kit.md](product-kit.md).
 
 **Research is read-only.** The `research_*` tools return suggestions with their source URLs; their words are not
