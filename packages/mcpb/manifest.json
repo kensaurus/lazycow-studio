@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "lazycow",
   "display_name": "Lazycow Studio",
-  "version": "0.30.0",
+  "version": "0.31.0",
   "description": "Drive Lazycow Studio by kensaurus: make reels and trip films from your footage, plan posts, publish approved reels.",
   "long_description": "Lazycow Studio turns the photos and videos you never edited into short vertical reels and YouTube trip films, on your own computer. This extension lets Claude check the studio, make reels, watch renders, plan posts, read results and publish reels a person already approved.\n\n**Start the studio first.** The extension talks to it on this computer (127.0.0.1, port 4317 unless you changed it). It finds the port and the API token in the studio's `.env` by itself; fill in the settings only if it does not.\n\n**Approving stays with you.** There is no approve tool, and publishing refuses any reel that is not approved.\n\nThe studio: https://github.com/kensaurus/lazycow-studio (Apache-2.0).",
   "author": {
@@ -62,8 +62,12 @@
       "description": "Re-render only the sound of a reel (music and effects mix), keeping the picture. Queued behind any running render; follow it with job_status."
     },
     {
+      "name": "make_product_video",
+      "description": "Turn an app's release kit (a JSON manifest with screenshots before and after, short screen recordings, changelog lines, brand colours, font and logo: docs/product-kit.md) into a product video on this computer, and queue it to render. Presets: appstore-iphone (886x1920), appstore-iphone-55 (1080x1920), appstore-ipad (1200x1600): App Store app previews, 15-30 s, 30 fps, H.264, the app full screen with captions (App Review Guideline 2.3.4); play-promo (1920x1080, for the YouTube link Google Play takes); social-9x16 and social-1x1 (drawn devices, a before -> after reveal, an end card). The kit is downloaded first (https only, size-capped, every file checked; nothing in it is run); a kit of the same name and its earlier renders are replaced. Returns the video id: follow it with job_status slug=<id>; when it is done its result holds the file path and a /api/product/file link. Uses no AI and posts nothing; ai_estimate and ai_review take the id to review the result inside the AI limits."
+    },
+    {
       "name": "job_status",
-      "description": "Progress of background jobs. With a slug: that job (a render or remix uses the reel slug; a post uses \"post-<slug>-<network>\"; a YouTube upload uses the reel slug; footage scans use \"footage\"). Without a slug: every render that is queued or running."
+      "description": "Progress of background jobs. With a slug: that job (a render or remix uses the reel slug; a product video uses its id \"pv-<kit>--<preset>\" and, when done, its result holds the file and its link; a post uses \"post-<slug>-<network>\"; a YouTube upload uses the reel slug; footage scans use \"footage\"). Without a slug: every render that is queued or running."
     },
     {
       "name": "cancel_job",
@@ -127,7 +131,7 @@
     },
     {
       "name": "ai_estimate",
-      "description": "Price AI tools on one reel before anything is spent: review (a video model watches the reel and suggests fixes), sharpen (soft or low-res clips), slowmo (smooth slow motion), living (a real still gets a slow camera move), foley (natural sound made from the picture for shots that have none), behind (the headline sits behind the opening shot's subject), music (an instrumental bed made for the reel), voice (a Japanese AI voice reads the approved words). Returns the cost per tool, the total, the per-reel / total / daily limits and whether it fits. Spends nothing."
+      "description": "Price AI tools on one reel before anything is spent: review (a video model watches the reel and suggests fixes), sharpen (soft or low-res clips), slowmo (smooth slow motion), living (a real still gets a slow camera move), foley (natural sound made from the picture for shots that have none), behind (the headline sits behind the opening shot's subject), music (an instrumental bed made for the reel), voice (a Japanese AI voice reads the approved words). A product video id (pv-<kit>--<preset>, from make_product_video) takes review only. Returns the cost per tool, the total, the per-reel / total / daily limits and whether it fits. Spends nothing."
     },
     {
       "name": "ai_review",

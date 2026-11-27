@@ -2,6 +2,34 @@
 
 All notable changes to Lazycow Studio. Versions follow [Semantic Versioning](https://semver.org); dates are JST.
 
+## 0.31.0 (2026-11-27)
+
+Product videos: an app's release kit (its screens before and after, short recordings, changelog lines and brand)
+becomes an App Store app preview, a Google Play promo or a social cut, rendered and checked on this computer.
+
+### Added
+- **Product videos from a release kit (docs/product-kit.md):** an app's release kit becomes an App Store app preview, a
+  Google Play promo or a social cut, on this computer. A kit holds screenshots before and after, short recordings,
+  changelog lines and brand colours, font and logo; Mushi exports one, or you make the folder by hand.
+  - Add one in Reels › Product videos (`#/product`): its link or a kit folder.
+  - Compare each screen with a before/after slider, pick a preset (each card says whether the kit fits it, with its
+    spec), and watch a moving storyboard of the render's own timing. Then render and download.
+  - Presets: `appstore-iphone` (886×1920), `appstore-iphone-55` (1080×1920), `appstore-ipad` (1200×1600),
+    `play-promo` (1920×1080), `social-9x16` and `social-1x1`.
+  - The App Store presets show the app full screen (App Review Guideline 2.3.4). The other presets draw the device,
+    with a before → after reveal, a What's new card and an end card.
+  - Every render is checked against its preset before and after (length, 30 fps, size, H.264 level 4.0, stereo AAC
+    at 256 kbps).
+  - The sound track is a quiet bed (one-step dither, about -90 dBFS, below hearing), not digital silence: silence
+    encoded to about 2 kbps whatever the encoder was told, and Apple lists 256 kbps AAC. The bed measures about
+    253 kbps, and the check after the render reads the track's real bit rate.
+  - The kit's contract: `docs/product-kit.schema.json` and `src/release-kit.ts`.
+  - MCP `make_product_video({ kitUrl, preset, name? })` returns a video id for `job_status`. `ai_estimate`
+    (`["review"]`) and `ai_review` take the id. The render itself uses no AI and nothing posts.
+  - Kits are downloaded over https only, each file checked by its bytes, size-capped, and re-saved without metadata;
+    nothing in a kit is run. Footage sources are unchanged.
+- NOTICE and the READMEs say Remotion's licence terms (companies over 3 employees need a Remotion company licence).
+
 ## 0.30.0 (2026-11-27)
 
 Reach, not just reels: a 27 Nov review of the owner's channel found that 83 % of Shorts viewers swiped away, that the
